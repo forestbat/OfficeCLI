@@ -19,8 +19,17 @@ public partial class PowerPointHandler
         parentPath = NormalizeCellPath(parentPath);
         parentPath = ResolveIdPath(parentPath);
 
-        // Resolve --after/--before to index
+        // Resolve --after/--before to index (handles find: prefix)
         var index = ResolveAnchorPosition(parentPath, position);
+
+        // Handle find: prefix — text-based anchoring in PPT paragraphs
+        if (index == FindAnchorIndex && position != null)
+        {
+            var anchorValue = (position.After ?? position.Before)!;
+            var findValue = anchorValue["find:".Length..];
+            var isAfter = position.After != null;
+            return AddPptAtFindPosition(parentPath, type, findValue, isAfter, properties);
+        }
 
         return type.ToLowerInvariant() switch
         {

@@ -324,7 +324,7 @@ public partial class ExcelHandler
             $"Use DOM path \"/{available.FirstOrDefault() ?? "SheetName"}/A1\" or Excel notation \"{available.FirstOrDefault() ?? "SheetName"}!A1\".");
     }
 
-    private string GetCellDisplayValue(Cell cell)
+    private string GetCellDisplayValue(Cell cell, Core.FormulaEvaluator? evaluator = null)
     {
         if (cell.DataType?.Value == CellValues.InlineString)
         {
@@ -344,9 +344,17 @@ public partial class ExcelHandler
         }
 
         // Formula cells: if there's a cached value, return it.
-        // If not, show the formula expression so view text doesn't show blank.
+        // If not, try to evaluate; last resort: show the formula expression.
         if (string.IsNullOrEmpty(value) && cell.CellFormula?.Text != null)
+        {
+            if (evaluator != null)
+            {
+                var evalResult = evaluator.TryEvaluateFull(cell.CellFormula.Text);
+                if (evalResult != null && !evalResult.IsError)
+                    return evalResult.ToCellValueText();
+            }
             return "=" + cell.CellFormula.Text;
+        }
 
         return value;
     }
@@ -354,6 +362,7 @@ public partial class ExcelHandler
     private List<DocumentNode> GetSheetChildNodes(string sheetName, SheetData sheetData, int depth, WorksheetPart? worksheetPart = null)
     {
         var children = new List<DocumentNode>();
+        var eval = depth > 0 && worksheetPart != null ? new Core.FormulaEvaluator(sheetData, _doc.WorkbookPart) : null;
         foreach (var row in sheetData.Elements<Row>())
         {
             var rowIdx = row.RowIndex?.Value ?? 0;
@@ -372,7 +381,7 @@ public partial class ExcelHandler
             {
                 foreach (var cell in row.Elements<Cell>())
                 {
-                    rowNode.Children.Add(CellToNode(sheetName, cell, worksheetPart));
+                    rowNode.Children.Add(CellToNode(sheetName, cell, worksheetPart, eval));
                 }
             }
 
@@ -400,10 +409,9 @@ public partial class ExcelHandler
         return children;
     }
 
-    private DocumentNode CellToNode(string sheetName, Cell cell, WorksheetPart? part = null)
+    private DocumentNode CellToNode(string sheetName, Cell cell, WorksheetPart? part = null, Core.FormulaEvaluator? evaluator = null)
     {
         var cellRef = cell.CellReference?.Value ?? "?";
-        var value = GetCellDisplayValue(cell);
         var formula = cell.CellFormula?.Text;
         string type;
         if (cell.DataType?.HasValue != true)
@@ -423,10 +431,15 @@ public partial class ExcelHandler
         else
             type = "Number";
 
-        // When a formula cell has no cached value, display the formula as text
-        var displayText = value;
-        if (string.IsNullOrEmpty(displayText) && formula != null)
-            displayText = "=" + formula;
+        // Lazy-create evaluator if not provided and needed
+        if (evaluator == null && formula != null && string.IsNullOrEmpty(cell.CellValue?.Text) && part != null)
+        {
+            var sheetData = GetSheet(part).GetFirstChild<SheetData>();
+            if (sheetData != null)
+                evaluator = new Core.FormulaEvaluator(sheetData, _doc.WorkbookPart);
+        }
+
+        var displayText = GetCellDisplayValue(cell, evaluator);
 
         var node = new DocumentNode
         {
@@ -440,12 +453,12 @@ public partial class ExcelHandler
         if (formula != null)
         {
             node.Format["formula"] = formula;
-            // Expose cached value separately so callers know whether the formula has been evaluated
+            // cachedValue: prefer XML cached value, then evaluated value
             var rawCached = cell.CellValue?.Text;
             if (!string.IsNullOrEmpty(rawCached))
                 node.Format["cachedValue"] = rawCached;
-            else
-                node.Format["uncalculated"] = true;
+            else if (displayText != null && !displayText.StartsWith("="))
+                node.Format["cachedValue"] = displayText;
         }
         // Array formula readback — keys match Set input
         if (cell.CellFormula?.FormulaType?.Value == CellFormulaValues.Array)
@@ -454,7 +467,7 @@ public partial class ExcelHandler
             if (cell.CellFormula.Reference?.Value != null)
                 node.Format["arrayref"] = cell.CellFormula.Reference.Value;
         }
-        if (string.IsNullOrEmpty(value) && formula == null) node.Format["empty"] = true;
+        if (string.IsNullOrEmpty(displayText) && formula == null) node.Format["empty"] = true;
 
         // Hyperlink readback
         if (part != null)
@@ -798,13 +811,14 @@ public partial class ExcelHandler
 
         // Enumerate every position in the range in row-major order,
         // materializing empty stubs for positions that have no cell element.
+        var eval = new Core.FormulaEvaluator(sheetData, _doc.WorkbookPart);
         for (int r = startRow; r <= endRow; r++)
         {
             for (int c = startColIdx; c <= endColIdx; c++)
             {
                 var cellRef = $"{IndexToColumnName(c)}{r}";
                 if (existingCells.TryGetValue(cellRef, out var existingCell))
-                    node.Children.Add(CellToNode(sheetName, existingCell, part));
+                    node.Children.Add(CellToNode(sheetName, existingCell, part, eval));
                 else
                     node.Children.Add(new DocumentNode
                     {

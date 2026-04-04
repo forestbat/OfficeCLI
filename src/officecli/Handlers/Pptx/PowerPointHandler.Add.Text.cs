@@ -316,12 +316,29 @@ public partial class PowerPointHandler
                 newRun.RunProperties = rProps;
                 newRun.Text = new Drawing.Text { Text = runText.Replace("\\n", "\n") };
 
-                // Append run to paragraph (before EndParagraphRunProperties if present)
-                var endParaRun = targetPara.GetFirstChild<Drawing.EndParagraphRunProperties>();
-                if (endParaRun != null)
-                    targetPara.InsertBefore(newRun, endParaRun);
+                // Insert run at specified index, or append
+                if (index.HasValue)
+                {
+                    var existingRuns = targetPara.Elements<Drawing.Run>().ToList();
+                    if (index.Value >= 0 && index.Value < existingRuns.Count)
+                        existingRuns[index.Value].InsertBeforeSelf(newRun);
+                    else
+                    {
+                        var endParaRun2 = targetPara.GetFirstChild<Drawing.EndParagraphRunProperties>();
+                        if (endParaRun2 != null)
+                            targetPara.InsertBefore(newRun, endParaRun2);
+                        else
+                            targetPara.Append(newRun);
+                    }
+                }
                 else
-                    targetPara.Append(newRun);
+                {
+                    var endParaRun = targetPara.GetFirstChild<Drawing.EndParagraphRunProperties>();
+                    if (endParaRun != null)
+                        targetPara.InsertBefore(newRun, endParaRun);
+                    else
+                        targetPara.Append(newRun);
+                }
 
                 var runCount = targetPara.Elements<Drawing.Run>().Count();
                 GetSlide(runSlidePart).Save();

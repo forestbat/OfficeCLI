@@ -154,6 +154,13 @@ public partial class WordHandler
 
         var anchorPath = position.After ?? position.Before!;
 
+        // Handle find: prefix — text-based anchoring within a paragraph
+        if (anchorPath.StartsWith("find:", StringComparison.OrdinalIgnoreCase))
+        {
+            // Return a sentinel value; actual handling done in Add via AddAtFindPosition
+            return FindAnchorIndex;
+        }
+
         // Normalize: if short form (no leading /), prepend parentPath
         if (!anchorPath.StartsWith("/"))
             anchorPath = parentPath.TrimEnd('/') + "/" + anchorPath;
@@ -179,6 +186,9 @@ public partial class WordHandler
             return anchorIdx;
         }
     }
+
+    /// <summary>Sentinel value indicating find: anchor needs text-based resolution.</summary>
+    private const int FindAnchorIndex = -99999;
 
     /// <summary>
     /// Build an SDT path segment using @sdtId= if available, otherwise positional index.

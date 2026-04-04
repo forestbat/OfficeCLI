@@ -233,17 +233,15 @@ officecli add doc.docx /body --type chart --prop chartType=column --prop categor
 ### Find/Replace
 
 ```bash
-# Global find/replace
+# Find/replace in body (default)
 officecli set doc.docx / --prop find="2024" --prop replace="2025"
 
-# Scoped find/replace
-officecli set doc.docx / --prop find="Acme Inc" --prop replace="Acme Corporation" --prop scope=all
+# Find/replace in headers/footers only
+officecli set doc.docx '/header[1]' --prop find="Company Name" --prop replace="Acme Corp"
 
-# Body only (skip headers/footers)
-officecli set doc.docx / --prop find="old term" --prop replace="new term" --prop scope=body
-
-# Headers/footers only
-officecli set doc.docx / --prop find="Company Name" --prop replace="Acme Corp" --prop scope=headers
+# Find/replace everywhere (body + headers): call twice
+officecli set doc.docx / --prop find="Acme Inc" --prop replace="Acme Corporation"
+officecli set doc.docx '/header[1]' --prop find="Acme Inc" --prop replace="Acme Corporation"
 ```
 
 **WARNING: Find/replace performs substring matching, not whole-word matching. Replacing "ACME" in "ACME Corporation" produces "New Name Corporation". After any find/replace, review with `view text` and run a second cleanup pass if needed.**

@@ -27,6 +27,7 @@ public partial class ExcelHandler
             if (sheetData == null) continue;
 
             int totalRows = sheetData.Elements<Row>().Count();
+            var evaluator = new Core.FormulaEvaluator(sheetData, _doc.WorkbookPart);
             int lineNum = 0;
             foreach (var row in sheetData.Elements<Row>())
             {
@@ -44,7 +45,7 @@ public partial class ExcelHandler
                 var cellElements = row.Elements<Cell>();
                 if (cols != null)
                     cellElements = cellElements.Where(c => cols.Contains(ParseCellReference(c.CellReference?.Value ?? "A1").Column));
-                var cells = cellElements.Select(c => GetCellDisplayValue(c)).ToArray();
+                var cells = cellElements.Select(c => GetCellDisplayValue(c, evaluator)).ToArray();
                 var rowRef = row.RowIndex?.Value ?? (uint)lineNum;
                 sb.AppendLine($"[/{sheetName}/row[{rowRef}]] {string.Join("\t", cells)}");
                 emitted++;

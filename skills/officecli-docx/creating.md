@@ -963,14 +963,15 @@ officecli set doc.docx "/body/p[10]" --prop style=BlockQuote
 ### Find/Replace
 
 ```bash
-# Find and replace across entire document
+# Find and replace in body
 officecli set doc.docx / --prop find="2024" --prop replace="2025"
 
-# Scoped find/replace (body only, not headers/footers)
-officecli set doc.docx / --prop find="old text" --prop replace="new text" --prop scope=body
+# Find and replace in headers/footers only
+officecli set doc.docx '/header[1]' --prop find="Company Name" --prop replace="Acme Corp"
 
-# Replace in headers/footers only
-officecli set doc.docx / --prop find="Company Name" --prop replace="Acme Corp" --prop scope=headers
+# Find and replace everywhere (body + headers): call twice
+officecli set doc.docx / --prop find="old text" --prop replace="new text"
+officecli set doc.docx '/header[1]' --prop find="old text" --prop replace="new text"
 ```
 
 **WARNING: Find/replace performs substring matching, not whole-word matching. Replacing "ACME" in "ACME Corporation" produces "New Name Corporation". After any find/replace, review with `view text` and run a second cleanup pass if needed.**

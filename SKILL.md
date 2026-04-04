@@ -184,6 +184,63 @@ Run `officecli <format> set` for all settable elements. Run `officecli <format> 
 | Spacing | Unit-qualified | `12pt`, `0.5cm`, `1.5x`, `150%` |
 | Dimensions | EMU or suffixed | `914400`, `2.54cm`, `1in`, `72pt`, `96px` |
 
+### find — format or replace matched text
+
+Use `find=` with `set` to target specific text within a paragraph (or broader scope) for formatting or replacement. The matched text is automatically split into its own run(s).
+
+```bash
+# Format matched text (auto-splits runs)
+officecli set doc.docx '/body/p[1]' --prop find=天气 --prop highlight=yellow
+officecli set doc.docx '/body/p[1]' --prop find=天气 --prop bold=true --prop color=red
+
+# Regex matching (r"..." prefix)
+officecli set doc.docx '/body/p[1]' --prop 'find=r"\d+%"' --prop color=red
+
+# Replace text
+officecli set doc.docx / --prop find=旧版本 --prop replace=v2.0
+
+# Replace + format
+officecli set doc.docx '/body/p[1]' --prop find=TODO --prop replace=DONE --prop bold=true
+
+# Bulk: color all dates red across all paragraphs
+officecli set doc.docx / --prop 'find=r"\d{4}年\d{1,2}月"' --prop color=red
+
+# Replace in header
+officecli set doc.docx '/header[1]' --prop find=草稿 --prop replace=终稿
+```
+
+**PPT find works the same way:**
+
+```bash
+# Format matched text
+officecli set slides.pptx '/slide[1]/shape[1]' --prop find=天气 --prop bold=true --prop color=red
+
+# Regex
+officecli set slides.pptx '/slide[1]/shape[1]' --prop 'find=r"\d+%"' --prop color=red
+
+# Replace across all slides
+officecli set slides.pptx / --prop find=旧版本 --prop replace=v2.0
+
+# Replace + format
+officecli set slides.pptx '/slide[1]/shape[1]' --prop find=TODO --prop replace=DONE --prop bold=true
+
+# Replace in table
+officecli set slides.pptx '/slide[1]/table[1]' --prop find=旧 --prop replace=新
+```
+
+Path controls search scope: `/` = all slides, `/slide[N]` = single slide, `/slide[N]/shape[M]` = single shape, `/slide[N]/table[M]` = table, `/slide[N]/notes` = notes pane.
+
+**Behavior matrix:**
+
+| Props | Effect |
+|-------|--------|
+| `find` + format props | Split runs, apply format to matched text |
+| `find` + `replace` | Replace matched text |
+| `find` + `replace` + format props | Replace text and apply format to new text |
+
+- `r"..."` prefix enables regex mode
+- Path controls search scope: `/` = whole body, `/header[1]`, `/body/p[1]`, etc.
+
 ### add — add elements or clone
 
 ```bash
@@ -207,6 +264,37 @@ officecli add <file> <parent> --from <path>                               # clon
 | **pptx** | slide, shape (textbox), picture (image/img), chart, table, row (tr), connector (connection/line), group, video (audio/media), equation (formula/math), notes, paragraph (para), run, zoom (slidezoom) |
 | **docx** | paragraph (para), run, table, row (tr), cell (td), image (picture/img), header, footer, section, bookmark, comment, footnote, endnote, formfield, sdt (contentcontrol), chart, equation (formula/math), field, hyperlink, style, toc, watermark, break (pagebreak/columnbreak) |
 | **xlsx** | sheet, row, cell, chart, image (picture), comment, table (listobject), namedrange (definedname), pivottable (pivot), sparkline, validation (datavalidation), autofilter, shape, textbox, databar/colorscale/iconset/formulacf (conditional formatting), csv (tsv) |
+
+**Text-anchored insert** (`--after find:X` / `--before find:X`):
+
+The `--after` and `--before` flags accept a `find:` prefix to locate an insertion point by text match within a paragraph.
+
+```bash
+# Insert run after matched text (inline, within the same paragraph)
+officecli add doc.docx '/body/p[1]' --type run --after find:天气 --prop text=（晴）
+
+# Insert table after matched text (block — auto-splits the paragraph)
+officecli add doc.docx '/body/p[1]' --type table --after find:第一句话。 --prop rows=2 --prop cols=2
+
+# Insert before matched text
+officecli add doc.docx '/body/p[1]' --type run --before find:天气 --prop text=【
+
+# Regex anchor
+officecli add doc.docx '/body/p[1]' --type run --after 'find:r"\d+"' --prop text=（新高）
+```
+
+- Inline types (run, picture, hyperlink…) insert within the paragraph
+- Block types (table, paragraph) auto-split the paragraph and insert between the two halves
+- Supports `r"..."` regex
+
+**PPT text-anchored insert** (inline only):
+
+```bash
+officecli add slides.pptx '/slide[1]/shape[1]' --type run --after find:天气 --prop text=（晴）
+officecli add slides.pptx '/slide[1]/shape[1]' --type run --before find:天气 --prop text=【
+```
+
+PPT only supports inline types (run) with `find:` anchors — block-type insertion is not supported.
 
 **Clone:** `officecli add <file> / --from /slide[1]` — copies with all cross-part relationships.
 

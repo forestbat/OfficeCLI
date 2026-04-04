@@ -313,6 +313,7 @@ public partial class ExcelHandler
             // Include cells in this column as children (non-empty rows only)
             if (depth > 0)
             {
+                var eval = new Core.FormulaEvaluator(data, _doc.WorkbookPart);
                 foreach (var row in data.Elements<Row>().OrderBy(r => r.RowIndex?.Value ?? 0))
                 {
                     var cell = row.Elements<Cell>().FirstOrDefault(c =>
@@ -322,7 +323,7 @@ public partial class ExcelHandler
                         return cn.Equals(colName, StringComparison.OrdinalIgnoreCase);
                     });
                     if (cell != null)
-                        colNode.Children.Add(CellToNode(sheetNameFromPath, cell, worksheet));
+                        colNode.Children.Add(CellToNode(sheetNameFromPath, cell, worksheet, eval));
                 }
                 colNode.ChildCount = colNode.Children.Count;
             }
@@ -347,8 +348,11 @@ public partial class ExcelHandler
                 rowNode.Format["outlineLevel"] = (int)row.OutlineLevel.Value;
             if (row.Collapsed?.Value == true) rowNode.Format["collapsed"] = true;
             if (depth > 0)
+            {
+                var eval = new Core.FormulaEvaluator(data, _doc.WorkbookPart);
                 foreach (var c in row.Elements<Cell>())
-                    rowNode.Children.Add(CellToNode(sheetNameFromPath, c, worksheet));
+                    rowNode.Children.Add(CellToNode(sheetNameFromPath, c, worksheet, eval));
+            }
             return rowNode;
         }
 
@@ -1037,13 +1041,14 @@ public partial class ExcelHandler
             var sheetData = GetSheet(worksheetPart).GetFirstChild<SheetData>();
             if (sheetData == null) continue;
 
+            var eval = new Core.FormulaEvaluator(sheetData, _doc.WorkbookPart);
             foreach (var row in sheetData.Elements<Row>())
             {
                 foreach (var cell in row.Elements<Cell>())
                 {
                     if (MatchesCellSelector(cell, sheetName, parsed))
                     {
-                        var node = CellToNode(sheetName, cell, worksheetPart);
+                        var node = CellToNode(sheetName, cell, worksheetPart, eval);
                         if (MatchesFormatAttributes(node, parsed))
                             results.Add(node);
                     }

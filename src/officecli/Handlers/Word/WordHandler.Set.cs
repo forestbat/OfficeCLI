@@ -32,25 +32,52 @@ public partial class WordHandler
             return unsupported;
         }
 
-        // Document-level properties (including find/replace)
-        if (path == "/" || path == "" || path.Equals("/body", StringComparison.OrdinalIgnoreCase))
+        // Unified find: if 'find' key is present (at any path level), route to ProcessFind
+        if (properties.TryGetValue("find", out var findText))
         {
-            // Find & Replace: special handling before document properties
-            if (properties.TryGetValue("find", out var findText) && properties.TryGetValue("replace", out var replaceText))
+            var replace = properties.TryGetValue("replace", out var r) ? r : null;
+            // Separate run-level format properties from paragraph-level properties
+            var formatProps = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            var paraProps = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            foreach (var (key, value) in properties)
             {
-                var scope = properties.GetValueOrDefault("scope", "all");
-                var count = FindAndReplace(findText, replaceText, scope);
-                var remaining = new Dictionary<string, string>(properties, StringComparer.OrdinalIgnoreCase);
-                remaining.Remove("find");
-                remaining.Remove("replace");
-                remaining.Remove("scope");
-                // If there are remaining properties, apply them as document properties
-                if (remaining.Count > 0)
-                    SetDocumentProperties(remaining, unsupported);
-                _doc.MainDocumentPart?.Document?.Save();
-                return unsupported;
+                var k = key.ToLowerInvariant();
+                if (k is "find" or "replace" or "scope") continue;
+                // Paragraph-level properties go to paraProps
+                if (k is "style" or "alignment" or "align" or "firstlineindent" or "leftindent" or "indentleft"
+                    or "indent" or "rightindent" or "indentright" or "hangingindent" or "spacebefore"
+                    or "spaceafter" or "linespacing" or "keepnext" or "keeplines" or "pagebreakbefore"
+                    or "widowcontrol" or "liststyle" or "start" or "text" or "formula")
+                    paraProps[key] = value;
+                else
+                    formatProps[key] = value;
             }
 
+            if (replace == null && formatProps.Count == 0 && paraProps.Count == 0)
+                throw new ArgumentException("'find' requires either 'replace' and/or format properties (e.g. bold, highlight, color).");
+
+            var effectivePath = (path is "" or "/") ? "/body" : path;
+            ProcessFind(effectivePath, findText, replace, formatProps.Count > 0 ? formatProps : new Dictionary<string, string>());
+
+            // Apply paragraph-level properties to the matched paragraphs
+            if (paraProps.Count > 0)
+            {
+                var paragraphs = ResolveParagraphsForFind(effectivePath);
+                foreach (var para in paragraphs)
+                {
+                    var pProps = para.ParagraphProperties ?? para.PrependChild(new ParagraphProperties());
+                    foreach (var (key, value) in paraProps)
+                        ApplyParagraphLevelProperty(pProps, key, value);
+                }
+            }
+
+            _doc.MainDocumentPart?.Document?.Save();
+            return unsupported;
+        }
+
+        // Document-level properties
+        if (path == "/" || path == "" || path.Equals("/body", StringComparison.OrdinalIgnoreCase))
+        {
             SetDocumentProperties(properties, unsupported);
             _doc.MainDocumentPart?.Document?.Save();
             return unsupported;

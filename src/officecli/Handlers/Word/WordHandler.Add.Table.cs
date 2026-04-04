@@ -178,7 +178,10 @@ public partial class WordHandler
             table.AppendChild(row);
         }
 
-        AppendToParent(parent, table);
+        if (index.HasValue)
+            InsertAtPosition(parent, table, index);
+        else
+            AppendToParent(parent, table);
         var tblCount = parent.Elements<Table>().Count();
         return $"{parentPath}/tbl[{tblCount}]";
     }

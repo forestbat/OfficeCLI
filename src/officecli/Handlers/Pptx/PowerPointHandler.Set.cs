@@ -36,20 +36,25 @@ public partial class PowerPointHandler
         if (path.Equals("/theme", StringComparison.OrdinalIgnoreCase))
             return SetThemeProperties(properties);
 
+        // Unified find: if 'find' key is present, route to ProcessPptFind
+        if (properties.TryGetValue("find", out var findText))
+        {
+            var replace = properties.TryGetValue("replace", out var r) ? r : null;
+            var formatProps = new Dictionary<string, string>(properties, StringComparer.OrdinalIgnoreCase);
+            formatProps.Remove("find");
+            formatProps.Remove("replace");
+            formatProps.Remove("scope");
+
+            if (replace == null && formatProps.Count == 0)
+                throw new ArgumentException("'find' requires either 'replace' and/or format properties (e.g. bold, color, size).");
+
+            ProcessPptFind(path, findText, replace, formatProps);
+            return [];
+        }
+
         // Presentation-level properties: / or /presentation
         if (path is "/" or "" or "/presentation")
         {
-            // Find & Replace: special handling before presentation properties
-            if (properties.TryGetValue("find", out var findText) && properties.TryGetValue("replace", out var replaceText))
-            {
-                var count = FindAndReplace(findText, replaceText);
-                var remaining = new Dictionary<string, string>(properties, StringComparer.OrdinalIgnoreCase);
-                remaining.Remove("find");
-                remaining.Remove("replace");
-                if (remaining.Count > 0)
-                    return Set(path, remaining);
-                return [];
-            }
 
             var presentation = _doc.PresentationPart?.Presentation
                 ?? throw new InvalidOperationException("No presentation");

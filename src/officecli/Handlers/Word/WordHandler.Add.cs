@@ -40,8 +40,17 @@ public partial class WordHandler
                 ?? throw new ArgumentException($"Path not found: {parentPath}" + (ctx != null ? $". {ctx}" : ""));
         }
 
-        // Resolve --after/--before to index
+        // Resolve --after/--before to index (handles find: prefix for text-based anchoring)
         var index = ResolveAnchorPosition(parent, parentPath, position);
+
+        // Handle find: prefix — text-based anchoring
+        if (index == FindAnchorIndex && position != null)
+        {
+            var anchorValue = (position.After ?? position.Before)!;
+            var findValue = anchorValue["find:".Length..]; // strip "find:" prefix
+            var isAfter = position.After != null;
+            return AddAtFindPosition(parent, parentPath, type, findValue, isAfter, null, properties);
+        }
 
         var resultPath = type.ToLowerInvariant() switch
         {
