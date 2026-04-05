@@ -136,6 +136,9 @@ officecli add doc.docx /body --type section --prop type=nextPage --index 12
 # Move paragraph to position
 officecli move doc.docx "/body/p[8]" --index 2
 
+# Move paragraph after an anchor (target parent inferred automatically)
+officecli move doc.docx "/body/p[8]" --after "/body/p[2]"
+
 # Swap two paragraphs
 officecli swap doc.docx "/body/p[3]" "/body/p[7]"
 ```
