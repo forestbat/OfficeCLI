@@ -133,7 +133,7 @@ public partial class WordHandler
             if (properties.TryGetValue("start", out var sv))
                 startVal = ParseHelpers.SafeParseInt(sv, "start");
             int? levelVal = null;
-            if (properties.TryGetValue("listLevel", out var ll) || properties.TryGetValue("listlevel", out ll) || properties.TryGetValue("level", out ll))
+            if (properties.TryGetValue("listLevel", out var ll) || properties.TryGetValue("listlevel", out ll) || properties.TryGetValue("level", out ll) || properties.TryGetValue("numlevel", out ll))
                 levelVal = ParseHelpers.SafeParseInt(ll, "listLevel");
             ApplyListStyle(para, listStyle, startVal, levelVal);
             // pProps already appended, skip the append below
