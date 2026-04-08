@@ -5513,14 +5513,22 @@ internal static class PivotTableHelper
             "percent_of_row" or "percentofrow" => ShowDataAsValues.PercentOfRaw,
             "percent_of_col" or "percent_of_column" or "percentofcol" or "percentofcolumn" => ShowDataAsValues.PercentOfColumn,
             "running_total" or "runningtotal" or "runtotal" => ShowDataAsValues.RunTotal,
-            "difference" or "diff" => ShowDataAsValues.Difference,
-            "percent_diff" or "percentdiff" => ShowDataAsValues.PercentageDifference,
-            "index" => ShowDataAsValues.Index,
+            // CONSISTENCY(strict-enums): difference / percent_diff / index are
+            // accepted by the OOXML ShowDataAsValues enum, but ApplyShowDataAs1x1
+            // has no matrix transformation for them, so rendered cells would
+            // silently equal the raw aggregate. Reject up front until a proper
+            // renderer exists, mirroring the invalid-sort / invalid-aggregate
+            // policy from Round 1.
+            "difference" or "diff" or "percent_diff" or "percentdiff" or "index" =>
+                throw new ArgumentException(
+                    $"showDataAs '{showAs}' is not yet supported by the renderer " +
+                    "(would silently return raw aggregate). Supported: normal, " +
+                    "percent_of_total, percent_of_row, percent_of_col, running_total."),
             // CONSISTENCY(strict-enums): unknown showAs tokens are rejected
             // up front so users see typos at Add/Set time, not on render.
             _ => throw new ArgumentException(
                 $"invalid showDataAs: '{showAs}'. Valid: normal, percent_of_total, percent_of_row, " +
-                "percent_of_col, running_total, difference, percent_diff, index"),
+                "percent_of_col, running_total"),
         };
     }
 
