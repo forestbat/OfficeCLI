@@ -4759,7 +4759,10 @@ internal static class PivotTableHelper
         {
             var indices = pageFields.Elements<PageField>().Select(f => f.Field?.Value ?? -1).Where(v => v >= 0).ToList();
             if (indices.Count > 0)
-                node.Format["filterFields"] = string.Join(",", indices);
+                // R2-3: canonical key matches input ('filters=' on Add/Set).
+                // Legacy 'filterFields' output key removed in favor of single
+                // canonical key per CLAUDE.md "Canonical DocumentNode.Format Rules".
+                node.Format["filters"] = string.Join(",", indices);
         }
 
         // Data fields (use typed property for reliable access)
