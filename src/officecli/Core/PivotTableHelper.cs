@@ -136,7 +136,7 @@ internal static class PivotTableHelper
         // Those configs are tracked as a v2 expansion.
         RenderPivotIntoSheet(
             targetSheet, position, headers, columnData,
-            rowFields, colFields, valueFields);
+            rowFields, colFields, valueFields, filterFields);
 
         // Return 1-based index
         return targetSheet.PivotTableParts.ToList().IndexOf(pivotPart) + 1;
@@ -336,7 +336,8 @@ internal static class PivotTableHelper
         WorksheetPart targetSheet, string position,
         string[] headers, List<string[]> columnData,
         List<int> rowFieldIndices, List<int> colFieldIndices,
-        List<(int idx, string func, string name)> valueFields)
+        List<(int idx, string func, string name)> valueFields,
+        List<int>? filterFieldIndices = null)
     {
         // v1 limit: exactly one of each. Anything more advanced gets the empty
         // skeleton fallback. Document the limitation in a stderr warning so the
@@ -503,6 +504,50 @@ internal static class PivotTableHelper
             grandRow.AppendChild(MakeNumericCell(anchorColIdx + 1 + c, grandRowIdx, colTotals[c]));
         grandRow.AppendChild(MakeNumericCell(anchorColIdx + 1 + uniqueCols.Count, grandRowIdx, grandTotal));
         sheetData.AppendChild(grandRow);
+
+        // Page filter cells: rendered ABOVE the table at rows
+        // (anchorRow - filterCount - 1) ... (anchorRow - 2). One row per filter
+        // field, with field name in the row-label column and "(All)" in the
+        // adjacent data column. Row (anchorRow - 1) is left empty as a visual gap.
+        //
+        // Page filters are NOT inside <location ref/> per ECMA-376; they are
+        // separate visual cells whose presence is signalled by the rowPageCount /
+        // colPageCount attributes on pivotTableDefinition (already set in
+        // BuildPivotTableDefinition). Excel pairs the filter cells with the pivot
+        // by their position above the location range.
+        //
+        // If there isn't enough room above (e.g. user anchored at F1), we skip the
+        // visible cells but the pivot definition still tags them as page fields,
+        // so the dropdowns appear in Excel's pivot UI even without the cell labels.
+        if (filterFieldIndices != null && filterFieldIndices.Count > 0)
+        {
+            var requiredHeadroom = filterFieldIndices.Count + 1; // filter rows + 1 gap
+            if (anchorRow > requiredHeadroom)
+            {
+                var firstFilterRow = anchorRow - requiredHeadroom;
+                for (int fi = 0; fi < filterFieldIndices.Count; fi++)
+                {
+                    var fIdx = filterFieldIndices[fi];
+                    if (fIdx < 0 || fIdx >= headers.Length) continue;
+                    var rowIdx = firstFilterRow + fi;
+                    var filterRow = new Row { RowIndex = (uint)rowIdx };
+                    filterRow.AppendChild(MakeStringCell(anchorColIdx, rowIdx, headers[fIdx]));
+                    filterRow.AppendChild(MakeStringCell(anchorColIdx + 1, rowIdx, "(All)"));
+                    // Insert in row order: existing rows in sheetData start at
+                    // anchorRow, so prepend the filter rows to the front.
+                    sheetData.InsertAt(filterRow, fi);
+                }
+            }
+            else
+            {
+                Console.Error.WriteLine(
+                    $"WARNING: pivot at {position} has {filterFieldIndices.Count} page filter(s) " +
+                    $"but only {anchorRow - 1} row(s) of headroom above. " +
+                    "Filter cells will not be visible in the host sheet, but the filter dropdowns " +
+                    "will still appear in Excel's pivot UI. Move the pivot to a lower anchor row " +
+                    $"(at least row {requiredHeadroom + 1}) to render the filter cells.");
+            }
+        }
 
         ws.Save();
     }
@@ -848,18 +893,14 @@ internal static class PivotTableHelper
             FirstDataColumn = (uint)geom.RowLabelCols
         };
 
-        // Page filters: when present, declare them via rowPageCount/colPageCount on the
-        // pivotTableDefinition (not via location). LibreOffice writes both attributes
-        // unconditionally when there are page fields; rowPageCount = number of page fields,
-        // colPageCount = 1 (single column of page-field labels). See xepivotxml.cxx:1243.
-        // Open XML SDK has no typed property for these, so we set attributes directly.
-        if (filterFieldIndices.Count > 0)
-        {
-            pivotDef.SetAttribute(new OpenXmlAttribute(
-                "rowPageCount", "", filterFieldIndices.Count.ToString(System.Globalization.CultureInfo.InvariantCulture)));
-            pivotDef.SetAttribute(new OpenXmlAttribute(
-                "colPageCount", "", "1"));
-        }
+        // Page filters: presence is signalled by the <pageFields> element + the
+        // pivotField axis="axisPage" marker, both written further down. ECMA-376
+        // also defines optional rowPageCount / colPageCount attributes here, but
+        // OpenXml SDK 3.3.0 does not model them and rejects them as unknown
+        // during schema validation. Excel recognizes the filter without them
+        // (verified empirically and in pivot_dark1.xlsx, which has filters but
+        // no page count attributes). Tracked as a v2 polish item if any consumer
+        // turns out to require them.
 
         // PivotFields — one per source column
         var pivotFields = new PivotFields { Count = (uint)headers.Length };
@@ -1398,7 +1439,7 @@ internal static class PivotTableHelper
 
                 RenderPivotIntoSheet(
                     hostSheet, anchorRefForGeometry, cacheHeaders, cacheColumnData,
-                    rowFieldIndices, colFieldIndices, valueFields);
+                    rowFieldIndices, colFieldIndices, valueFields, filterFieldIndices);
             }
         }
     }
