@@ -1,6 +1,7 @@
 // Copyright 2025 OfficeCli (officecli.ai)
 // SPDX-License-Identifier: Apache-2.0
 
+using System.Text;
 using DocumentFormat.OpenXml;
 using DocumentFormat.OpenXml.Packaging;
 using DocumentFormat.OpenXml.Spreadsheet;
@@ -5325,6 +5326,19 @@ internal static class PivotTableHelper
         return result;
     }
 
+    // R4-2: Unicode field names may reach us in different normalization forms
+    // (e.g. source header in NFD "e\u0301" vs user input in NFC "\u00E9"). An
+    // ordinal compare would fail on semantically equivalent strings and report
+    // the field as missing. Normalize both sides to NFC before lookup so
+    // composed and decomposed spellings bind to the same header. We only
+    // normalize for matching — stored header text is left unchanged.
+    private static bool FieldNameMatches(string? header, string candidate)
+    {
+        if (header == null) return false;
+        return header.Normalize(NormalizationForm.FormC)
+            .Equals(candidate.Normalize(NormalizationForm.FormC), StringComparison.OrdinalIgnoreCase);
+    }
+
     private static List<int> ParseFieldList(Dictionary<string, string> props, string key, string[] headers)
     {
         if (!props.TryGetValue(key, out var value) || string.IsNullOrEmpty(value))
@@ -5349,7 +5363,7 @@ internal static class PivotTableHelper
             }
             int found = -1;
             for (int i = 0; i < headers.Length; i++)
-                if (headers[i] != null && headers[i].Equals(name, StringComparison.OrdinalIgnoreCase)) { found = i; break; }
+                if (FieldNameMatches(headers[i], name)) { found = i; break; }
             // CONSISTENCY(date-grouping-passthrough): unrecognized grouping
             // suffixes (e.g. "Date:hours") survive ApplyDateGrouping as
             // literals. Strip the suffix and re-resolve so the bare field
@@ -5362,7 +5376,7 @@ internal static class PivotTableHelper
                 {
                     var bare = name.Substring(0, colon);
                     for (int i = 0; i < headers.Length; i++)
-                        if (headers[i] != null && headers[i].Equals(bare, StringComparison.OrdinalIgnoreCase)) { found = i; break; }
+                        if (FieldNameMatches(headers[i], bare)) { found = i; break; }
                 }
             }
             if (found < 0)
@@ -5425,7 +5439,7 @@ internal static class PivotTableHelper
             else
             {
                 for (int i = 0; i < headers.Length; i++)
-                    if (headers[i] != null && headers[i].Equals(fieldName, StringComparison.OrdinalIgnoreCase)) { fieldIdx = i; break; }
+                    if (FieldNameMatches(headers[i], fieldName)) { fieldIdx = i; break; }
                 // CONSISTENCY(field-name-validation): non-numeric token must
                 // resolve. Same throw shape as ParseFieldList.
                 if (fieldIdx < 0)
