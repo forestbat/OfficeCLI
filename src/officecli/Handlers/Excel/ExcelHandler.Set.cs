@@ -1267,6 +1267,23 @@ public partial class ExcelHandler
                             }
                             GetSheet(wsPart).Save();
                         }
+
+                        // Update any pivot cache definitions whose WorksheetSource
+                        // references the old sheet name. Without this the pivot
+                        // cache's stale sheet ref breaks Excel refresh.
+                        // CONSISTENCY(sheet-rename-refs)
+                        var workbookPart = _doc.WorkbookPart!;
+                        foreach (var cacheDefPart in workbookPart.GetPartsOfType<PivotTableCacheDefinitionPart>())
+                        {
+                            var wsSource = cacheDefPart.PivotCacheDefinition?.CacheSource?.WorksheetSource;
+                            if (wsSource?.Sheet?.Value != null &&
+                                wsSource.Sheet.Value.Equals(oldName, StringComparison.OrdinalIgnoreCase))
+                            {
+                                wsSource.Sheet = value;
+                                cacheDefPart.PivotCacheDefinition!.Save();
+                            }
+                        }
+
                         workbook.Save();
                     }
                     break;
