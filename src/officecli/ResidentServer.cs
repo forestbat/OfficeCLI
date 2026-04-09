@@ -4,8 +4,10 @@
 using System.IO.Pipes;
 using System.Security.Cryptography;
 using System.Text;
+using OfficeCli.Core;
+using OfficeCli.Handlers;
 
-namespace OfficeCli.Core;
+namespace OfficeCli;
 
 public class ResidentServer : IDisposable
 {

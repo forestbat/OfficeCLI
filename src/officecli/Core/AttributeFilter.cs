@@ -11,7 +11,7 @@ namespace OfficeCli.Core;
 /// Supports operators: = (exact), != (not equal), ~= (contains), >= (greater or equal), <= (less or equal).
 /// Example: "shape[fill=#FF0000][size>=24pt][text~=报告]"
 /// </summary>
-public static class AttributeFilter
+internal static class AttributeFilter
 {
     public enum FilterOp { Equal, NotEqual, Contains, GreaterOrEqual, LessOrEqual, GreaterThan, LessThan, Exists }
 

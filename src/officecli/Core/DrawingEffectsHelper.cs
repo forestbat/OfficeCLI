@@ -11,7 +11,7 @@ namespace OfficeCli.Core;
 /// Used by both PPTX and Excel handlers to avoid code duplication.
 /// Word uses a different namespace (w14) and has its own implementation.
 /// </summary>
-public static class DrawingEffectsHelper
+internal static class DrawingEffectsHelper
 {
     /// <summary>
     /// Build an OuterShadow element from a value string.

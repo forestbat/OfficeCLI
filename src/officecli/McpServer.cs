@@ -3,8 +3,10 @@
 
 using System.Text;
 using System.Text.Json;
+using OfficeCli.Core;
+using OfficeCli.Handlers;
 
-namespace OfficeCli.Core;
+namespace OfficeCli;
 
 /// <summary>
 /// Minimal MCP (Model Context Protocol) server over stdio.

@@ -4,7 +4,7 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
-namespace OfficeCli.Core;
+namespace OfficeCli;
 
 internal class LenientStringDictionaryConverter : JsonConverter<Dictionary<string, string>>
 {

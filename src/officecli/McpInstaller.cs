@@ -3,7 +3,7 @@
 
 using System.Text.Json;
 
-namespace OfficeCli.Core;
+namespace OfficeCli;
 
 /// <summary>
 /// Registers officecli as an MCP server in various AI clients.

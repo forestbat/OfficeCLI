@@ -1,17 +1,10 @@
 // Copyright 2025 OfficeCli (officecli.ai)
 // SPDX-License-Identifier: Apache-2.0
 
-using System.Text;
 using DocumentFormat.OpenXml;
 using DocumentFormat.OpenXml.Packaging;
 using DocumentFormat.OpenXml.Wordprocessing;
 using OfficeCli.Core;
-using Vml = DocumentFormat.OpenXml.Vml;
-using C = DocumentFormat.OpenXml.Drawing.Charts;
-using A = DocumentFormat.OpenXml.Drawing;
-using DW = DocumentFormat.OpenXml.Drawing.Wordprocessing;
-using PIC = DocumentFormat.OpenXml.Drawing.Pictures;
-using M = DocumentFormat.OpenXml.Math;
 
 namespace OfficeCli.Handlers;
 
@@ -112,31 +105,6 @@ public partial class WordHandler : IDocumentHandler
     }
 
     public List<ValidationError> Validate() => RawXmlHelper.ValidateDocument(_doc);
-
-    /// <summary>
-    /// Execute a JSON batch of operations on this document.
-    /// Returns one BatchResult per item, with Success=true or Success=false+Error.
-    /// </summary>
-    public List<Core.BatchResult> Batch(string json)
-    {
-        var items = System.Text.Json.JsonSerializer.Deserialize(json, Core.BatchJsonContext.Default.ListBatchItem)
-            ?? throw new ArgumentException("Invalid batch JSON");
-        var results = new List<Core.BatchResult>();
-        for (var i = 0; i < items.Count; i++)
-        {
-            var item = items[i];
-            try
-            {
-                var output = CommandBuilder.ExecuteBatchItem(this, item, json: false);
-                results.Add(new Core.BatchResult { Index = i, Success = true, Output = output });
-            }
-            catch (Exception ex)
-            {
-                results.Add(new Core.BatchResult { Index = i, Success = false, Error = ex.Message, Item = item });
-            }
-        }
-        return results;
-    }
 
     public void Dispose()
     {

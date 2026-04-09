@@ -16,7 +16,7 @@ namespace OfficeCli.Core;
 /// two different things. For those we refuse silent mapping and return a
 /// precise hint telling the user to pick one explicitly.
 /// </summary>
-public static class CellPropHints
+internal static class CellPropHints
 {
     private static readonly Dictionary<string, string> AmbiguousKeys = new(StringComparer.OrdinalIgnoreCase)
     {

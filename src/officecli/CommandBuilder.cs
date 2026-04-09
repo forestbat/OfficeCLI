@@ -5,6 +5,7 @@ using System.CommandLine;
 using System.Diagnostics;
 using System.Text;
 using OfficeCli.Core;
+using OfficeCli.Handlers;
 
 namespace OfficeCli;
 

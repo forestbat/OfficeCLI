@@ -4,7 +4,7 @@
 using System.IO.Pipes;
 using System.Text;
 
-namespace OfficeCli.Core;
+namespace OfficeCli;
 
 public static class ResidentClient
 {

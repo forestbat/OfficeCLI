@@ -33,7 +33,7 @@ namespace OfficeCli.Core;
 ///   \alpha \beta \gamma \delta \pi \theta \sigma \omega \lambda \mu \epsilon
 ///   Single-char shorthand: H_2 x^2 (braces optional for single char)
 /// </summary>
-public static class FormulaParser
+internal static class FormulaParser
 {
     // ==================== LaTeX → OMML ====================
 
@@ -1850,7 +1850,7 @@ public static class FormulaParser
 /// <summary>
 /// Exception thrown when FormulaParser fails to parse a LaTeX formula.
 /// </summary>
-public class FormulaParseException : Exception
+internal class FormulaParseException : Exception
 {
     public FormulaParseException(string message, Exception innerException)
         : base(message, innerException) { }

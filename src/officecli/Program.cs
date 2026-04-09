@@ -18,23 +18,23 @@ if (args.Length >= 1 && args[0] == "mcp")
     if (args.Length == 1)
     {
         // officecli mcp → start MCP server
-        await OfficeCli.Core.McpServer.RunAsync();
+        await OfficeCli.McpServer.RunAsync();
         return 0;
     }
     if (args.Length == 2 && args[1] == "list")
     {
-        OfficeCli.Core.McpInstaller.Install("list");
+        OfficeCli.McpInstaller.Install("list");
         return 0;
     }
     if (args.Length == 3 && args[1] == "uninstall")
     {
-        OfficeCli.Core.McpInstaller.Uninstall(args[2]);
+        OfficeCli.McpInstaller.Uninstall(args[2]);
         return 0;
     }
     if (args.Length == 2)
     {
         // officecli mcp <target> → register + show instructions
-        OfficeCli.Core.McpInstaller.Install(args[1]);
+        OfficeCli.McpInstaller.Install(args[1]);
         return 0;
     }
     Console.Error.WriteLine("Usage: officecli mcp              Start MCP server");
@@ -53,7 +53,7 @@ if (args.Length >= 1 && args[0] == "install")
 // Legacy alias
 if (args.Length == 1 && args[0] == "mcp-serve")
 {
-    await OfficeCli.Core.McpServer.RunAsync();
+    await OfficeCli.McpServer.RunAsync();
     return 0;
 }
 

@@ -4,9 +4,9 @@
 using System.IO.Compression;
 using System.Text;
 using System.Text.RegularExpressions;
-using OfficeCli.Handlers;
+using OfficeCli.Core;
 
-namespace OfficeCli.Core;
+namespace OfficeCli.Handlers;
 
 public static class DocumentHandlerFactory
 {

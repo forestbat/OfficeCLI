@@ -33,7 +33,7 @@ namespace OfficeCli.Core;
 ///   alignment.vertical   - top/center/bottom
 ///   alignment.wrapText   - true/false
 /// </summary>
-public class ExcelStyleManager
+internal class ExcelStyleManager
 {
     private readonly WorkbookPart _workbookPart;
 

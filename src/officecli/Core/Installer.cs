@@ -10,7 +10,7 @@ namespace OfficeCli.Core;
 /// Usage:
 ///   officecli install [target]  — install binary + skills + fallback MCP
 /// </summary>
-public static class Installer
+internal static class Installer
 {
     private static readonly string BinDir = Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),

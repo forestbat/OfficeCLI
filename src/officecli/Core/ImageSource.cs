@@ -15,7 +15,7 @@ namespace OfficeCli.Core;
 ///
 /// Returns a content type string compatible with OpenXmlPart.AddImagePart() (e.g. ImagePartType.Png).
 /// </summary>
-public static class ImageSource
+internal static class ImageSource
 {
     /// <summary>
     /// Resolve an image source string into a stream and content type string.

@@ -11,7 +11,7 @@ namespace OfficeCli.Core;
 /// Accepts flexible user input (e.g. "true", "yes", "1", "on" for booleans;
 /// "24pt" or "24" for font sizes).
 /// </summary>
-public static class ParseHelpers
+internal static class ParseHelpers
 {
     /// <summary>
     /// Map of common CSS/HTML named colors to 6-digit uppercase hex RGB.

@@ -9,7 +9,7 @@ namespace OfficeCli.Core;
 /// <summary>
 /// Shared Extended Properties (app.xml) Get/Set logic for all document types.
 /// </summary>
-public static class ExtendedPropertiesHandler
+internal static class ExtendedPropertiesHandler
 {
     /// <summary>
     /// Populate Format dictionary with extended properties.
