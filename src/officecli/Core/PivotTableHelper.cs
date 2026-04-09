@@ -1140,6 +1140,12 @@ internal static class PivotTableHelper
         int dataFieldCount = Math.Max(1, valueFields.Count);
         int rowLabelCols = 1; // Compact mode
 
+        // CONSISTENCY(subtotals-opts): when subtotals=off, the per-group outer
+        // subtotal row (2+ row fields) and outer subtotal column (2+ col fields)
+        // are not rendered — shrink the geometry accordingly so location and
+        // sheetData stay consistent.
+        bool emitSubtotals = ActiveDefaultSubtotal;
+
         int valueCols, totalCols, dataRowCount, headerRows;
 
         // N≥3 on either axis: use AxisTree for both width and height counts.
@@ -1150,12 +1156,13 @@ internal static class PivotTableHelper
             var colTree = BuildAxisTree(colFieldIndices, columnData);
 
             // Display row count = subtotal positions + leaf positions
-            // (the grand total row is added separately below).
-            int rowSubtotals = CountSubtotalNodes(rowTree);
+            // (the grand total row is added separately below). When subtotals
+            // are off, only leaf rows contribute.
+            int rowSubtotals = emitSubtotals ? CountSubtotalNodes(rowTree) : 0;
             int rowLeaves = CountLeafNodes(rowTree);
             dataRowCount = rowSubtotals + rowLeaves;
 
-            int colSubtotals = CountSubtotalNodes(colTree);
+            int colSubtotals = emitSubtotals ? CountSubtotalNodes(colTree) : 0;
             int colLeaves = CountLeafNodes(colTree);
             // Per col position: K cells. Plus K grand totals.
             valueCols = (colSubtotals + colLeaves) * dataFieldCount;
@@ -1168,14 +1175,17 @@ internal static class PivotTableHelper
         {
             var groups = BuildOuterInnerGroups(
                 colFieldIndices[0], colFieldIndices[1], columnData);
-            valueCols = groups.Sum(g => (g.inners.Count + 1) * dataFieldCount);
+            // Each outer group contributes inners.Count leaf cols + 1 subtotal col.
+            // When subtotals=off, drop the per-group subtotal col.
+            valueCols = groups.Sum(g => (g.inners.Count + (emitSubtotals ? 1 : 0)) * dataFieldCount);
             totalCols = dataFieldCount;
 
             if (rowFieldIndices.Count >= 2)
             {
                 var rowGroups = BuildOuterInnerGroups(
                     rowFieldIndices[0], rowFieldIndices[1], columnData);
-                dataRowCount = rowGroups.Sum(g => 1 + g.inners.Count);
+                // Each outer group contributes g.inners.Count leaf rows + 1 subtotal row.
+                dataRowCount = rowGroups.Sum(g => (emitSubtotals ? 1 : 0) + g.inners.Count);
             }
             else
             {
@@ -1193,7 +1203,7 @@ internal static class PivotTableHelper
             {
                 var rowGroups = BuildOuterInnerGroups(
                     rowFieldIndices[0], rowFieldIndices[1], columnData);
-                dataRowCount = rowGroups.Sum(g => 1 + g.inners.Count);
+                dataRowCount = rowGroups.Sum(g => (emitSubtotals ? 1 : 0) + g.inners.Count);
             }
             else
             {
