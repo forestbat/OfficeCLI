@@ -1310,7 +1310,8 @@ internal static class PivotTableHelper
         PivotGeometry geom,
         List<int> rowFieldIndices,
         List<int> colFieldIndices,
-        List<(int idx, string func, string showAs, string name)> valueFields)
+        List<(int idx, string func, string showAs, string name)> valueFields,
+        int filterCount)
     {
         uint firstHeaderRow;
         uint firstDataRow;
@@ -1340,13 +1341,34 @@ internal static class PivotTableHelper
                          : ((valueFields.Count > 1 || colFieldIndices.Count >= 2) ? 3u : 2u);
         }
 
-        return new Location
+        var location = new Location
         {
             Reference = geom.RangeRef,
             FirstHeaderRow = firstHeaderRow,
             FirstDataRow = firstDataRow,
             FirstDataColumn = (uint)geom.RowLabelCols
         };
+
+        // rowPageCount / colPageCount: number of rows / columns the page filter
+        // area occupies ABOVE the location range. Without these attributes,
+        // Excel guesses filter-dropdown placement and ends up drawing the
+        // dropdown one row below the actual filter cell (verified in the
+        // regenerated encrypted_replica.xlsx). Excel-authored files
+        // consistently emit both as 1 when the pivot has any page filter
+        // (all filters stacked vertically on the outer row axis).
+        //
+        // Open XML SDK 3.x does not model these in the typed Location class,
+        // so set them as raw unknown attributes. The serializer writes
+        // unknown attributes without schema validation. Empty namespace URI
+        // means unprefixed, inheriting the element's default namespace
+        // (spreadsheetml main).
+        if (filterCount > 0)
+        {
+            location.SetAttribute(new OpenXmlAttribute("rowPageCount", "", "1"));
+            location.SetAttribute(new OpenXmlAttribute("colPageCount", "", "1"));
+        }
+
+        return location;
     }
 
     /// <summary>
@@ -4846,7 +4868,7 @@ internal static class PivotTableHelper
         // produce identical results.
         var geom = ComputePivotGeometry(
             position, columnData, rowFieldIndices, colFieldIndices, valueFields);
-        pivotDef.Location = BuildLocation(geom, rowFieldIndices, colFieldIndices, valueFields);
+        pivotDef.Location = BuildLocation(geom, rowFieldIndices, colFieldIndices, valueFields, filterFieldIndices.Count);
 
         // Page filters: presence is signalled by the <pageFields> element + the
         // pivotField axis="axisPage" marker, both written further down. ECMA-376
@@ -6800,7 +6822,7 @@ internal static class PivotTableHelper
         var newGeom = ComputePivotGeometry(
             anchorRefForGeometry, cacheColumnData, rowFieldIndices, colFieldIndices, valueFields);
 
-        pivotDef.Location = BuildLocation(newGeom, rowFieldIndices, colFieldIndices, valueFields);
+        pivotDef.Location = BuildLocation(newGeom, rowFieldIndices, colFieldIndices, valueFields, filterFieldIndices.Count);
 
         // Sync grand-totals attributes. Only touch when the caller explicitly
         // set them in this Set call (_*.HasValue); otherwise leave whatever
