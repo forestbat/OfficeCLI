@@ -1189,9 +1189,14 @@ internal static partial class PivotTableHelper
 
         int valueCols, totalCols, dataRowCount, headerRows;
 
-        // N≥3 on either axis: use AxisTree for both width and height counts.
-        // N≤2: keep the existing specialized formulas (regression-tested).
-        if (rowFieldIndices.Count >= 3 || colFieldIndices.Count >= 3)
+        // N≥3 on either axis, OR any axis is empty (0×*, 2×0): use AxisTree
+        // for both width and height counts. The tree handles empty axes
+        // naturally (zero leaves, zero subtotals).
+        // N≤2 with both axes non-empty: keep the existing specialized formulas
+        // (regression-tested via pivot_baselines).
+        if (rowFieldIndices.Count >= 3 || colFieldIndices.Count >= 3
+            || rowFieldIndices.Count == 0
+            || (rowFieldIndices.Count == 2 && colFieldIndices.Count == 0))
         {
             var rowTree = BuildAxisTree(rowFieldIndices, columnData);
             var colTree = BuildAxisTree(colFieldIndices, columnData);
