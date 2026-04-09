@@ -6563,6 +6563,10 @@ internal static class PivotTableHelper
             return new List<int>();
 
         var result = new List<int>();
+        // CONSISTENCY(field-area-dedup): dedup within the same axis (rows/cols/filters).
+        // A field index must appear at most once per axis; repeated tokens keep the first
+        // occurrence and skip subsequent ones, matching cross-axis dedup semantics.
+        var seen = new HashSet<int>();
         foreach (var f in value.Split(','))
         {
             var name = f.Trim();
@@ -6576,7 +6580,7 @@ internal static class PivotTableHelper
             // immediately instead of seeing an empty / wrong pivot.
             if (int.TryParse(name, out var idx))
             {
-                if (idx >= 0 && idx < headers.Length) result.Add(idx);
+                if (idx >= 0 && idx < headers.Length && seen.Add(idx)) result.Add(idx);
                 continue;
             }
             int found = -1;
@@ -6602,7 +6606,7 @@ internal static class PivotTableHelper
                 var available = string.Join(", ", headers.Where(h => !string.IsNullOrEmpty(h)));
                 throw new ArgumentException($"field '{name}' not found in source headers: {available}");
             }
-            result.Add(found);
+            if (seen.Add(found)) result.Add(found);
         }
         return result;
     }
