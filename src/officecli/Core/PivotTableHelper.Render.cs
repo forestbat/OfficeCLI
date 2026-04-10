@@ -2085,33 +2085,74 @@ internal static partial class PivotTableHelper
                 // the outer group name would only appear on the subtotal row
                 // below). Also applies when repeatLabels is on — every leaf
                 // row gets all ancestor labels.
+                //
+                // Outline layout with subtotals OFF: internal/subtotal positions
+                // are filtered out (see emitSubtotals branch above), so leaves
+                // are alone with no parent context unless we write ancestor
+                // labels here. Excel's outline+no-subtotals behavior puts the
+                // parent label on the first leaf row of each group exactly the
+                // same way tabular's first-of-group logic does — so reuse it.
+                // (Outline + subtotals ON does NOT need this: internal nodes
+                // are placed BEFORE their leaves and carry the parent label.)
                 if (rowNode.Depth >= 2)
                 {
-                    // Determine if ancestor labels should be written:
-                    // - repeatLabels: always
-                    // - tabular first-of-group: the previous row position was
-                    //   a subtotal or from a different outer group
-                    bool writeAncestors = ActiveRepeatItemLabels;
-                    if (!writeAncestors && ActiveLayoutMode == "tabular" && rIsLeaf)
+                    // Determine which ancestor levels need to be written.
+                    // - repeatLabels: always write every ancestor on every leaf
+                    // - tabular first-of-group: previous row was a subtotal or
+                    //   the outer path changed → write ALL ancestors (so the
+                    //   leaf precedes its subtotal row with full context)
+                    // - outline + subtotals off: write per-level only when the
+                    //   value at that ancestor level differs from the previous
+                    //   leaf row (Excel's outline behavior — labels only appear
+                    //   where they change). No subtotal row exists to anchor
+                    //   the parent label, so leaves must carry it themselves.
+                    // CONSISTENCY(first-of-group-ancestors): tabular keeps the
+                    // legacy "all-or-none" rule; outline-no-subtotals uses the
+                    // finer per-level diff so intermediate groups stay visible.
+                    bool repeatAll = ActiveRepeatItemLabels;
+                    bool tabularFirstOfGroup = false;
+                    if (!repeatAll && rIsLeaf && ActiveLayoutMode == "tabular")
                     {
-                        // First leaf of group: either rp==0 or previous was a
-                        // subtotal or from a different ancestor path.
                         if (rp == 0)
-                            writeAncestors = true;
+                            tabularFirstOfGroup = true;
                         else
                         {
                             var (prevNode, _, prevIsSub) = rowPositions[rp - 1];
-                            writeAncestors = prevIsSub
+                            tabularFirstOfGroup = prevIsSub
                                 || prevNode.Path.Length < rowNode.Path.Length
                                 || prevNode.Path[0] != rowNode.Path[0];
                         }
                     }
-                    if (writeAncestors)
+                    bool outlineNoSubtotals = rIsLeaf
+                        && ActiveLayoutMode == "outline" && !emitSubtotals;
+
+                    if (repeatAll || tabularFirstOfGroup)
                     {
                         for (int anc = 0; anc < rowNode.Depth - 1; anc++)
                             row.InsertBefore(
                                 MakeStringCell(anchorColIdx + anc, rowIdx, rowNode.Path[anc]),
                                 row.FirstChild);
+                    }
+                    else if (outlineNoSubtotals)
+                    {
+                        // Per-level diff against previous leaf. The first leaf
+                        // (rp == 0) writes every ancestor.
+                        string[]? prevPath = null;
+                        if (rp > 0)
+                        {
+                            var (prevNode, _, _) = rowPositions[rp - 1];
+                            prevPath = prevNode.Path;
+                        }
+                        for (int anc = 0; anc < rowNode.Depth - 1; anc++)
+                        {
+                            bool changed = prevPath == null
+                                || anc >= prevPath.Length
+                                || prevPath[anc] != rowNode.Path[anc];
+                            if (changed)
+                                row.InsertBefore(
+                                    MakeStringCell(anchorColIdx + anc, rowIdx, rowNode.Path[anc]),
+                                    row.FirstChild);
+                        }
                     }
                 }
             }
