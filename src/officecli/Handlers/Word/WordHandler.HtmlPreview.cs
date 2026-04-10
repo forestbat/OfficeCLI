@@ -768,6 +768,7 @@ public partial class WordHandler
         var numIdLevelOffset = new Dictionary<int, int>(); // numId → effective ilvl offset for cross-numId nesting
         var olCountPerLevel = new Dictionary<int, int>(); // ilvl → running <ol> item count for `start` attribute
         var multiLevelCounters = new Dictionary<int, int>(); // ilvl → counter for multi-level numbering
+        var headingCounters = new Dictionary<int, int>(); // ilvl → counter for heading auto-numbering (from style numPr)
         bool pendingLiClose = false; // defer </li> to allow nested lists inside
         bool inMultiColumn = false; // track whether we're inside a multi-column div
 
@@ -1062,6 +1063,28 @@ public partial class WordHandler
                     if (!string.IsNullOrEmpty(hStyle))
                         sb.Append($" style=\"{hStyle}\"");
                     sb.Append(">");
+
+                    // Heading auto-numbering from style (e.g., "1", "1.1", "1.2.1")
+                    var hNumPr = ResolveNumPrFromStyle(para);
+                    if (hNumPr != null)
+                    {
+                        var (hNumId, hIlvl) = hNumPr.Value;
+                        headingCounters[hIlvl] = headingCounters.GetValueOrDefault(hIlvl, 0) + 1;
+                        // Reset deeper level counters
+                        for (int lk = hIlvl + 1; lk <= 8; lk++)
+                            if (headingCounters.ContainsKey(lk)) headingCounters[lk] = 0;
+
+                        var lvlText = GetLevelText(hNumId, hIlvl);
+                        if (lvlText != null)
+                        {
+                            var numStr = lvlText;
+                            for (int lk = 0; lk <= hIlvl; lk++)
+                                numStr = numStr.Replace($"%{lk + 1}",
+                                    headingCounters.GetValueOrDefault(lk, 0).ToString());
+                            sb.Append($"<span class=\"heading-num\" style=\"margin-right:0.5em\">{HtmlEncode(numStr)}</span>");
+                        }
+                    }
+
                     RenderParagraphContentHtml(sb, para);
                     sb.AppendLine($"</h{headingLevel}>");
                     if (hasReflect)
