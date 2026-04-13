@@ -267,29 +267,28 @@ public partial class ExcelHandler
             }
         }
 
-        // Determine grid dimensions — only count cells with actual content (value or formula),
-        // not styled-but-empty cells. Mirrors LibreOffice's GetPrintArea / TrimDataArea behavior.
+        // Determine grid dimensions. Count all cells that exist in SheetData —
+        // every Cell element with a CellReference contributes to maxRow/maxCol,
+        // even if the cell is empty (no value, no formula). Empty cells are
+        // explicitly created by the user or by Excel; either way they should
+        // render so the grid matches the actual data range.
         var rows = sheetData.Elements<Row>().ToList();
         int maxCol = 0;
         int maxRow = 0;
         foreach (var row in rows)
         {
             var rowIdx = (int)(row.RowIndex?.Value ?? 0);
-            bool rowHasContent = false;
+            bool rowHasCells = false;
             foreach (var cell in row.Elements<Cell>())
             {
                 var cellRef = cell.CellReference?.Value;
                 if (cellRef == null) continue;
-                // Skip empty cells (no value, no formula) — they bloat maxCol with styled blanks
-                var hasValue = cell.CellValue != null && !string.IsNullOrEmpty(cell.CellValue.Text);
-                var hasFormula = cell.CellFormula != null;
-                if (!hasValue && !hasFormula) continue;
                 var (colName, _) = ParseCellReference(cellRef);
                 var colIdx = ColumnNameToIndex(colName);
                 if (colIdx > maxCol) maxCol = colIdx;
-                rowHasContent = true;
+                rowHasCells = true;
             }
-            if (rowHasContent && rowIdx > maxRow) maxRow = rowIdx;
+            if (rowHasCells && rowIdx > maxRow) maxRow = rowIdx;
         }
 
         // Empty sheet (SheetData exists but no rows/cells)
@@ -476,7 +475,7 @@ public partial class ExcelHandler
             }
             else
                 stickyStyle = "";
-            sb.Append($"<th class=\"col-header\"{stickyStyle}>{colName}</th>");
+            sb.Append($"<th class=\"col-header\" data-path=\"/{HtmlEncode(sheetName)}/col[{colName}]\"{stickyStyle}>{colName}</th>");
         }
         sb.AppendLine("</tr></thead>");
 
@@ -503,7 +502,7 @@ public partial class ExcelHandler
                 var rowSpan = chartEntry.toRow - r;
 
                 sb.Append($"<tr data-row=\"{sheetIdx}-{r}\">");
-                sb.Append($"<th class=\"row-header\">{r}</th>");
+                sb.Append($"<th class=\"row-header\" data-path=\"/{HtmlEncode(sheetName)}/row[{r}]\">{r}</th>");
                 // Empty cells before the chart
                 for (int c = 1; c < chartFromCol1 && c <= maxCol; c++)
                 {
@@ -512,7 +511,7 @@ public partial class ExcelHandler
                     var cell = cellMap.TryGetValue((r, c), out var mc) ? mc : null;
                     var style = GetCellStyleCss(cell, stylesheet, frozenRows, frozenCols, r, c, frozenLeftOffsets, frozenTopOffsets, cfMap, dataBarMap, iconSetMap);
                     var value = cell != null ? GetFormattedCellValue(cell, stylesheet, evaluator) : "";
-                    sb.Append($"<td{style}>{BuildCellContent(cellRef, value, dataBarMap, iconSetMap)}</td>");
+                    sb.Append($"<td data-path=\"/{HtmlEncode(sheetName)}/{cellRef}\"{style}>{BuildCellContent(cellRef, value, dataBarMap, iconSetMap)}</td>");
                 }
                 // Chart cell spanning multiple rows and columns
                 if (chartColSpan > 0)
@@ -521,7 +520,8 @@ public partial class ExcelHandler
                 for (int c = chartToCol1 + 1; c <= maxCol; c++)
                 {
                     if (hiddenCols.Contains(c)) continue;
-                    sb.Append("<td></td>");
+                    var emptyRef = $"{IndexToColumnName(c)}{r}";
+                    sb.Append($"<td data-path=\"/{HtmlEncode(sheetName)}/{emptyRef}\"></td>");
                 }
                 sb.AppendLine("</tr>");
                 continue;
@@ -530,7 +530,7 @@ public partial class ExcelHandler
             if (charts != null && charts.Any(ch => r > ch.fromRow && r < ch.toRow))
             {
                 sb.Append($"<tr data-row=\"{sheetIdx}-{r}\">");
-                sb.Append($"<th class=\"row-header\">{r}</th>");
+                sb.Append($"<th class=\"row-header\" data-path=\"/{HtmlEncode(sheetName)}/row[{r}]\">{r}</th>");
                 var activeChart = charts.First(ch => r > ch.fromRow && r < ch.toRow);
                 var acFromCol1 = activeChart.fromCol + 1;
                 var acToCol1 = activeChart.toCol;
@@ -542,7 +542,7 @@ public partial class ExcelHandler
                     var cell = cellMap.TryGetValue((r, c), out var mc) ? mc : null;
                     var style = GetCellStyleCss(cell, stylesheet, frozenRows, frozenCols, r, c, frozenLeftOffsets, frozenTopOffsets, cfMap, dataBarMap, iconSetMap);
                     var value = cell != null ? GetFormattedCellValue(cell, stylesheet, evaluator) : "";
-                    sb.Append($"<td{style}>{BuildCellContent(cellRef, value, dataBarMap, iconSetMap)}</td>");
+                    sb.Append($"<td data-path=\"/{HtmlEncode(sheetName)}/{cellRef}\"{style}>{BuildCellContent(cellRef, value, dataBarMap, iconSetMap)}</td>");
                 }
                 sb.AppendLine("</tr>");
                 continue;
@@ -565,7 +565,7 @@ public partial class ExcelHandler
                 rowHeaderStyle = " style=\"position:sticky;left:0;z-index:2\"";
             else
                 rowHeaderStyle = "";
-            sb.Append($"<th class=\"row-header\"{rowHeaderStyle}>{r}</th>");
+            sb.Append($"<th class=\"row-header\" data-path=\"/{HtmlEncode(sheetName)}/row[{r}]\"{rowHeaderStyle}>{r}</th>");
 
             for (int c = 1; c <= maxCol; c++)
             {
@@ -590,14 +590,14 @@ public partial class ExcelHandler
                     if (adjColSpan > 1) spanAttrs += $" colspan=\"{adjColSpan}\"";
                     if (mergeInfo.RowSpan > 1) spanAttrs += $" rowspan=\"{mergeInfo.RowSpan}\"";
 
-                    sb.Append($"<td{spanAttrs}{style}>{BuildCellContent(cellRef, value, dataBarMap, iconSetMap)}</td>");
+                    sb.Append($"<td data-path=\"/{HtmlEncode(sheetName)}/{cellRef}\"{spanAttrs}{style}>{BuildCellContent(cellRef, value, dataBarMap, iconSetMap)}</td>");
                 }
                 else
                 {
                     var cell = cellMap.TryGetValue((r, c), out var nc) ? nc : null;
                     var style = GetCellStyleCss(cell, stylesheet, frozenRows, frozenCols, r, c, frozenLeftOffsets, frozenTopOffsets, cfMap, dataBarMap, iconSetMap);
                     var value = cell != null ? GetFormattedCellValue(cell, stylesheet, evaluator) : "";
-                    sb.Append($"<td{style}>{BuildCellContent(cellRef, value, dataBarMap, iconSetMap)}</td>");
+                    sb.Append($"<td data-path=\"/{HtmlEncode(sheetName)}/{cellRef}\"{style}>{BuildCellContent(cellRef, value, dataBarMap, iconSetMap)}</td>");
                 }
             }
             sb.AppendLine("</tr>");
