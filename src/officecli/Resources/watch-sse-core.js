@@ -309,6 +309,16 @@
                 wordDiffUpdate(msg);
                 return;
             }
+            // Defer full body replacement while a drag is in progress
+            if (window._isDragging) {
+                var _deferredMsg = msg;
+                function _applyWhenIdle() {
+                    if (window._isDragging) { setTimeout(_applyWhenIdle, 100); return; }
+                    es.dispatchEvent(new MessageEvent('update', { data: JSON.stringify(_deferredMsg) }));
+                }
+                setTimeout(_applyWhenIdle, 100);
+                return;
+            }
             // Non-Word (PPT/Excel): full body replacement
             fetch('/').then(function(r) { return r.text(); }).then(function(html) {
                 var doc = new DOMParser().parseFromString(html, 'text/html');
@@ -323,6 +333,11 @@
                 if (msg.scrollTo && msg.scrollTo.indexOf('data-sheet') >= 0) {
                     var m = msg.scrollTo.match(/data-sheet="(\d+)"/);
                     if (m) targetSheetIdx = parseInt(m[1]);
+                }
+                // Preserve current active sheet if no explicit target
+                if (targetSheetIdx < 0) {
+                    var curActive = document.querySelector('.sheet-tab.active');
+                    if (curActive) targetSheetIdx = parseInt(curActive.getAttribute('data-sheet')) || 0;
                 }
                 if (targetSheetIdx >= 0) {
                     doc.querySelectorAll('.sheet-content').forEach(function(s) {

@@ -584,7 +584,7 @@ public partial class ExcelHandler
                 if (widthPt < 100) widthPt = 400; // fallback min size
                 if (heightPt < 50) heightPt = 250;
 
-                sb.AppendLine($"<div style=\"position:absolute;left:{leftPt:0.##}pt;top:{topPt:0.##}pt;width:{widthPt:0.##}pt;height:{heightPt:0.##}pt;z-index:10;pointer-events:auto\">");
+                sb.AppendLine($"<div style=\"position:absolute;left:{leftPt:0.##}pt;top:{topPt:0.##}pt;width:{widthPt:0.##}pt;height:{heightPt:0.##}pt;z-index:10;pointer-events:auto\" data-from-col=\"{fromCol}\" data-from-row=\"{fromRow}\">");
                 sb.Append(html);
                 sb.AppendLine("</div>");
             }

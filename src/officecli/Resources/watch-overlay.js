@@ -532,6 +532,8 @@
 
     // ===== Chart drag-to-move =====
     var _chartDrag = null;
+    // Expose drag-active flag so SSE full-update can defer body replacement
+    window._isDragging = false;
     document.addEventListener('mousedown', function(e) {
         if (e.button !== 0) return;
         var chart = e.target.closest('.chart-container[data-path]');
@@ -553,19 +555,22 @@
         if (!_chartDrag.active) {
             if (Math.abs(dx) < 5 && Math.abs(dy) < 5) return;
             _chartDrag.active = true;
+            window._isDragging = true;
+            // Capture rect + width BEFORE placeholder insertion (flex reflow shifts position)
+            var fixedRect = _chartDrag.el.getBoundingClientRect();
+            var fixedW = _chartDrag.el.offsetWidth;
+            _chartDrag.origFixedLeft = fixedRect.left;
+            _chartDrag.origFixedTop = fixedRect.top;
             // Leave a dashed placeholder at original position
             var placeholder = document.createElement('div');
-            placeholder.style.cssText = 'width:' + _chartDrag.el.offsetWidth + 'px;height:' +
+            placeholder.style.cssText = 'width:' + fixedW + 'px;height:' +
                 _chartDrag.el.offsetHeight + 'px;border:2px dashed #217346;background:rgba(33,115,70,0.05);border-radius:4px;';
             _chartDrag.el.parentNode.insertBefore(placeholder, _chartDrag.el);
             _chartDrag.placeholder = placeholder;
-            var fixedRect = _chartDrag.el.getBoundingClientRect();
-            _chartDrag.origFixedLeft = fixedRect.left;
-            _chartDrag.origFixedTop = fixedRect.top;
             _chartDrag.el.style.position = 'fixed';
             _chartDrag.el.style.left = fixedRect.left + 'px';
             _chartDrag.el.style.top = fixedRect.top + 'px';
-            _chartDrag.el.style.width = _chartDrag.el.offsetWidth + 'px';
+            _chartDrag.el.style.width = fixedW + 'px';
             _chartDrag.el.style.zIndex = '9999';
             _chartDrag.el.style.opacity = '0.7';
             _chartDrag.el.style.cursor = 'grabbing';
@@ -580,6 +585,7 @@
         if (!_chartDrag) return;
         var cd = _chartDrag;
         _chartDrag = null;
+        window._isDragging = false;
         if (!cd.active) return; // no drag, let click handle it
         // Reset visual + remove placeholder
         if (cd.placeholder) cd.placeholder.remove();
@@ -615,26 +621,10 @@
         var dRows = Math.round(dy / Math.max(avgRowH, 1));
         var dCols = Math.round(dx / Math.max(avgColW, 1));
         if (dRows === 0 && dCols === 0) return;
-        // Send delta as relative move: current + delta. We use a special
-        // "dx"/"dy" convention — but the set handler expects absolute indices.
-        // Read current anchor from the chart's data-path context: find the
-        // chart's position in the table by looking at its parent <tr>.
-        var tr = cd.el.closest('tr[data-row]');
-        var currentRow = 0;
-        if (tr) {
-            var drAttr = tr.getAttribute('data-row');
-            // data-row format: "sheetIdx-rowNum"
-            var parts = drAttr ? drAttr.split('-') : [];
-            if (parts.length >= 2) currentRow = parseInt(parts[1], 10) - 1; // 0-based
-        }
-        // For column, estimate from chart's horizontal position
-        var currentCol = 0;
-        if (colHeaders.length > 0) {
-            var chartLeft = cd.el.getBoundingClientRect().left;
-            for (var i = 0; i < colHeaders.length; i++) {
-                if (colHeaders[i].getBoundingClientRect().left <= chartLeft) currentCol = i;
-            }
-        }
+        // Read current anchor from data-from-col/data-from-row on the overlay div
+        var overlay = cd.el.closest('[data-from-col]') || cd.el.parentElement && cd.el.parentElement.closest('[data-from-col]');
+        var currentCol = overlay ? parseInt(overlay.getAttribute('data-from-col'), 10) || 0 : 0;
+        var currentRow = overlay ? parseInt(overlay.getAttribute('data-from-row'), 10) || 0 : 0;
         var newRow = Math.max(0, currentRow + dRows);
         var newCol = Math.max(0, currentCol + dCols);
         fetch('/api/edit', {
@@ -779,6 +769,7 @@
             if (!_headerDrag.active) {
                 if (Math.abs(dx) < _RUBBER_THRESHOLD && Math.abs(dy) < _RUBBER_THRESHOLD) return;
                 _headerDrag.active = true;
+                window._isDragging = true;
             }
             var el = document.elementFromPoint(e.clientX, e.clientY);
             if (el) {
@@ -818,6 +809,7 @@
             if (!_cellDrag.active) {
                 if (Math.abs(dx) < _RUBBER_THRESHOLD && Math.abs(dy) < _RUBBER_THRESHOLD) return;
                 _cellDrag.active = true;
+                window._isDragging = true;
             }
             var el = document.elementFromPoint(e.clientX, e.clientY);
             if (el) {
@@ -864,6 +856,7 @@
         if (_headerDrag) {
             var hd = _headerDrag;
             _headerDrag = null;
+            window._isDragging = false;
             if (hd.active) {
                 postSelection(_selection);
                 _suppressNextClick = true;
@@ -879,6 +872,7 @@
         if (_cellDrag) {
             var cd = _cellDrag;
             _cellDrag = null;
+            window._isDragging = false;
             if (cd.active) {
                 // Drag completed — set anchor to drag start for future shift+clicks
                 _anchor = cd.anchor;
@@ -964,6 +958,7 @@
             _headerDrag = null;
             _suppressNextClick = true;
         }
+        window._isDragging = false;
     }
 
     document.addEventListener('keydown', function(e) {

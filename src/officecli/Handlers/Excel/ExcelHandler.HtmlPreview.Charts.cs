@@ -61,46 +61,12 @@ public partial class ExcelHandler
             return (gf, fromRow, toRow, fromCol, toCol);
         }).OrderBy(x => x.fromRow).ThenBy(x => x.fromCol).ToList();
 
-        // Group into rows: charts whose row ranges overlap go in the same flex row
-        var groups = new List<(int fromRow, int toRow, int minFromCol, int maxToCol, List<XDR.GraphicFrame> frames)>();
-        int currentRowEnd = -1;
-        List<XDR.GraphicFrame>? currentGroup = null;
-        int currentMinFromCol = 0, currentMaxToCol = 0;
+        // Each chart gets its own overlay (no flex grouping) so drag-to-move works independently
         foreach (var (gf, fromRow, toRow, fromCol, toCol) in chartAnchors)
         {
-            if (currentGroup == null || fromRow >= currentRowEnd)
-            {
-                currentGroup = new List<XDR.GraphicFrame>();
-                currentMinFromCol = fromCol;
-                currentMaxToCol = toCol;
-                currentRowEnd = toRow;
-                groups.Add((fromRow, toRow, fromCol, toCol, currentGroup));
-            }
-            else
-            {
-                currentRowEnd = Math.Max(currentRowEnd, toRow);
-                currentMinFromCol = Math.Min(currentMinFromCol, fromCol);
-                currentMaxToCol = Math.Max(currentMaxToCol, toCol);
-                groups[^1] = (groups[^1].fromRow, currentRowEnd, currentMinFromCol, currentMaxToCol, currentGroup);
-            }
-            currentGroup.Add(gf);
-        }
-
-        foreach (var (fromRow, toRow, minFromCol, maxToCol, frames) in groups)
-        {
             var chartSb = new StringBuilder();
-            if (frames.Count > 1)
-            {
-                chartSb.AppendLine("<div style=\"display:flex;gap:16px;flex-wrap:wrap\">");
-                foreach (var gf in frames)
-                    RenderExcelChart(chartSb, gf, drawingsPart, worksheetPart, sheetName, gfIndexMap.GetValueOrDefault(gf));
-                chartSb.AppendLine("</div>");
-            }
-            else
-            {
-                RenderExcelChart(chartSb, frames[0], drawingsPart, worksheetPart, sheetName, gfIndexMap.GetValueOrDefault(frames[0]));
-            }
-            result.Add((fromRow, toRow, minFromCol, maxToCol, chartSb.ToString()));
+            RenderExcelChart(chartSb, gf, drawingsPart, worksheetPart, sheetName, gfIndexMap.GetValueOrDefault(gf));
+            result.Add((fromRow, toRow, fromCol, toCol, chartSb.ToString()));
         }
 
         return result;
