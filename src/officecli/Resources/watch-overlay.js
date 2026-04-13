@@ -73,6 +73,44 @@
         }).catch(function() {});
     }
 
+    // ===== Excel cell range helpers =====
+    var _anchor = null; // {sheet, col, row} — anchor for shift-range and drag
+    var _cellDrag = null; // active cell-to-cell drag state
+
+    function _parseCellPath(path) {
+        var m = path.match(/^(\/[^/]+)\/([A-Za-z]+)(\d+)$/);
+        if (!m) return null;
+        return { sheet: m[1], col: m[2].toUpperCase(), row: parseInt(m[3], 10) };
+    }
+    function _colToNum(col) {
+        var n = 0;
+        for (var i = 0; i < col.length; i++) n = n * 26 + (col.charCodeAt(i) - 64);
+        return n;
+    }
+    function _numToCol(num) {
+        var s = '';
+        while (num > 0) { var r = (num - 1) % 26; s = String.fromCharCode(65 + r) + s; num = Math.floor((num - 1) / 26); }
+        return s;
+    }
+    function _expandCellRange(sheet, col1, row1, col2, row2) {
+        var minC = Math.min(_colToNum(col1), _colToNum(col2));
+        var maxC = Math.max(_colToNum(col1), _colToNum(col2));
+        var minR = Math.min(row1, row2), maxR = Math.max(row1, row2);
+        var paths = [];
+        for (var r = minR; r <= maxR; r++)
+            for (var c = minC; c <= maxC; c++)
+                paths.push(sheet + '/' + _numToCol(c) + r);
+        return paths;
+    }
+    // Deduplicate paths while preserving order
+    function _uniquePaths(arr) {
+        var seen = {}, out = [];
+        for (var i = 0; i < arr.length; i++) {
+            if (!seen[arr[i]]) { seen[arr[i]] = true; out.push(arr[i]); }
+        }
+        return out;
+    }
+
     // Inject selection + mark highlight CSS
     (function() {
         var style = document.createElement('style');
@@ -367,8 +405,9 @@
 
     // ===== Click handler =====
     // Selects the closest element with [data-path].
-    // shift/ctrl/cmd toggle multi-select; plain click replaces.
-    // Skipped if a rubber-band drag just finished.
+    // Excel cells: shift = rectangular range from anchor, ctrl/cmd = toggle add.
+    // Non-Excel elements: shift/ctrl/cmd = toggle multi-select.
+    // Skipped if a rubber-band or cell drag just finished.
     var _suppressNextClick = false;
     document.addEventListener('click', function(e) {
         if (_suppressNextClick) { _suppressNextClick = false; return; }
@@ -376,24 +415,42 @@
         if (!target) {
             if (!e.shiftKey && !e.ctrlKey && !e.metaKey && _selection.length > 0) {
                 _selection = [];
+                _anchor = null;
                 postSelection([]);
             }
             return;
         }
         var path = target.getAttribute('data-path');
         if (!path) return;
-        if (e.shiftKey || e.ctrlKey || e.metaKey) {
+        var cell = _parseCellPath(path);
+
+        if (e.shiftKey && _anchor && cell && cell.sheet === _anchor.sheet) {
+            // Shift+click on Excel cell: select rectangular range from anchor
+            _selection = _expandCellRange(_anchor.sheet, _anchor.col, _anchor.row, cell.col, cell.row);
+        } else if ((e.ctrlKey || e.metaKey) && cell) {
+            // Ctrl/Cmd+click on Excel cell: toggle individual cell
+            var idx = _selection.indexOf(path);
+            if (idx >= 0) _selection.splice(idx, 1);
+            else { _selection.push(path); _anchor = cell; }
+        } else if (e.shiftKey || e.ctrlKey || e.metaKey) {
+            // Non-Excel element: toggle multi-select
             var idx = _selection.indexOf(path);
             if (idx >= 0) _selection.splice(idx, 1);
             else _selection.push(path);
         } else {
+            // Plain click: select single, set anchor
             _selection = [path];
+            if (cell) _anchor = cell;
         }
         postSelection(_selection);
         e.preventDefault();
         e.stopPropagation();
     }, true);
 
+    // ===== Cell-to-cell drag selection (Excel-style) =====
+    // Mousedown on an Excel cell <td> starts a drag. Dragging to another cell
+    // selects the rectangular range. Ctrl/Cmd+drag adds to existing selection.
+    //
     // ===== Rubber-band (box) selection =====
     // Press on empty space (no [data-path] under cursor) and drag to draw a
     // selection rectangle. Any element whose bounding box intersects the
@@ -404,13 +461,59 @@
 
     document.addEventListener('mousedown', function(e) {
         if (e.button !== 0) return;
-        if (e.target.closest('[data-path]')) return;
+
+        // Excel cell drag: start tracking on mousedown over a cell <td>
+        var cellTd = e.target.closest('td[data-path]');
+        if (cellTd) {
+            var path = cellTd.getAttribute('data-path');
+            var cell = _parseCellPath(path);
+            if (cell) {
+                var additive = e.ctrlKey || e.metaKey;
+                _cellDrag = {
+                    startX: e.clientX, startY: e.clientY,
+                    anchor: cell,
+                    base: additive ? _selection.slice() : [],
+                    active: false // becomes true after threshold
+                };
+                e.preventDefault(); // prevent text selection during drag
+                return;
+            }
+        }
+
+        if (e.target.closest('[data-path]')) return; // non-cell data-path (PPT/Word)
         // Ignore mousedown inside scrollbars / sidebar / interactive UI
         if (e.target.closest('.sidebar, .sidebar-toggle, .page-counter, button, input, a')) return;
         _rubber = { startX: e.clientX, startY: e.clientY, shift: e.shiftKey, div: null };
     }, true);
 
     document.addEventListener('mousemove', function(e) {
+        // Cell drag
+        if (_cellDrag) {
+            var dx = e.clientX - _cellDrag.startX;
+            var dy = e.clientY - _cellDrag.startY;
+            if (!_cellDrag.active) {
+                if (Math.abs(dx) < _RUBBER_THRESHOLD && Math.abs(dy) < _RUBBER_THRESHOLD) return;
+                _cellDrag.active = true;
+            }
+            var el = document.elementFromPoint(e.clientX, e.clientY);
+            if (el) {
+                var td = el.closest('td[data-path]');
+                if (td) {
+                    var path = td.getAttribute('data-path');
+                    var cell = _parseCellPath(path);
+                    if (cell && cell.sheet === _cellDrag.anchor.sheet) {
+                        var range = _expandCellRange(cell.sheet,
+                            _cellDrag.anchor.col, _cellDrag.anchor.row,
+                            cell.col, cell.row);
+                        _selection = _uniquePaths(_cellDrag.base.concat(range));
+                        applySelectionToDom(); // visual feedback only, no POST
+                    }
+                }
+            }
+            return;
+        }
+
+        // Rubber-band
         if (!_rubber) return;
         var dx = e.clientX - _rubber.startX;
         var dy = e.clientY - _rubber.startY;
@@ -418,8 +521,8 @@
             if (Math.abs(dx) < _RUBBER_THRESHOLD && Math.abs(dy) < _RUBBER_THRESHOLD) return;
             var d = document.createElement('div');
             d.id = '_officecli_rubber';
-            d.style.cssText = 'position:fixed;border:1.5px dashed #2196f3;' +
-                'background:rgba(33,150,243,0.12);pointer-events:none;' +
+            d.style.cssText = 'position:fixed;border:1.5px dashed #217346;' +
+                'background:rgba(33,115,70,0.12);pointer-events:none;' +
                 'z-index:99999;left:0;top:0;width:0;height:0;';
             document.body.appendChild(d);
             _rubber.div = d;
@@ -433,6 +536,24 @@
     }, true);
 
     document.addEventListener('mouseup', function(e) {
+        // Cell drag commit
+        if (_cellDrag) {
+            var cd = _cellDrag;
+            _cellDrag = null;
+            if (cd.active) {
+                // Drag completed — set anchor to drag start for future shift+clicks
+                _anchor = cd.anchor;
+                postSelection(_selection);
+                _suppressNextClick = true;
+                e.preventDefault();
+                e.stopPropagation();
+                return;
+            }
+            // Didn't move enough — fall through to normal click handler
+            return;
+        }
+
+        // Rubber-band commit
         if (!_rubber) return;
         var rb = _rubber;
         _rubber = null;
@@ -471,28 +592,27 @@
         e.stopPropagation();
     }, true);
 
-    function _cancelRubber() {
-        if (!_rubber) return;
-        if (_rubber.div) _rubber.div.remove();
-        _rubber = null;
+    function _cancelDrags() {
+        if (_rubber) { if (_rubber.div) _rubber.div.remove(); _rubber = null; }
+        if (_cellDrag) { _cellDrag = null; }
     }
 
     document.addEventListener('keydown', function(e) {
-        if (e.key === 'Escape') _cancelRubber();
+        if (e.key === 'Escape') _cancelDrags();
     });
 
     // If the user alt-tabs / window loses focus mid-drag, the OS-level
     // mouseup never reaches us. Clean up so the rubber-band overlay
     // doesn't get stuck on screen and click handling stays sane.
-    window.addEventListener('blur', _cancelRubber);
+    window.addEventListener('blur', _cancelDrags);
     document.addEventListener('visibilitychange', function() {
-        if (document.hidden) _cancelRubber();
+        if (document.hidden) _cancelDrags();
     });
     // Belt-and-suspenders: if a mouseup never came after a long enough
     // mousemove pause, drop the rubber-band on the next mouse re-entry.
     document.addEventListener('mouseleave', function(e) {
         // Only cancel if cursor truly left the page (relatedTarget == null)
-        if (!e.relatedTarget && _rubber) _cancelRubber();
+        if (!e.relatedTarget && _rubber) _cancelDrags();
     });
 
     // ===== SSE: selection and mark metadata updates =====
