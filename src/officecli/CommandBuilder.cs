@@ -223,7 +223,23 @@ static partial class CommandBuilder
         // Step 1: does a resident own this file? Probe via the -ping pipe,
         // which is never serialized behind main-pipe commands.
         if (!ResidentClient.TryConnect(filePath, out _))
-            return null; // no resident → caller falls back to direct file access
+        {
+            // No resident running — auto-start one to avoid file-lock conflicts
+            // when multiple commands hit the same file in parallel.
+            // Opt-out: OFFICECLI_NO_AUTO_RESIDENT=1 disables auto-start (e.g.
+            // sandbox environments where named pipes may not work reliably).
+            var noAuto = Environment.GetEnvironmentVariable("OFFICECLI_NO_AUTO_RESIDENT");
+            if (noAuto == "1" || string.Equals(noAuto, "true", StringComparison.OrdinalIgnoreCase))
+                return null;
+
+            if (!TryStartResidentProcess(filePath, idleSeconds: 60, out _))
+            {
+                // Startup failed — maybe another process just started a resident
+                // for the same file (parallel race). Re-probe before giving up.
+                if (!ResidentClient.TryConnect(filePath, out _))
+                    return null; // truly no resident → caller falls back to direct file access
+            }
+        }
 
         var request = new ResidentRequest();
         configure(request);
