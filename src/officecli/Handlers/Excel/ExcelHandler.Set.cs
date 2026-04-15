@@ -2473,6 +2473,37 @@ public partial class ExcelHandler
                 }
             }
         }
+
+        // ---- ConditionalFormatting (R6-1) ----
+        // CONSISTENCY(sort-scope): same cell-anchored scoping as dataValidations.
+        // CF sqref is a space-separated list where each token may be a single
+        // cell (A2) or a range (A1:A10). Only single-cell tokens inside the sort
+        // rectangle are remapped; multi-cell ranges are left untouched — a range
+        // that straddles reordered rows cannot be split into the new set of rows
+        // without changing which cells the rule covers, so we preserve the
+        // authored range verbatim (same partial-rect rule as dataValidations).
+        foreach (var cf in ws.Elements<ConditionalFormatting>())
+        {
+            var sqref = cf.SequenceOfReferences;
+            if (sqref?.InnerText == null) continue;
+            var tokens = sqref.InnerText.Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries);
+            bool changed = false;
+            for (int i = 0; i < tokens.Length; i++)
+            {
+                var tok = tokens[i];
+                if (tok.Contains(':')) continue; // range token — skip
+                if (CellInRect(tok, out var cc, out var cr) && oldToNewRow.TryGetValue(cr, out var newR))
+                {
+                    tokens[i] = $"{cc.ToUpperInvariant()}{newR}";
+                    changed = true;
+                }
+            }
+            if (changed)
+            {
+                cf.SequenceOfReferences = new ListValue<StringValue>(
+                    tokens.Select(t => new StringValue(t)));
+            }
+        }
     }
 
     /// <summary>Raw cell value for sorting: resolves SharedString/InlineString, skips number formatting. Precise column-letter match (no prefix bug).</summary>
