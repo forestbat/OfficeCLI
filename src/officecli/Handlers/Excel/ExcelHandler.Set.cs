@@ -1870,7 +1870,7 @@ public partial class ExcelHandler
                 {
                     // R7-3: remove ALL sortState children (malformed files may
                     // carry more than one; GetFirstChild leaves stragglers).
-                    foreach (var __ss in ws.Elements<SortState>().ToList()) __ss.Remove();
+                    foreach (var __ss in ws.Descendants<SortState>().ToList()) __ss.Remove();
                     if (string.IsNullOrEmpty(value) || value.Equals("none", StringComparison.OrdinalIgnoreCase))
                         break;
 
@@ -1901,6 +1901,7 @@ public partial class ExcelHandler
                     // documented in release notes — do NOT add a per-call warning.
                     bool sortHeader = properties.TryGetValue("sortheader", out var shv) && IsTruthy(shv);
                     SortRangeRows(worksheet, 1, minRowIdx, maxCol, maxRowIdx, value, sortHeader);
+                    DeleteCalcChainIfPresent();
                     break;
                 }
                 case "sortheader":
@@ -2083,7 +2084,7 @@ public partial class ExcelHandler
         {
             // R7-3: drop every SortState, not just the first.
             var __ws0 = GetSheet(worksheet);
-            foreach (var __ss in __ws0.Elements<SortState>().ToList()) __ss.Remove();
+            foreach (var __ss in __ws0.Descendants<SortState>().ToList()) __ss.Remove();
             return;
         }
 
@@ -2344,7 +2345,7 @@ public partial class ExcelHandler
         // R7-3: drop every SortState, not just the first (malformed files may
         // carry duplicates). GetFirstChild would leave the tail behind and the
         // newly-appended state would become the 2nd/3rd, still ambiguous.
-        foreach (var __ss in ws.Elements<SortState>().ToList()) __ss.Remove();
+        foreach (var __ss in ws.Descendants<SortState>().ToList()) __ss.Remove();
         var fullRef = $"{IndexToColumnName(col1)}{row1}:{IndexToColumnName(col2)}{row2}";
         var ss = new SortState { Reference = fullRef };
         foreach (var (colIdx, desc) in sortKeys)
