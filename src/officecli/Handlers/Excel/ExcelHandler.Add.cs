@@ -542,14 +542,11 @@ public partial class ExcelHandler
 
                 if (properties.TryGetValue("formula1", out var dvFormula1))
                 {
-                    if (dv.Type?.Value == DataValidationValues.List && !dvFormula1.StartsWith("\""))
-                        dv.Formula1 = new Formula1($"\"{dvFormula1}\"");
-                    else
-                        dv.Formula1 = new Formula1(dvFormula1);
+                    dv.Formula1 = new Formula1(NormalizeValidationFormula(dvFormula1, dv.Type?.Value));
                 }
 
                 if (properties.TryGetValue("formula2", out var dvFormula2))
-                    dv.Formula2 = new Formula2(dvFormula2);
+                    dv.Formula2 = new Formula2(NormalizeValidationFormula(dvFormula2, dv.Type?.Value));
 
                 // Build case-insensitive lookup for validation properties
                 var dvProps = new Dictionary<string, string>(properties, StringComparer.OrdinalIgnoreCase);

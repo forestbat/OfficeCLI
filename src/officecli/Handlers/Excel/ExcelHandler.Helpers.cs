@@ -27,6 +27,57 @@ public partial class ExcelHandler
         return new XDR.BlipFill(blip, new Drawing.Stretch(new Drawing.FillRectangle()));
     }
 
+    // Normalize user-supplied data-validation formula values so Excel accepts
+    // them. `type=list` auto-quotes bare lists. `type=time` accepts HH:MM /
+    // HH:MM:SS and converts to the Excel time serial fraction. `type=date`
+    // accepts YYYY-MM-DD and converts to the Excel date serial. `type=custom`
+    // strips a leading '=' since OOXML `<x:formula1>` expects the formula body
+    // without one.
+    internal static string NormalizeValidationFormula(string value, DataValidationValues? type)
+    {
+        if (string.IsNullOrEmpty(value)) return value;
+        if (type == DataValidationValues.List)
+        {
+            // list: wrap bare "a,b,c" in quotes; leave cell/range refs and
+            // already-quoted literals alone.
+            if (value.StartsWith("\"") || value.StartsWith("=") || value.Contains("!") || value.Contains(":"))
+                return value;
+            if (value.Contains(','))
+                return $"\"{value}\"";
+            return value;
+        }
+        if (type == DataValidationValues.Time)
+        {
+            var m = System.Text.RegularExpressions.Regex.Match(value.Trim(), @"^(\d{1,2}):(\d{2})(?::(\d{2}))?$");
+            if (m.Success)
+            {
+                var h = int.Parse(m.Groups[1].Value);
+                var mn = int.Parse(m.Groups[2].Value);
+                var s = m.Groups[3].Success ? int.Parse(m.Groups[3].Value) : 0;
+                var frac = (h * 3600 + mn * 60 + s) / 86400.0;
+                return frac.ToString("0.###############", System.Globalization.CultureInfo.InvariantCulture);
+            }
+        }
+        if (type == DataValidationValues.Date)
+        {
+            if (System.DateTime.TryParseExact(value.Trim(), "yyyy-MM-dd",
+                System.Globalization.CultureInfo.InvariantCulture,
+                System.Globalization.DateTimeStyles.None, out var dt))
+            {
+                // Excel date serial: days since 1899-12-30 (accounts for the
+                // 1900 leap bug baseline).
+                var epoch = new System.DateTime(1899, 12, 30);
+                return ((int)(dt - epoch).TotalDays).ToString(System.Globalization.CultureInfo.InvariantCulture);
+            }
+        }
+        if (type == DataValidationValues.Custom)
+        {
+            if (value.StartsWith("="))
+                return value.Substring(1);
+        }
+        return value;
+    }
+
     // Returns true if `s` would parse as a valid cell reference (e.g. A1,
     // TBL1, XFD1048576). Excel refuses to open files whose table names match
     // this pattern — the name is ambiguous with a cell address.
