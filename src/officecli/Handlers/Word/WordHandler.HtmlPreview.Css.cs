@@ -1320,6 +1320,17 @@ public partial class WordHandler
         if (tcPr.NoWrap != null)
             parts.Add("white-space:nowrap");
 
+        // #7a0: vertical-writing cell + noWrap interaction. When both are
+        // present, flex alignment + min-height otherwise position text in
+        // the cell's middle; Word anchors it at the inline-start edge and
+        // fills the declared trHeight. Force flex-start + stretch so the
+        // text column runs from top (or right, in vertical-rl) of the cell.
+        if (tcDir != null && tcPr.NoWrap != null)
+        {
+            parts.Add("justify-content:flex-start");
+            parts.Add("align-items:stretch");
+        }
+
         // Padding — add vertical compensation for CSS line-height:1 clipping glyph ascenders
         const double CellPadVComp = 3.0; // pt
         var margins = tcPr?.TableCellMargin;
