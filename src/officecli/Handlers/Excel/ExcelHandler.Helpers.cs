@@ -76,6 +76,19 @@ public partial class ExcelHandler
                 switch (fld) { case "l": l = v; break; case "r": r = v; break; case "t": t = v; break; case "b": b = v; break; }
             }
         }
+        // CONSISTENCY(picture-crop): Office-API-style `cropLeft`/`cropRight`
+        // /`cropTop`/`cropBottom` aliases. Accept fraction (<=1 → *100%) or
+        // percent (>1 → as-is); e.g. `cropLeft=0.1` and `cropLeft=10` both
+        // mean 10% crop from left.
+        foreach (var (key, fld) in new[] { ("cropLeft", "l"), ("cropRight", "r"), ("cropTop", "t"), ("cropBottom", "b") })
+        {
+            if (properties.TryGetValue(key, out var vs) && !string.IsNullOrWhiteSpace(vs))
+            {
+                var v = ParseCropFractionOrPercent(vs);
+                if (!v.HasValue) continue;
+                switch (fld) { case "l": l = v; break; case "r": r = v; break; case "t": t = v; break; case "b": b = v; break; }
+            }
+        }
         if (l == null && r == null && t == null && b == null) return null;
         var sr = new Drawing.SourceRectangle();
         if (l.HasValue) sr.Left = l.Value;
@@ -94,6 +107,23 @@ public partial class ExcelHandler
             return null;
         if (double.IsNaN(v) || double.IsInfinity(v)) return null;
         return (int)Math.Round(v * 1000.0);
+    }
+
+    // CONSISTENCY(picture-crop): For `cropLeft`/`cropRight`/`cropTop`/
+    // `cropBottom` keys we treat input ambiguously: <=1 is a fraction
+    // (0.1 → 10%), >1 is percent (10 → 10%). Trailing `%` is still
+    // honored explicitly. Returns 1/1000 pct units, same as OOXML.
+    private static int? ParseCropFractionOrPercent(string raw)
+    {
+        var t = raw.Trim();
+        bool explicitPct = t.EndsWith("%");
+        if (explicitPct) t = t[..^1].Trim();
+        if (!double.TryParse(t, System.Globalization.NumberStyles.Float,
+                System.Globalization.CultureInfo.InvariantCulture, out var v))
+            return null;
+        if (double.IsNaN(v) || double.IsInfinity(v)) return null;
+        double pct = (!explicitPct && v > 0 && v <= 1.0) ? v * 100.0 : v;
+        return (int)Math.Round(pct * 1000.0);
     }
 
     // Parse opacity percent/fraction to OOXML alphaModFix amt scale (0..100000).
