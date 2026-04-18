@@ -295,6 +295,49 @@ public partial class ExcelHandler
         }
     }
 
+    // SH6 — build a two/three-stop linear gradient fill for shape/textbox from
+    // a "C1-C2[-C3][:angle]" spec. Mirrors the chart gradient parser used by
+    // Core/Chart/ChartHelper.Builder.cs:BuildFillElement so chart and shape
+    // gradient syntax stay consistent.
+    internal static Drawing.GradientFill BuildShapeGradientFill(string spec)
+    {
+        var colonIdx = spec.LastIndexOf(':');
+        var anglePart = 0;
+        string colorsPart;
+        if (colonIdx > 6 && int.TryParse(spec[(colonIdx + 1)..],
+            System.Globalization.NumberStyles.Integer,
+            System.Globalization.CultureInfo.InvariantCulture, out var ang))
+        {
+            anglePart = ang;
+            colorsPart = spec[..colonIdx];
+        }
+        else
+        {
+            colorsPart = spec;
+        }
+        var colors = colorsPart.Split('-').Select(c => c.Trim()).Where(c => c.Length > 0).ToArray();
+        if (colors.Length < 2)
+            throw new ArgumentException(
+                $"gradientFill requires at least two '-' separated colors; got '{spec}'.");
+        var gradFill = new Drawing.GradientFill { RotateWithShape = true };
+        var gsLst = new Drawing.GradientStopList();
+        for (int i = 0; i < colors.Length; i++)
+        {
+            var pos = (int)(i * 100000.0 / (colors.Length - 1));
+            var (rgb, _) = ParseHelpers.SanitizeColorForOoxml(colors[i]);
+            var gs = new Drawing.GradientStop { Position = pos };
+            gs.AppendChild(new Drawing.RgbColorModelHex { Val = rgb });
+            gsLst.AppendChild(gs);
+        }
+        gradFill.AppendChild(gsLst);
+        gradFill.AppendChild(new Drawing.LinearGradientFill
+        {
+            Angle = anglePart * 60000,
+            Scaled = true
+        });
+        return gradFill;
+    }
+
     // Normalize user-supplied data-validation formula values so Excel accepts
     // them. `type=list` auto-quotes bare lists. `type=time` accepts HH:MM /
     // HH:MM:SS and converts to the Excel time serial fraction. `type=date`

@@ -1472,8 +1472,15 @@ public partial class ExcelHandler
                     new Drawing.PresetGeometry(new Drawing.AdjustValueList()) { Preset = shpPreset }
                 );
 
-                // Fill
-                if (properties.TryGetValue("fill", out var shpFill))
+                // Fill — single-color `fill=` OR gradient `gradientFill=C1-C2[-C3][:angle]`.
+                // SH6/shape-gradient-fill: keep `fill=` strictly single-color; gradient has its own prop
+                // to avoid ambiguity (FF0000-0000FF could otherwise collide with single ARGB literals).
+                if (properties.TryGetValue("gradientFill", out var shpGradFill)
+                    && !string.IsNullOrWhiteSpace(shpGradFill))
+                {
+                    spPr.AppendChild(BuildShapeGradientFill(shpGradFill));
+                }
+                else if (properties.TryGetValue("fill", out var shpFill))
                 {
                     if (shpFill.Equals("none", StringComparison.OrdinalIgnoreCase))
                         spPr.AppendChild(new Drawing.NoFill());
