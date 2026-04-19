@@ -1049,8 +1049,13 @@ internal static partial class PivotTableHelper
         foreach (var r in rowFields) axisFieldSet.Add(r);
         foreach (var c in colFields) axisFieldSet.Add(c);
         foreach (var f in filterFields) axisFieldSet.Add(f);
+        // R19-1: resolve numFmtIds BEFORE building the cache so date/number
+        // formats on the source column propagate onto the cacheField's
+        // numFmtId attribute. Without this, a column styled as "yyyy-mm-dd"
+        // renders in the pivot as the raw OADate serial (45306, ...).
+        var columnNumFmtIds = ResolveColumnNumFmtIds(workbookPart, columnStyleIds);
         var (cacheDef, fieldNumeric, fieldValueIndex) =
-            BuildCacheDefinition(sourceSheetName, sourceRef, headers, columnData, axisFieldSet, dateGroups);
+            BuildCacheDefinition(sourceSheetName, sourceRef, headers, columnData, axisFieldSet, dateGroups, columnNumFmtIds);
         cachePart.PivotCacheDefinition = cacheDef;
         cachePart.PivotCacheDefinition.Save();
 
@@ -1129,13 +1134,12 @@ internal static partial class PivotTableHelper
         }
         var style = properties.GetValueOrDefault("style", "PivotStyleLight16");
 
-        // Resolve per-column numFmtId from the source StyleIndex so we can stamp
+        // columnNumFmtIds was resolved above (R19-1) and reused here to stamp
         // it onto DataField elements below. Excel uses DataField.NumberFormatId
         // as the PRIMARY display driver for pivot values — the cell-level
         // StyleIndex alone is not enough; without this, Excel renders pivot
         // values as plain General-format numbers even though the rendered cells
         // carry the correct style.
-        var columnNumFmtIds = ResolveColumnNumFmtIds(workbookPart, columnStyleIds);
 
         // Page filters occupy rows ABOVE the pivot body. Ensure position leaves
         // enough headroom for filterCount filter rows + 1 blank separator row.
