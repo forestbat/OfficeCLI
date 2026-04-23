@@ -320,8 +320,9 @@ public partial class WordHandler
         // ParagraphProperties (pPr must stay first child of <w:p>).
         InsertIntoParagraph(hlPara, hyperlink, index);
 
-        var hlCount = hlPara.Elements<Hyperlink>().Count();
-        var resultPath = $"{parentPath}/hyperlink[{hlCount}]";
+        var hls = hlPara.Elements<Hyperlink>().ToList();
+        var idx = hls.FindIndex(h => ReferenceEquals(h, hyperlink));
+        var resultPath = $"{parentPath}/hyperlink[{(idx >= 0 ? idx + 1 : hls.Count)}]";
         return resultPath;
     }
 

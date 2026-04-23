@@ -182,8 +182,9 @@ public partial class WordHandler
             InsertAtPosition(parent, table, index);
         else
             AppendToParent(parent, table);
-        var tblCount = parent.Elements<Table>().Count();
-        return $"{parentPath}/tbl[{tblCount}]";
+        var tbls = parent.Elements<Table>().ToList();
+        var idx = tbls.FindIndex(t => ReferenceEquals(t, table));
+        return $"{parentPath}/tbl[{(idx >= 0 ? idx + 1 : tbls.Count)}]";
     }
 
     private string AddRow(OpenXmlElement parent, string parentPath, int? index, Dictionary<string, string> properties)
