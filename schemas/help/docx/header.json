@@ -15,12 +15,12 @@
   },
   "note": "Headers are stored in HeaderParts and referenced by the last sectPr. Duplicate type rejected at Add. 'first' type auto-enables TitlePage. Field insertion uses complex fldChar (begin/instr/separate/result/end). A single Add supports at most one text + one field pair; composite headers like 'Page X of Y' must be built in steps by adding additional runs/fields to the header's paragraph (/header[N]/p[1]) after creation — see examples.",
   "examples": [
-    "Simple page-number header: Add /, header, --prop field=page --prop alignment=right",
+    "Simple page-number header: officecli add file.docx / --type header --prop field=page --prop alignment=right",
     "'Page X of Y' — build in steps after creating the header:",
-    "  1) officecli add file.docx / header --prop text=\"Page \" --prop alignment=right",
-    "  2) officecli add /header[1]/p[1] field --prop name=page",
-    "  3) officecli add /header[1]/p[1] run --prop text=\" of \"",
-    "  4) officecli add /header[1]/p[1] field --prop name=numpages"
+    "  1) officecli add file.docx / --type header --prop text=\"Page \" --prop alignment=right",
+    "  2) officecli add file.docx \"/header[1]/p[1]\" --type field --prop fieldType=page",
+    "  3) officecli add file.docx \"/header[1]/p[1]\" --type run --prop text=\" of \"",
+    "  4) officecli add file.docx \"/header[1]/p[1]\" --type field --prop fieldType=numpages"
   ],
   "properties": {
     "type": {
