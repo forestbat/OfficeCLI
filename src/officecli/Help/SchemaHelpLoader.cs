@@ -256,6 +256,23 @@ internal static class SchemaHelpLoader
     {
         "font.", "alignment.", "border.", "fill.", "shadow.", "glow.",
         "plotArea.", "chartArea.", "legend.", "title.", "datalabels.",
+        // Chart sub-property namespaces — handled by ChartHelper.Setter /
+        // SetterHelpers (axis/series/trendline/errbar/point/dataLabel{N}/
+        // dataTable/displayUnitsLabel/trendlineLabel/combo/area).
+        "axis.", "cataxis.", "valaxis.", "xaxis.", "yaxis.",
+        "series.", "trendline.", "errbars.", "errbar.",
+        "datatable.", "displayunitslabel.", "trendlinelabel.",
+        "combo.", "area.", "style.",
+    };
+
+    /// <summary>
+    /// Lenient prefixes that match indexed dotted keys (e.g. "series1.color",
+    /// "dataLabel3.text", "point2.fill", "legendEntry1.delete"). Matched
+    /// case-insensitively and only when followed by digits-then-dot.
+    /// </summary>
+    private static readonly string[] IndexedSubPropertyPrefixes =
+    {
+        "series", "datalabel", "point", "legendentry",
     };
 
     /// <summary>
@@ -362,6 +379,25 @@ internal static class SchemaHelpLoader
                     }
                 }
                 if (prefixOk) continue;
+
+                // Indexed dotted prefixes: "series1.color", "dataLabel3.text",
+                // "point2.fill", "legendEntry1.delete". Match
+                // <prefix><digits>. case-insensitively.
+                bool indexedOk = false;
+                var keyLower = key.ToLowerInvariant();
+                foreach (var pref in IndexedSubPropertyPrefixes)
+                {
+                    if (!keyLower.StartsWith(pref)) continue;
+                    int p = pref.Length;
+                    int digitStart = p;
+                    while (p < keyLower.Length && char.IsDigit(keyLower[p])) p++;
+                    if (p > digitStart && p < keyLower.Length && keyLower[p] == '.')
+                    {
+                        indexedOk = true;
+                        break;
+                    }
+                }
+                if (indexedOk) continue;
 
                 unknown.Add(key);
             }
