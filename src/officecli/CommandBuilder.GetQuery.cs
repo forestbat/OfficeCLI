@@ -171,6 +171,16 @@ static partial class CommandBuilder
 
             using var handler = DocumentHandlerFactory.Open(file.FullName);
             var filters = OfficeCli.Core.AttributeFilter.Parse(selector);
+            // CONSISTENCY(cell-selector-alias): the Excel cell selector accepts short
+            // aliases (bold -> font.bold, size -> font.size, ...) via the handler's
+            // MatchesCellSelector alias map. The CLI-level AttributeFilter post-filter
+            // must apply the same normalization or it silently drops every hit.
+            if (handler is OfficeCli.Handlers.ExcelHandler
+                && selector.TrimStart().StartsWith("cell", StringComparison.OrdinalIgnoreCase))
+            {
+                filters = OfficeCli.Core.AttributeFilter.NormalizeKeys(
+                    filters, OfficeCli.Handlers.ExcelHandler.ResolveCellAttributeAlias);
+            }
             var (results, warnings) = OfficeCli.Core.AttributeFilter.ApplyWithWarnings(handler.Query(selector), filters);
             if (!string.IsNullOrEmpty(textFilter))
                 results = results.Where(n => n.Text != null && n.Text.Contains(textFilter, StringComparison.OrdinalIgnoreCase)).ToList();

@@ -193,6 +193,15 @@ public partial class ExcelHandler
     private static string ResolveCellFormatKey(string key)
         => _cellSelectorAliases.TryGetValue(key, out var canonical) ? canonical : key;
 
+    // CONSISTENCY(cell-selector-alias): exposed so the CLI query post-filter
+    // (AttributeFilter.ApplyWithWarnings) can normalize user-written keys like
+    // "bold" -> "font.bold" before matching against DocumentNode.Format. Without
+    // this, handler-level MatchesCellSelector would accept cell[bold=true] and
+    // return hits, then the CLI post-filter would drop them all because Format
+    // only has "font.bold".
+    public static string ResolveCellAttributeAlias(string key)
+        => _cellSelectorAliases.TryGetValue(key, out var canonical) ? canonical : key;
+
     private static bool MatchesFormatAttributes(DocumentNode node, CellSelector selector)
     {
         if (selector.FormatEquals != null)

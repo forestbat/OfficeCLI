@@ -2,7 +2,7 @@
   "$schema": "../_schema.json",
   "format": "docx",
   "element": "header",
-  "parent": "section",
+  "parent": "/",
   "addParent": "/",
   "operations": {
     "add": true,

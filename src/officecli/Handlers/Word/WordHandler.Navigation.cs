@@ -802,8 +802,13 @@ public partial class WordHandler
 
             if (!string.IsNullOrEmpty(para.ParagraphId?.Value))
                 node.Format["paraId"] = para.ParagraphId.Value;
-            if (!string.IsNullOrEmpty(para.TextId?.Value))
-                node.Format["textId"] = para.TextId.Value;
+            // textId intentionally NOT exposed in Format: Set() rewrites it on
+            // every mutation (see WordHandler.Set.cs "para.TextId = GenerateParaId()"),
+            // which would let an AI agent comparing consecutive Get snapshots see
+            // spurious diffs and mistake idempotent edits for real changes. paraId
+            // is stable and sufficient for identity. The underlying w14:textId
+            // attribute is still present in the OOXML; only the user-facing
+            // DocumentNode.Format projection hides it.
 
             var pProps = para.ParagraphProperties;
             if (pProps != null)
