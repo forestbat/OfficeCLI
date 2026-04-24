@@ -1036,7 +1036,8 @@ public partial class PowerPointHandler
 
         var geom = spPr?.GetFirstChild<Drawing.PresetGeometry>();
         if (geom?.Preset?.HasValue == true)
-            node.Format["preset"] = geom.Preset.InnerText;
+            // CONSISTENCY(canonical-key): canonical 'shape'; 'preset' was legacy key.
+            node.Format["shape"] = geom.Preset.InnerText;
 
         var ln = spPr?.GetFirstChild<Drawing.Outline>();
         if (ln?.Width?.HasValue == true)
@@ -1061,7 +1062,8 @@ public partial class PowerPointHandler
         var solidFill = ln?.GetFirstChild<Drawing.SolidFill>();
         var rgb = solidFill?.GetFirstChild<Drawing.RgbColorModelHex>();
         if (rgb?.Val?.HasValue == true)
-            node.Format["lineColor"] = ParseHelpers.FormatHexColor(rgb.Val.Value!);
+            // CONSISTENCY(canonical-key): canonical 'color'; 'lineColor' was legacy key.
+            node.Format["color"] = ParseHelpers.FormatHexColor(rgb.Val.Value!);
 
         // Line opacity
         var cxnColorEl = rgb as OpenXmlElement ?? solidFill?.GetFirstChild<Drawing.SchemeColor>();

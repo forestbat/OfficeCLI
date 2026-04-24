@@ -141,6 +141,30 @@ public partial class ExcelHandler
                     case "lineweight":
                         if (double.TryParse(value, out var lw)) spkGroup.LineWeight = lw;
                         break;
+                    case "datarange" or "range":
+                    {
+                        // CONSISTENCY(canonical-key): canonical 'dataRange'; 'range' legacy alias.
+                        // Update every <x14:sparkline>'s <f> formula in the group.
+                        var newRangeRef = value.Contains('!') ? value : $"{spkSheet}!{value}";
+                        foreach (var spk in spkGroup.Descendants<X14.Sparkline>())
+                        {
+                            var f = spk.GetFirstChild<DocumentFormat.OpenXml.Office.Excel.Formula>();
+                            if (f != null) f.Text = newRangeRef;
+                            else spk.InsertAt(new DocumentFormat.OpenXml.Office.Excel.Formula(newRangeRef), 0);
+                        }
+                        break;
+                    }
+                    case "location" or "cell":
+                    {
+                        // CONSISTENCY(canonical-key): canonical 'location'; 'cell' legacy alias.
+                        foreach (var spk in spkGroup.Descendants<X14.Sparkline>())
+                        {
+                            var r = spk.GetFirstChild<DocumentFormat.OpenXml.Office.Excel.ReferenceSequence>();
+                            if (r != null) r.Text = value;
+                            else spk.AppendChild(new DocumentFormat.OpenXml.Office.Excel.ReferenceSequence(value));
+                        }
+                        break;
+                    }
                     default:
                         unsup.Add(key);
                         break;
@@ -245,7 +269,9 @@ public partial class ExcelHandler
             {
                 switch (key.ToLowerInvariant())
                 {
-                    case "sqref":
+                    // CONSISTENCY(canonical-key): schema canonical key is 'ref';
+                    // 'sqref' retained as legacy alias.
+                    case "sqref" or "ref":
                         dv.SequenceOfReferences = new ListValue<StringValue>(
                             value.Split(' ').Select(s => new StringValue(s)));
                         break;

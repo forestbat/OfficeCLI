@@ -1991,8 +1991,10 @@ public partial class PowerPointHandler
                         xfrm.Rotation = (int)(ParseHelpers.SafeParseDouble(value, "rotation") * 60000);
                         break;
                     }
-                    case "preset" or "prstgeom":
+                    case "preset" or "prstgeom" or "shape":
                     {
+                        // CONSISTENCY(canonical-key): schema canonical is 'shape';
+                        // 'preset'/'prstgeom' retained as legacy aliases.
                         var spPr = cxn.ShapeProperties ?? (cxn.ShapeProperties = new ShapeProperties());
                         var prstGeom = spPr.GetFirstChild<Drawing.PresetGeometry>()
                             ?? spPr.AppendChild(new Drawing.PresetGeometry());

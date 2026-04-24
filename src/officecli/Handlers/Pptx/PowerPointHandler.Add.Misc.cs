@@ -68,12 +68,14 @@ public partial class PowerPointHandler
                     ),
                     new Drawing.PresetGeometry(new Drawing.AdjustValueList())
                     {
-                        Preset = properties.GetValueOrDefault("preset", "straightConnector1").ToLowerInvariant() switch
+                        // CONSISTENCY(canonical-key): canonical 'shape'; 'preset' legacy alias.
+                        Preset = (properties.GetValueOrDefault("shape")
+                                  ?? properties.GetValueOrDefault("preset", "straightConnector1")).ToLowerInvariant() switch
                         {
                             "straight" or "straightconnector1" => Drawing.ShapeTypeValues.StraightConnector1,
                             "elbow" or "bentconnector3" => Drawing.ShapeTypeValues.BentConnector3,
                             "curve" or "curvedconnector3" => Drawing.ShapeTypeValues.CurvedConnector3,
-                            _ => throw new ArgumentException($"Invalid connector preset: '{properties.GetValueOrDefault("preset", "straightConnector1")}'. Valid values: straight, elbow, curve.")
+                            _ => throw new ArgumentException($"Invalid connector shape: '{properties.GetValueOrDefault("shape") ?? properties.GetValueOrDefault("preset", "straightConnector1")}'. Valid values: straight, elbow, curve.")
                         }
                     }
                 );

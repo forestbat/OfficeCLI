@@ -3650,11 +3650,16 @@ public partial class ExcelHandler
                 var spkWorksheet = FindWorksheet(spkSheetName)
                     ?? throw new ArgumentException($"Sheet not found: {spkSheetName}");
 
-                var spkCell = properties.GetValueOrDefault("cell")
-                    ?? throw new ArgumentException("Sparkline requires 'cell' property (e.g. F1)");
-                var spkRange = properties.GetValueOrDefault("range")
+                // CONSISTENCY(canonical-key): 'location'/'dataRange' are canonical;
+                // 'cell'/'range'/'data' retained as legacy aliases.
+                var spkCell = properties.GetValueOrDefault("location")
+                    ?? properties.GetValueOrDefault("cell")
+                    ?? throw new ArgumentException("Sparkline requires 'location' (or 'cell') property (e.g. F1)");
+                var spkRange = properties.GetValueOrDefault("dataRange")
+                    ?? properties.GetValueOrDefault("datarange")
+                    ?? properties.GetValueOrDefault("range")
                     ?? properties.GetValueOrDefault("data")
-                    ?? throw new ArgumentException("Sparkline requires 'range' (or 'data') property (e.g. A1:E1)");
+                    ?? throw new ArgumentException("Sparkline requires 'dataRange' (or 'range'/'data') property (e.g. A1:E1)");
 
                 // Determine sparkline type
                 var spkTypeStr = properties.GetValueOrDefault("type", "line").ToLowerInvariant();

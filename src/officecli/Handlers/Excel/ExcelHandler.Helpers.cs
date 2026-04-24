@@ -795,13 +795,16 @@ public partial class ExcelHandler
         var firstSparkline = spkGroup.GetFirstChild<X14.Sparklines>()?.GetFirstChild<X14.Sparkline>();
         if (firstSparkline != null)
         {
+            // CONSISTENCY(canonical-key): schema canonical keys are 'location'
+            // (target cell) and 'dataRange' (source range). 'cell'/'range' are
+            // legacy aliases retained on input.
             var cell = firstSparkline.ReferenceSequence?.Text ?? "";
-            node.Format["cell"] = cell;
+            node.Format["location"] = cell;
 
             // Strip sheet prefix from range (Sheet1!A1:E1 → A1:E1)
             var formulaText = firstSparkline.Formula?.Text ?? "";
             var excl = formulaText.IndexOf('!');
-            node.Format["range"] = excl >= 0 ? formulaText[(excl + 1)..] : formulaText;
+            node.Format["dataRange"] = excl >= 0 ? formulaText[(excl + 1)..] : formulaText;
         }
 
         return node;
@@ -1859,7 +1862,8 @@ public partial class ExcelHandler
             Preview = $"validation[{index}] ({sqref})"
         };
 
-        node.Format["sqref"] = sqref;
+        // CONSISTENCY(canonical-key): schema canonical key is 'ref', not 'sqref'.
+        node.Format["ref"] = sqref;
 
         if (dv.Type?.HasValue == true)
             node.Format["type"] = dv.Type.InnerText;
