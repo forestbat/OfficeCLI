@@ -402,7 +402,10 @@ public partial class ExcelHandler
                 {
                     cfNode.Format["cfType"] = "dataBar";
                     var dbColor = dataBar.GetFirstChild<DocumentFormat.OpenXml.Spreadsheet.Color>();
-                    if (dbColor?.Rgb?.Value != null) cfNode.Format["color"] = ParseHelpers.FormatHexColor(dbColor.Rgb.Value);
+                    if (dbColor?.Rgb?.Value != null)
+                        cfNode.Format["color"] = ParseHelpers.FormatHexColor(dbColor.Rgb.Value);
+                    else if (dbColor?.Theme?.Value != null)
+                        cfNode.Format["color"] = $"theme{dbColor.Theme.Value}";
                 }
 
                 // ColorScale

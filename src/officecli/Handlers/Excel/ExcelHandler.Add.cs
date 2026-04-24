@@ -1224,7 +1224,8 @@ public partial class ExcelHandler
                 var csWorksheet = FindWorksheet(csSheetName)
                     ?? throw new ArgumentException($"Sheet not found: {csSheetName}");
 
-                var csSqref = properties.GetValueOrDefault("sqref") ?? properties.GetValueOrDefault("range", "A1:A10");
+                // CONSISTENCY(cf-sqref): three-level fallback matches dataBar/formulacf branches
+                var csSqref = properties.GetValueOrDefault("sqref") ?? properties.GetValueOrDefault("range") ?? properties.GetValueOrDefault("ref", "A1:A10");
                 var minColor = properties.GetValueOrDefault("mincolor", "F8696B");
                 var maxColor = properties.GetValueOrDefault("maxcolor", "63BE7B");
                 var midColor = properties.GetValueOrDefault("midcolor");
@@ -1278,7 +1279,8 @@ public partial class ExcelHandler
                 var isWorksheet = FindWorksheet(isSheetName)
                     ?? throw new ArgumentException($"Sheet not found: {isSheetName}");
 
-                var isSqref = properties.GetValueOrDefault("sqref") ?? properties.GetValueOrDefault("range", "A1:A10");
+                // CONSISTENCY(cf-sqref): three-level fallback matches dataBar/formulacf branches
+                var isSqref = properties.GetValueOrDefault("sqref") ?? properties.GetValueOrDefault("range") ?? properties.GetValueOrDefault("ref", "A1:A10");
                 var iconSetName = properties.GetValueOrDefault("iconset") ?? properties.GetValueOrDefault("icons", "3TrafficLights1");
                 var reverse = properties.TryGetValue("reverse", out var revVal) && IsTruthy(revVal);
                 var showValue = !properties.TryGetValue("showvalue", out var svVal) || IsTruthy(svVal);

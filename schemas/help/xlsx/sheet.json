@@ -45,6 +45,14 @@
       "add": false, "set": true, "get": true,
       "examples": ["--prop hidden=true"],
       "enforcement": "report"
+    },
+    "freeze": {
+      "type": "string",
+      "description": "freeze panes anchor (cell ref). A2 freezes row 1; B1 freezes column A; B2 freezes row 1 + column A. `none` / `false` / empty removes the freeze. Set-only on existing sheets.",
+      "add": false, "set": true, "get": true,
+      "examples": ["--prop freeze=A2", "--prop freeze=B2", "--prop freeze=none"],
+      "readback": "top-left cell ref of frozen pane (e.g. A2); absent when no freeze",
+      "enforcement": "report"
     }
   },
   "children": [

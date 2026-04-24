@@ -34,18 +34,18 @@
     },
     "duration": {
       "type": "length",
-      "description": "in seconds or ms.",
+      "description": "Animation duration in milliseconds (integer).",
       "add": true, "set": true, "get": true,
-      "examples": ["--prop duration=0.5"],
-      "readback": "duration descriptor",
+      "examples": ["--prop duration=500"],
+      "readback": "duration in milliseconds",
       "enforcement": "report"
     },
     "delay": {
       "type": "length",
-      "description": "delay before starting.",
+      "description": "Delay before starting in milliseconds (integer).",
       "add": true, "set": true, "get": true,
-      "examples": ["--prop delay=0.2"],
-      "readback": "delay descriptor",
+      "examples": ["--prop delay=200"],
+      "readback": "delay in milliseconds",
       "enforcement": "report"
     },
     "direction": {
