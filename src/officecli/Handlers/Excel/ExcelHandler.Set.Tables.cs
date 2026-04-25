@@ -454,6 +454,10 @@ public partial class ExcelHandler
             switch (key.ToLowerInvariant())
             {
                 case "sqref":
+                case "range":
+                case "ref":
+                    // CONSISTENCY(cf-sqref): accept ref/range/sqref aliases on Set
+                    // — same vocabulary as conditionalformatting Add (Add.Cf.cs).
                     cf.SequenceOfReferences = new ListValue<StringValue>(
                         value.Split(' ').Select(s => new StringValue(s)));
                     break;
