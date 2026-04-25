@@ -289,6 +289,92 @@ internal static class SkillInstaller
         return anyUpdated;
     }
 
+    // ─── Auto-refresh after binary upgrade ───────────────────
+
+    /// <summary>
+    /// Re-install only the skill files that are *already present* in detected
+    /// agent directories. Called by UpdateChecker after a binary upgrade so
+    /// installed skills stay in sync with the new binary's embedded copies.
+    ///
+    /// Conservative on purpose:
+    ///   - Only refreshes skills the user previously installed (presence of
+    ///     SKILL.md per skill folder).
+    ///   - Never adds new agents or new sub-skills.
+    ///   - Silent unless something actually changed (one summary line on stderr).
+    ///   - Identical-content writes are skipped (existing diff-and-write path).
+    /// </summary>
+    internal static int RefreshInstalled()
+    {
+        var changedFiles = 0;
+        var changedTargets = new List<string>();
+
+        foreach (var tool in Tools)
+        {
+            if (!Directory.Exists(Path.Combine(Home, tool.DetectDir))) continue;
+            var skillsDir = Path.Combine(Home, tool.SkillDir);
+            if (!Directory.Exists(skillsDir)) continue;
+
+            // Base SKILL.md
+            var basePath = Path.Combine(skillsDir, "officecli", "SKILL.md");
+            if (File.Exists(basePath))
+            {
+                var content = LoadEmbeddedResource("OfficeCli.Resources.skill-officecli.md");
+                if (content != null && File.ReadAllText(basePath) != content)
+                {
+                    File.WriteAllText(basePath, content);
+                    changedFiles++;
+                    changedTargets.Add($"{tool.DisplayName}/officecli");
+                }
+            }
+
+            // Sub-skills present in this agent's skill directory
+            foreach (var folder in SkillMap.Values)
+            {
+                var subSkillFile = Path.Combine(skillsDir, folder, "SKILL.md");
+                if (!File.Exists(subSkillFile)) continue;
+
+                var files = GetEmbeddedSkillFiles(folder);
+                if (files.Count == 0) continue;
+
+                var targetDir = Path.Combine(skillsDir, folder);
+                var n = RewriteSkillFilesQuiet(targetDir, files);
+                if (n > 0)
+                {
+                    changedFiles += n;
+                    changedTargets.Add($"{tool.DisplayName}/{folder}");
+                }
+            }
+        }
+
+        if (changedFiles > 0)
+            Console.Error.WriteLine($"officecli: refreshed {changedFiles} skill file(s) after upgrade ({string.Join(", ", changedTargets)})");
+
+        return changedFiles;
+    }
+
+    /// <summary>Quiet variant of <see cref="InstallSkillFiles"/>: returns the
+    /// number of files rewritten, prints nothing per file. Used by
+    /// <see cref="RefreshInstalled"/>.</summary>
+    private static int RewriteSkillFilesQuiet(string targetDir, Dictionary<string, string> files)
+    {
+        var n = 0;
+        foreach (var (fileName, content) in files)
+        {
+            var targetPath = Path.Combine(targetDir, fileName);
+            var rewritten = fileName.EndsWith(".md", StringComparison.OrdinalIgnoreCase)
+                ? RewriteFileReferences(content, fileName)
+                : content;
+
+            if (File.Exists(targetPath) && File.ReadAllText(targetPath) == rewritten)
+                continue;
+
+            Directory.CreateDirectory(Path.GetDirectoryName(targetPath)!);
+            File.WriteAllText(targetPath, rewritten);
+            n++;
+        }
+        return n;
+    }
+
     // ─── Embedded resource helpers ───────────────────────────
 
     private static Dictionary<string, string> GetEmbeddedSkillFiles(string folder)

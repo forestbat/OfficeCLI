@@ -214,7 +214,16 @@ internal static class UpdateChecker
     {
         var exePath = Environment.ProcessPath ?? Process.GetCurrentProcess().MainModule?.FileName;
         if (exePath == null) return;
-        TryApplyPendingUpdate(exePath);
+
+        // After the binary is swapped in, refresh any already-installed skill
+        // files in detected agent dirs so they stay in sync with the new
+        // binary's embedded copies. Conservative: only touches skills that
+        // were previously installed (no new agents/skills added). Silent
+        // unless something actually changed.
+        if (TryApplyPendingUpdate(exePath))
+        {
+            try { SkillInstaller.RefreshInstalled(); } catch { /* best effort */ }
+        }
     }
 
     /// <summary>
