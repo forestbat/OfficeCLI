@@ -187,9 +187,15 @@ static partial class CommandBuilder
         //     --help (install would actually run InstallBinary!), so print
         //     a hardcoded usage blurb.
         //   - Registered SCL subcommands get their --help forwarded.
+        //
+        // CONSISTENCY(args-rewrite): `officecli set --help chart` is rewritten to
+        // `officecli help set chart` by Program.cs. "set" is not a document format,
+        // so we fall into this branch. The trailing element token ("chart") has no
+        // meaning in SCL command-help context — ignore it and show SCL help for "set".
+        // Guard drops `element == null` for CRUD verbs so the rewrite case is handled.
         if (!SchemaHelpLoader.IsKnownFormat(format)
             && verb == null
-            && element == null)
+            && (element == null || HelpVerbs.Contains(format, StringComparer.OrdinalIgnoreCase)))
         {
             if (WriteEarlyDispatchUsage(format, Console.Out))
                 return 0;
