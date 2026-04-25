@@ -108,6 +108,21 @@
       "add": true, "set": true, "get": true,
       "examples": ["--prop alignment.wrapText=true"],
       "enforcement": "report"
+    },
+    "merge": {
+      "type": "string",
+      "description": "merge range applied post-cell-creation (parity with `set`). Accepts a single A1 range (A1:C3) or comma-separated ranges (A1:B1,A2:B2).",
+      "add": true, "set": true, "get": false,
+      "examples": ["--prop merge=A1:C3"],
+      "enforcement": "report"
+    },
+    "ref": {
+      "type": "string",
+      "description": "target A1 cell reference (alternative to encoding the address in the path tail).",
+      "aliases": ["address"],
+      "add": true, "set": false, "get": false,
+      "examples": ["--prop ref=B2"],
+      "enforcement": "report"
     }
   }
 }

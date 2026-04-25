@@ -45,6 +45,42 @@
       "examples": ["--prop fill=#FFFF00"],
       "readback": "#-prefixed uppercase hex",
       "enforcement": "report"
+    },
+    "preset": {
+      "type": "string",
+      "description": "geometry preset name (rect, ellipse, roundRect, triangle, rightArrow, etc.). Unknown presets fall back to rect with a stderr warning.",
+      "aliases": ["shape"],
+      "add": true, "set": false, "get": false,
+      "examples": ["--prop preset=ellipse"],
+      "enforcement": "report"
+    },
+    "x": {
+      "type": "string",
+      "description": "anchor x position in cell units (or unit-qualified size).",
+      "add": true, "set": false, "get": false,
+      "examples": ["--prop x=2"],
+      "enforcement": "report"
+    },
+    "y": {
+      "type": "string",
+      "description": "anchor y position in cell units (or unit-qualified size).",
+      "add": true, "set": false, "get": false,
+      "examples": ["--prop y=3"],
+      "enforcement": "report"
+    },
+    "width": {
+      "type": "string",
+      "description": "shape width in cell units (or unit-qualified size like 6cm).",
+      "add": true, "set": false, "get": false,
+      "examples": ["--prop width=4", "--prop width=6cm"],
+      "enforcement": "report"
+    },
+    "height": {
+      "type": "string",
+      "description": "shape height in cell units (or unit-qualified size).",
+      "add": true, "set": false, "get": false,
+      "examples": ["--prop height=3"],
+      "enforcement": "report"
     }
   }
 }
