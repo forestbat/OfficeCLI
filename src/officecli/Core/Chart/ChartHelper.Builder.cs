@@ -307,15 +307,18 @@ internal static partial class ChartHelper
                 if (IsCellReference(extSeries[i].Name)) { hasNameRef = true; break; }
             }
         }
+        // R28-B3 — top-level `categories=Sheet1!A1:A3` must rewrite the
+        // existing strLit cat to a strRef even when no per-series dotted
+        // refs were supplied (extSeries==null). Mirrors R17/R18 series.name
+        // and chart-title fixes.
+        var topCatRefForBail = ParseCategoriesRef(properties);
         if (extSeries == null || extSeries.Count == 0)
         {
-            if (!hasNameRef) return;
+            if (!hasNameRef && topCatRefForBail == null) return;
         }
         if (extSeries != null && !extSeries.Any(s => s.ValuesRef != null || s.CategoriesRef != null) && !hasNameRef)
         {
-            // Also check top-level categories ref
-            var topCatRef = ParseCategoriesRef(properties);
-            if (topCatRef == null) return;
+            if (topCatRefForBail == null) return;
         }
 
         var allSer = plotArea.Descendants<OpenXmlCompositeElement>()
@@ -336,9 +339,13 @@ internal static partial class ChartHelper
             dispBlanksGap = string.Equals(dba?.Trim(), "gap", StringComparison.OrdinalIgnoreCase);
         }
 
-        for (int i = 0; i < Math.Min(extSeries!.Count, allSer.Count); i++)
+        // R28-B3 — extSeries may be null when the user only set top-level
+        // categories=<range> (no series.* dotted keys). Walk all series with
+        // an empty info so the topCategoriesRef strRef rewrite still runs.
+        int loopCount = extSeries != null ? Math.Min(extSeries.Count, allSer.Count) : allSer.Count;
+        for (int i = 0; i < loopCount; i++)
         {
-            var info = extSeries[i];
+            var info = extSeries != null ? extSeries[i] : new SeriesInfo();
             var ser = allSer[i];
 
             // Rewrite SeriesText as strRef when the name is a cell reference
@@ -464,6 +471,12 @@ internal static partial class ChartHelper
         "datalabels.showcatname", "datalabels.showcategoryname", "datalabels.showcategory",
         "datalabels.showsername", "datalabels.showseriesname", "datalabels.showseries",
         "datalabels.showlegendkey",
+        // R28-B1 — top-level aliases for the dotted datalabels.show* keys above.
+        "showvalue", "showval",
+        "showpercent", "showpct",
+        "showcatname", "showcategoryname", "showcategory",
+        "showsername", "showseriesname", "showseries",
+        "showlegendkey",
         "axisfont", "axis.font", "legendfont", "legend.font",
         // R15-4: rotate tick labels on cat/val axis. Degrees (e.g. -45).
         "labelrotation", "xaxis.labelrotation", "xaxislabelrotation",

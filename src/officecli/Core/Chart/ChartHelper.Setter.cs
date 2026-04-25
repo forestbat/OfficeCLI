@@ -1404,7 +1404,12 @@ internal static partial class ChartHelper
                 // CleanupE1 — dotted subkeys for toggling individual show* flags on existing
                 // dataLabels. Useful for pie charts where `datalabels.showpercent=true` should
                 // emit `<c:showPercent val="1"/>` rather than raw values.
-                case "datalabels.showvalue" or "datalabels.showval":
+                // CONSISTENCY(chart-datalabels-toggle): R28-B1 — accept top-level
+                // showValue/showPercent/showCatName/showSerName/showLegendKey
+                // aliases (in addition to the dotted datalabels.* form). Pie
+                // charts especially want `showPercent=true` as the natural prop.
+                case "datalabels.showvalue" or "datalabels.showval"
+                    or "showvalue" or "showval":
                 {
                     var plotArea2 = chart.GetFirstChild<C.PlotArea>();
                     if (plotArea2 == null) { unsupported.Add(key); break; }
@@ -1417,7 +1422,8 @@ internal static partial class ChartHelper
                     break;
                 }
 
-                case "datalabels.showpercent" or "datalabels.showpct":
+                case "datalabels.showpercent" or "datalabels.showpct"
+                    or "showpercent" or "showpct":
                 {
                     var plotArea2 = chart.GetFirstChild<C.PlotArea>();
                     if (plotArea2 == null) { unsupported.Add(key); break; }
@@ -1430,7 +1436,8 @@ internal static partial class ChartHelper
                     break;
                 }
 
-                case "datalabels.showcatname" or "datalabels.showcategoryname" or "datalabels.showcategory":
+                case "datalabels.showcatname" or "datalabels.showcategoryname" or "datalabels.showcategory"
+                    or "showcatname" or "showcategoryname" or "showcategory":
                 {
                     var plotArea2 = chart.GetFirstChild<C.PlotArea>();
                     if (plotArea2 == null) { unsupported.Add(key); break; }
@@ -1443,7 +1450,8 @@ internal static partial class ChartHelper
                     break;
                 }
 
-                case "datalabels.showsername" or "datalabels.showseriesname" or "datalabels.showseries":
+                case "datalabels.showsername" or "datalabels.showseriesname" or "datalabels.showseries"
+                    or "showsername" or "showseriesname" or "showseries":
                 {
                     var plotArea2 = chart.GetFirstChild<C.PlotArea>();
                     if (plotArea2 == null) { unsupported.Add(key); break; }
@@ -1456,7 +1464,7 @@ internal static partial class ChartHelper
                     break;
                 }
 
-                case "datalabels.showlegendkey":
+                case "datalabels.showlegendkey" or "showlegendkey":
                 {
                     var plotArea2 = chart.GetFirstChild<C.PlotArea>();
                     if (plotArea2 == null) { unsupported.Add(key); break; }
