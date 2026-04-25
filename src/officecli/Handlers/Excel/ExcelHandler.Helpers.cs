@@ -2195,7 +2195,12 @@ public partial class ExcelHandler
     /// </summary>
     private static bool TrySetShapeFlip(XDR.ShapeProperties? spPr, string key, string value)
     {
-        if (key != "flip") return false;
+        // Accept the compact `flip=h|v|both|hv|vh|none|false` form plus the
+        // Office-API aliases `flipH=true`, `flipV=true`, `flipHorizontal=true`,
+        // `flipVertical=true`, `flipBoth=true`. CONSISTENCY(shape-flip) — mirrors
+        // ApplyTransform2DRotationFlip used on the Add path.
+        if (key is not ("flip" or "fliph" or "flipv" or "fliphorizontal" or "flipvertical" or "flipboth"))
+            return false;
         if (spPr == null) return true;
         var xfrm = spPr.GetFirstChild<Drawing.Transform2D>();
         if (xfrm == null)
@@ -2205,12 +2210,28 @@ public partial class ExcelHandler
                 new Drawing.Extents { Cx = 0, Cy = 0 });
             spPr.InsertAt(xfrm, 0);
         }
-        var f = value.Trim().ToLowerInvariant();
-        bool none = f is "none" or "false" or "";
-        bool flipH = !none && (f is "h" or "horizontal" or "both" or "hv" or "vh");
-        bool flipV = !none && (f is "v" or "vertical" or "both" or "hv" or "vh");
-        xfrm.HorizontalFlip = flipH ? true : (bool?)null;
-        xfrm.VerticalFlip = flipV ? true : (bool?)null;
+
+        if (key == "flip")
+        {
+            var f = value.Trim().ToLowerInvariant();
+            bool none = f is "none" or "false" or "";
+            bool flipH = !none && (f is "h" or "horizontal" or "both" or "hv" or "vh");
+            bool flipV = !none && (f is "v" or "vertical" or "both" or "hv" or "vh");
+            xfrm.HorizontalFlip = flipH ? true : (bool?)null;
+            xfrm.VerticalFlip = flipV ? true : (bool?)null;
+            return true;
+        }
+
+        bool truthy = IsTruthy(value);
+        if (key is "fliph" or "fliphorizontal")
+            xfrm.HorizontalFlip = truthy ? true : (bool?)null;
+        else if (key is "flipv" or "flipvertical")
+            xfrm.VerticalFlip = truthy ? true : (bool?)null;
+        else if (key == "flipboth")
+        {
+            xfrm.HorizontalFlip = truthy ? true : (bool?)null;
+            xfrm.VerticalFlip = truthy ? true : (bool?)null;
+        }
         return true;
     }
 

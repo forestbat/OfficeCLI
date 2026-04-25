@@ -550,6 +550,7 @@ public partial class ExcelHandler
 
                 var spPr = anchor.Descendants<XDR.ShapeProperties>().FirstOrDefault();
                 if (TrySetRotation(spPr, lk, value)) continue;
+                if (TrySetShapeFlip(spPr, lk, value)) continue;
                 if (TrySetShapeEffect(spPr, lk, value)) continue;
 
                 switch (lk)
