@@ -319,90 +319,7 @@ public partial class PowerPointHandler
 
         // Try group path: /slide[N]/group[M]
         var grpMatch = Regex.Match(path, @"^/slide\[(\d+)\]/group\[(\d+)\]$");
-        if (grpMatch.Success)
-        {
-            var slideIdx = int.Parse(grpMatch.Groups[1].Value);
-            var grpIdx = int.Parse(grpMatch.Groups[2].Value);
-
-            var slideParts6 = GetSlideParts().ToList();
-            if (slideIdx < 1 || slideIdx > slideParts6.Count)
-                throw new ArgumentException($"Slide {slideIdx} not found (total: {slideParts6.Count})");
-
-            var slidePart = slideParts6[slideIdx - 1];
-            var shapeTree = GetSlide(slidePart).CommonSlideData?.ShapeTree
-                ?? throw new ArgumentException("Slide has no shape tree");
-            var groups = shapeTree.Elements<GroupShape>().ToList();
-            if (grpIdx < 1 || grpIdx > groups.Count)
-                throw new ArgumentException($"Group {grpIdx} not found (total: {groups.Count})");
-
-            var grp = groups[grpIdx - 1];
-            var unsupported = new List<string>();
-            foreach (var (key, value) in properties)
-            {
-                switch (key.ToLowerInvariant())
-                {
-                    case "name":
-                        var nvGrpPr = grp.NonVisualGroupShapeProperties?.NonVisualDrawingProperties;
-                        if (nvGrpPr != null) nvGrpPr.Name = value;
-                        break;
-                    case "x" or "y" or "width" or "height":
-                    {
-                        var grpSpPr = grp.GroupShapeProperties ?? (grp.GroupShapeProperties = new GroupShapeProperties());
-                        var xfrm = grpSpPr.TransformGroup ?? (grpSpPr.TransformGroup = new Drawing.TransformGroup());
-                        var off = xfrm.Offset ?? (xfrm.Offset = new Drawing.Offset());
-                        var ext = xfrm.Extents ?? (xfrm.Extents = new Drawing.Extents());
-                        var keyLower = key.ToLowerInvariant();
-                        // CONSISTENCY(group-scale-baseline): group scaling needs <a:chOff>/<a:chExt>
-                        // as a child-coordinate baseline. Before we mutate ext/off, snapshot the
-                        // current ext/off into chExt/chOff if they aren't already present — that
-                        // way the first Set of width/height captures the "before" as the logical
-                        // child coordinate space, so shrinking ext shrinks the rendered children.
-                        if (keyLower is "x" or "y")
-                        {
-                            if (xfrm.ChildOffset == null)
-                                xfrm.ChildOffset = new Drawing.ChildOffset { X = off.X ?? 0, Y = off.Y ?? 0 };
-                        }
-                        else // width or height
-                        {
-                            if (xfrm.ChildExtents == null)
-                                xfrm.ChildExtents = new Drawing.ChildExtents { Cx = ext.Cx ?? 0, Cy = ext.Cy ?? 0 };
-                        }
-                        TryApplyPositionSize(keyLower, value, off, ext);
-                        break;
-                    }
-                    case "rotation" or "rotate":
-                    {
-                        var grpSpPr = grp.GroupShapeProperties ?? (grp.GroupShapeProperties = new GroupShapeProperties());
-                        var xfrm = grpSpPr.TransformGroup ?? (grpSpPr.TransformGroup = new Drawing.TransformGroup());
-                        xfrm.Rotation = (int)(ParseHelpers.SafeParseDouble(value, "rotation") * 60000);
-                        break;
-                    }
-                    case "fill":
-                    {
-                        var grpSpPr = grp.GroupShapeProperties ?? (grp.GroupShapeProperties = new GroupShapeProperties());
-                        grpSpPr.RemoveAllChildren<Drawing.SolidFill>();
-                        grpSpPr.RemoveAllChildren<Drawing.NoFill>();
-                        grpSpPr.RemoveAllChildren<Drawing.GradientFill>();
-                        if (value.Equals("none", StringComparison.OrdinalIgnoreCase))
-                            grpSpPr.AppendChild(new Drawing.NoFill());
-                        else
-                            grpSpPr.AppendChild(BuildSolidFill(value));
-                        break;
-                    }
-                    default:
-                        if (!GenericXmlQuery.SetGenericAttribute(grp, key, value))
-                        {
-                            if (unsupported.Count == 0)
-                                unsupported.Add($"{key} (valid group props: x, y, width, height, rotation, name, fill)");
-                            else
-                                unsupported.Add(key);
-                        }
-                        break;
-                }
-            }
-            GetSlide(slidePart).Save();
-            return unsupported;
-        }
+        if (grpMatch.Success) return SetGroupByPath(grpMatch, properties);
 
         // Generic XML fallback: navigate to element and set attributes
         {
@@ -889,6 +806,91 @@ public partial class PowerPointHandler
 
         var allRuns = shape.Descendants<Drawing.Run>().ToList();
         var unsupported = SetRunOrShapeProperties(properties, allRuns, shape, slidePart);
+        GetSlide(slidePart).Save();
+        return unsupported;
+    }
+
+    private List<string> SetGroupByPath(Match grpMatch, Dictionary<string, string> properties)
+    {
+        var slideIdx = int.Parse(grpMatch.Groups[1].Value);
+        var grpIdx = int.Parse(grpMatch.Groups[2].Value);
+
+        var slideParts6 = GetSlideParts().ToList();
+        if (slideIdx < 1 || slideIdx > slideParts6.Count)
+            throw new ArgumentException($"Slide {slideIdx} not found (total: {slideParts6.Count})");
+
+        var slidePart = slideParts6[slideIdx - 1];
+        var shapeTree = GetSlide(slidePart).CommonSlideData?.ShapeTree
+            ?? throw new ArgumentException("Slide has no shape tree");
+        var groups = shapeTree.Elements<GroupShape>().ToList();
+        if (grpIdx < 1 || grpIdx > groups.Count)
+            throw new ArgumentException($"Group {grpIdx} not found (total: {groups.Count})");
+
+        var grp = groups[grpIdx - 1];
+        var unsupported = new List<string>();
+        foreach (var (key, value) in properties)
+        {
+            switch (key.ToLowerInvariant())
+            {
+                case "name":
+                    var nvGrpPr = grp.NonVisualGroupShapeProperties?.NonVisualDrawingProperties;
+                    if (nvGrpPr != null) nvGrpPr.Name = value;
+                    break;
+                case "x" or "y" or "width" or "height":
+                {
+                    var grpSpPr = grp.GroupShapeProperties ?? (grp.GroupShapeProperties = new GroupShapeProperties());
+                    var xfrm = grpSpPr.TransformGroup ?? (grpSpPr.TransformGroup = new Drawing.TransformGroup());
+                    var off = xfrm.Offset ?? (xfrm.Offset = new Drawing.Offset());
+                    var ext = xfrm.Extents ?? (xfrm.Extents = new Drawing.Extents());
+                    var keyLower = key.ToLowerInvariant();
+                    // CONSISTENCY(group-scale-baseline): group scaling needs <a:chOff>/<a:chExt>
+                    // as a child-coordinate baseline. Before we mutate ext/off, snapshot the
+                    // current ext/off into chExt/chOff if they aren't already present — that
+                    // way the first Set of width/height captures the "before" as the logical
+                    // child coordinate space, so shrinking ext shrinks the rendered children.
+                    if (keyLower is "x" or "y")
+                    {
+                        if (xfrm.ChildOffset == null)
+                            xfrm.ChildOffset = new Drawing.ChildOffset { X = off.X ?? 0, Y = off.Y ?? 0 };
+                    }
+                    else // width or height
+                    {
+                        if (xfrm.ChildExtents == null)
+                            xfrm.ChildExtents = new Drawing.ChildExtents { Cx = ext.Cx ?? 0, Cy = ext.Cy ?? 0 };
+                    }
+                    TryApplyPositionSize(keyLower, value, off, ext);
+                    break;
+                }
+                case "rotation" or "rotate":
+                {
+                    var grpSpPr = grp.GroupShapeProperties ?? (grp.GroupShapeProperties = new GroupShapeProperties());
+                    var xfrm = grpSpPr.TransformGroup ?? (grpSpPr.TransformGroup = new Drawing.TransformGroup());
+                    xfrm.Rotation = (int)(ParseHelpers.SafeParseDouble(value, "rotation") * 60000);
+                    break;
+                }
+                case "fill":
+                {
+                    var grpSpPr = grp.GroupShapeProperties ?? (grp.GroupShapeProperties = new GroupShapeProperties());
+                    grpSpPr.RemoveAllChildren<Drawing.SolidFill>();
+                    grpSpPr.RemoveAllChildren<Drawing.NoFill>();
+                    grpSpPr.RemoveAllChildren<Drawing.GradientFill>();
+                    if (value.Equals("none", StringComparison.OrdinalIgnoreCase))
+                        grpSpPr.AppendChild(new Drawing.NoFill());
+                    else
+                        grpSpPr.AppendChild(BuildSolidFill(value));
+                    break;
+                }
+                default:
+                    if (!GenericXmlQuery.SetGenericAttribute(grp, key, value))
+                    {
+                        if (unsupported.Count == 0)
+                            unsupported.Add($"{key} (valid group props: x, y, width, height, rotation, name, fill)");
+                        else
+                            unsupported.Add(key);
+                    }
+                    break;
+            }
+        }
         GetSlide(slidePart).Save();
         return unsupported;
     }
