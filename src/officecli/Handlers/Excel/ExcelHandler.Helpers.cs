@@ -16,6 +16,35 @@ namespace OfficeCli.Handlers;
 public partial class ExcelHandler
 {
     /// <summary>
+    /// Validate a sheet name against Excel's rules. Throws ArgumentException
+    /// with a clear message on the first rule violation. Rules:
+    ///   - non-empty, non-whitespace
+    ///   - max 31 chars
+    ///   - cannot contain  \  /  ?  *  :  [  ]
+    ///   - cannot start or end with apostrophe '
+    ///   - cannot equal reserved "History" (case-insensitive)
+    /// </summary>
+    internal static void ValidateSheetName(string name)
+    {
+        if (string.IsNullOrWhiteSpace(name))
+            throw new ArgumentException("Invalid sheet name: name cannot be empty or whitespace.");
+        if (name.Length > 31)
+            throw new ArgumentException(
+                $"Invalid sheet name '{name}': length {name.Length} exceeds Excel's 31-char limit.");
+        var forbidden = new[] { '\\', '/', '?', '*', ':', '[', ']' };
+        var hit = name.IndexOfAny(forbidden);
+        if (hit >= 0)
+            throw new ArgumentException(
+                $"Invalid sheet name '{name}': contains forbidden character '{name[hit]}'. Excel rejects any of: \\ / ? * : [ ]");
+        if (name.StartsWith('\'') || name.EndsWith('\''))
+            throw new ArgumentException(
+                $"Invalid sheet name '{name}': cannot start or end with an apostrophe (').");
+        if (name.Equals("History", StringComparison.OrdinalIgnoreCase))
+            throw new ArgumentException(
+                "Invalid sheet name 'History': reserved by Excel for the change-history sheet.");
+    }
+
+    /// <summary>
     /// Build an XDR BlipFill with an optional asvg:svgBlip extension when
     /// the caller wires in an SVG image part. Keeps Add/Set picture paths
     /// free of inline extension boilerplate.

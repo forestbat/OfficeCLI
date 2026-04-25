@@ -1777,6 +1777,15 @@ public partial class ExcelHandler
             {
                 case "name":
                 {
+                    // Validate sheet name up-front so Excel doesn't reject the file
+                    // on open. Rules per Excel:
+                    //   - cannot be empty / blank
+                    //   - max 31 chars
+                    //   - cannot contain  \  /  ?  *  :  [  ]
+                    //   - cannot start or end with apostrophe '
+                    //   - cannot equal reserved name "History"
+                    ValidateSheetName(value);
+
                     // Rename the sheet
                     var workbook = GetWorkbook();
                     var sheets = workbook.Sheets?.Elements<Sheet>().ToList();
