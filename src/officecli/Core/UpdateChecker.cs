@@ -250,16 +250,66 @@ internal static class UpdateChecker
             var updatePath = exePath + ".update";
             if (!File.Exists(updatePath)) return false;
 
-            // Defensive: refuse to swap in obviously-corrupt update files
-            // (empty, truncated, or hand-placed text). RunRefresh's download
-            // path already verifies via --version before promoting .partial→
-            // .update, but external processes could drop a bad .update file
-            // out of band. Below the threshold there's no realistic way for
-            // a self-contained .NET single-file binary to be valid — even
-            // trimmed AOT builds run multiple MB.
+            // Defensive verification before swap. RunRefresh's download path
+            // already runs --version on the .partial file before promoting
+            // it to .update, so the canonical update flow has already been
+            // verified. But .update can also be created out-of-band — by
+            // failed cleanup, racing tools, accidental copies, or local user
+            // mistake — and the swap would otherwise overwrite the live
+            // binary with whatever is sitting there. Rerun the same check
+            // here so any non-canonical .update is rejected and deleted
+            // before it can corrupt the binary.
+
+            // Step 1: cheap size sanity check. A self-contained .NET
+            // single-file binary is multiple MB even when trimmed; anything
+            // below 1MB is empty/text/truncated by definition.
             const long MinValidBinarySize = 1_000_000; // 1 MB
             var info = new FileInfo(updatePath);
             if (info.Length < MinValidBinarySize)
+            {
+                try { File.Delete(updatePath); } catch { }
+                return false;
+            }
+
+            // Step 2: ensure the file is executable (Unix). Externally-
+            // placed .update files often lack +x — without this, the swap
+            // succeeds but the next exec fails with EACCES, bricking the
+            // installed binary.
+            if (!OperatingSystem.IsWindows())
+            {
+                try { Process.Start("chmod", $"+x \"{updatePath}\"")?.WaitForExit(3000); } catch { }
+            }
+
+            // Step 3: smoke test — invoke `<update> --version` with
+            // OFFICECLI_SKIP_UPDATE to prevent recursion. If it doesn't
+            // exit cleanly within 5s, the file isn't a runnable officecli
+            // (random bytes, wrong arch, garbage that happens to be 1MB+).
+            try
+            {
+                using var verify = Process.Start(new ProcessStartInfo
+                {
+                    FileName = updatePath,
+                    Arguments = "--version",
+                    UseShellExecute = false,
+                    RedirectStandardOutput = true,
+                    RedirectStandardError = true,
+                    CreateNoWindow = true,
+                    Environment = { ["OFFICECLI_SKIP_UPDATE"] = "1" }
+                });
+                if (verify == null)
+                {
+                    try { File.Delete(updatePath); } catch { }
+                    return false;
+                }
+                var exited = verify.WaitForExit(5000);
+                if (!exited || verify.ExitCode != 0)
+                {
+                    if (!exited) try { verify.Kill(); } catch { }
+                    try { File.Delete(updatePath); } catch { }
+                    return false;
+                }
+            }
+            catch
             {
                 try { File.Delete(updatePath); } catch { }
                 return false;
