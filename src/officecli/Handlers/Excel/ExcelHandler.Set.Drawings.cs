@@ -244,9 +244,22 @@ public partial class ExcelHandler
         var anchor = picAnchors[picIdx - 1];
         var picUnsupported = new List<string>();
 
+        // CONSISTENCY(picture-crop): mirror Add — accept crop.l/r/t/b,
+        // srcRect=l=..,r=..,t=..,b=.., and cropLeft/Right/Top/Bottom keys.
+        // ParseSrcRect builds a Drawing.SourceRectangle from any subset.
+        // We collect crop keys here and apply once after the property loop
+        // so multiple crop keys in one Set call merge instead of clobber.
+        var cropProps = new Dictionary<string, string>();
+        var cropKeys = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        {
+            "crop.l", "crop.r", "crop.t", "crop.b",
+            "srcRect", "cropLeft", "cropRight", "cropTop", "cropBottom"
+        };
+
         foreach (var (key, value) in properties)
         {
             var lk = key.ToLowerInvariant();
+            if (cropKeys.Contains(key)) { cropProps[key] = value; continue; }
             if (TrySetAnchorPosition(anchor, lk, value)) continue;
 
             var spPr = anchor.Descendants<XDR.ShapeProperties>().FirstOrDefault();
@@ -263,6 +276,36 @@ public partial class ExcelHandler
                 default:
                     picUnsupported.Add(key);
                     break;
+            }
+        }
+
+        if (cropProps.Count > 0)
+        {
+            var picture = anchor.Descendants<XDR.Picture>().FirstOrDefault();
+            var blipFill = picture?.BlipFill;
+            if (blipFill != null)
+            {
+                var newSrcRect = ParseSrcRect(cropProps);
+                // Replace any existing <a:srcRect> with the new one. If
+                // ParseSrcRect returns null (no valid crop values), drop the
+                // existing srcRect entirely so the XML stays clean.
+                foreach (var existing in blipFill.Elements<Drawing.SourceRectangle>().ToList())
+                    existing.Remove();
+                if (newSrcRect != null)
+                {
+                    // CONSISTENCY(ooxml-element-order): srcRect must precede
+                    // the fill-mode element (stretch/tile) inside blipFill.
+                    var fillMode = (OpenXmlElement?)blipFill.GetFirstChild<Drawing.Stretch>()
+                        ?? blipFill.GetFirstChild<Drawing.Tile>();
+                    if (fillMode != null)
+                        blipFill.InsertBefore(newSrcRect, fillMode);
+                    else
+                        blipFill.AppendChild(newSrcRect);
+                }
+            }
+            else
+            {
+                foreach (var k in cropProps.Keys) picUnsupported.Add(k);
             }
         }
 

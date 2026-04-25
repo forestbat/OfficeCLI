@@ -52,6 +52,45 @@
       "examples": ["--prop height=2in"],
       "readback": "unit-qualified length",
       "enforcement": "report"
+    },
+    "crop": {
+      "type": "string",
+      "description": "Crop in percent (0-100). 1 value = symmetric, 2 values = vertical,horizontal, 4 values = left,top,right,bottom.",
+      "add": true, "set": true,
+      "examples": ["--prop crop=10", "--prop crop=5,10", "--prop crop=10,5,10,5"],
+      "enforcement": "report"
+    },
+    "cropLeft": {
+      "type": "string",
+      "description": "Crop from left edge as percent (0-100). Aliases: cropleft.",
+      "aliases": ["cropleft"],
+      "add": true, "set": true,
+      "examples": ["--prop cropLeft=10"],
+      "enforcement": "report"
+    },
+    "cropRight": {
+      "type": "string",
+      "description": "Crop from right edge as percent (0-100). Aliases: cropright.",
+      "aliases": ["cropright"],
+      "add": true, "set": true,
+      "examples": ["--prop cropRight=10"],
+      "enforcement": "report"
+    },
+    "cropTop": {
+      "type": "string",
+      "description": "Crop from top edge as percent (0-100). Aliases: croptop.",
+      "aliases": ["croptop"],
+      "add": true, "set": true,
+      "examples": ["--prop cropTop=10"],
+      "enforcement": "report"
+    },
+    "cropBottom": {
+      "type": "string",
+      "description": "Crop from bottom edge as percent (0-100). Aliases: cropbottom.",
+      "aliases": ["cropbottom"],
+      "add": true, "set": true,
+      "examples": ["--prop cropBottom=10"],
+      "enforcement": "report"
     }
   }
 }

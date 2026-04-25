@@ -59,6 +59,69 @@
       "examples": ["--prop alt=\"Logo\""],
       "readback": "alt text",
       "enforcement": "report"
+    },
+    "crop.l": {
+      "type": "string",
+      "description": "Crop from left edge as a percentage (e.g. 10 = 10%, '10%' also accepted). Internally stored in 1/1000 percent units.",
+      "add": true, "set": true,
+      "examples": ["--prop crop.l=10", "--prop crop.l=50%"],
+      "enforcement": "report"
+    },
+    "crop.r": {
+      "type": "string",
+      "description": "Crop from right edge as a percentage.",
+      "add": true, "set": true,
+      "examples": ["--prop crop.r=10"],
+      "enforcement": "report"
+    },
+    "crop.t": {
+      "type": "string",
+      "description": "Crop from top edge as a percentage.",
+      "add": true, "set": true,
+      "examples": ["--prop crop.t=10"],
+      "enforcement": "report"
+    },
+    "crop.b": {
+      "type": "string",
+      "description": "Crop from bottom edge as a percentage.",
+      "add": true, "set": true,
+      "examples": ["--prop crop.b=10"],
+      "enforcement": "report"
+    },
+    "srcRect": {
+      "type": "string",
+      "description": "Compound crop spec, e.g. 'l=10,r=10,t=5,b=5'. Equivalent to crop.l/crop.r/crop.t/crop.b.",
+      "add": true, "set": true,
+      "examples": ["--prop srcRect=l=10,r=10,t=5,b=5"],
+      "enforcement": "report"
+    },
+    "cropLeft": {
+      "type": "string",
+      "description": "Crop from left as fraction (<=1) or percent (>1). E.g. cropLeft=0.1 or cropLeft=10 both mean 10%.",
+      "add": true, "set": true,
+      "examples": ["--prop cropLeft=0.1", "--prop cropLeft=10"],
+      "enforcement": "report"
+    },
+    "cropRight": {
+      "type": "string",
+      "description": "Crop from right as fraction (<=1) or percent (>1).",
+      "add": true, "set": true,
+      "examples": ["--prop cropRight=10"],
+      "enforcement": "report"
+    },
+    "cropTop": {
+      "type": "string",
+      "description": "Crop from top as fraction (<=1) or percent (>1).",
+      "add": true, "set": true,
+      "examples": ["--prop cropTop=10"],
+      "enforcement": "report"
+    },
+    "cropBottom": {
+      "type": "string",
+      "description": "Crop from bottom as fraction (<=1) or percent (>1).",
+      "add": true, "set": true,
+      "examples": ["--prop cropBottom=10"],
+      "enforcement": "report"
     }
   }
 }
