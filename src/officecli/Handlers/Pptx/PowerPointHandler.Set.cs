@@ -736,112 +736,7 @@ public partial class PowerPointHandler
 
         // Try model3d-level path: /slide[N]/model3d[M]
         var model3dSetMatch = Regex.Match(path, @"^/slide\[(\d+)\]/model3d\[(\d+)\]$");
-        if (model3dSetMatch.Success)
-        {
-            var slideIdx = int.Parse(model3dSetMatch.Groups[1].Value);
-            var m3dIdx = int.Parse(model3dSetMatch.Groups[2].Value);
-            var m3dSlideParts = GetSlideParts().ToList();
-            if (slideIdx < 1 || slideIdx > m3dSlideParts.Count)
-                throw new ArgumentException($"Slide {slideIdx} not found (total: {m3dSlideParts.Count})");
-            var m3dSlidePart = m3dSlideParts[slideIdx - 1];
-            var m3dShapeTree = GetSlide(m3dSlidePart).CommonSlideData?.ShapeTree
-                ?? throw new InvalidOperationException("Slide has no shape tree");
-            var model3dElements = GetModel3DElements(m3dShapeTree);
-            if (m3dIdx < 1 || m3dIdx > model3dElements.Count)
-                throw new ArgumentException($"3D model {m3dIdx} not found (total: {model3dElements.Count})");
-
-            var acElement = model3dElements[m3dIdx - 1];
-            var choice = acElement.ChildElements.FirstOrDefault(e => e.LocalName == "Choice");
-            var fallback = acElement.ChildElements.FirstOrDefault(e => e.LocalName == "Fallback");
-            var sp = choice?.ChildElements.FirstOrDefault(e => e.LocalName == "graphicFrame")
-                  ?? choice?.ChildElements.FirstOrDefault(e => e.LocalName == "sp");
-
-            var unsupported = new List<string>();
-            foreach (var (key, value) in properties)
-            {
-                switch (key.ToLowerInvariant())
-                {
-                    case "x" or "y" or "width" or "height":
-                    {
-                        var emu = ParseEmu(value);
-                        // Update xfrm (graphicFrame level or spPr level)
-                        var xfrmEl = sp?.ChildElements.FirstOrDefault(e => e.LocalName == "xfrm");
-                        if (xfrmEl == null)
-                        {
-                            var spPr = sp?.ChildElements.FirstOrDefault(e => e.LocalName == "spPr");
-                            xfrmEl = spPr?.ChildElements.FirstOrDefault(e => e.LocalName == "xfrm");
-                        }
-                        if (xfrmEl != null)
-                        {
-                            if (key.ToLowerInvariant() is "x" or "y")
-                            {
-                                var off = xfrmEl.ChildElements.FirstOrDefault(e => e.LocalName == "off");
-                                off?.SetAttribute(new OpenXmlAttribute("", key.ToLowerInvariant(), null!, emu.ToString()));
-                            }
-                            else
-                            {
-                                var attrName = key.ToLowerInvariant() == "width" ? "cx" : "cy";
-                                var ext = xfrmEl.ChildElements.FirstOrDefault(e => e.LocalName == "ext");
-                                ext?.SetAttribute(new OpenXmlAttribute("", attrName, null!, emu.ToString()));
-                            }
-                        }
-                        // Also update fallback pic spPr
-                        var fbPic = fallback?.ChildElements.FirstOrDefault(e => e.LocalName == "pic");
-                        var fbSpPr = fbPic?.ChildElements.FirstOrDefault(e => e.LocalName == "spPr");
-                        var fbXfrm = fbSpPr?.ChildElements.FirstOrDefault(e => e.LocalName == "xfrm");
-                        if (fbXfrm != null)
-                        {
-                            if (key.ToLowerInvariant() is "x" or "y")
-                            {
-                                var off = fbXfrm.ChildElements.FirstOrDefault(e => e.LocalName == "off");
-                                off?.SetAttribute(new OpenXmlAttribute("", key.ToLowerInvariant(), null!, emu.ToString()));
-                            }
-                            else
-                            {
-                                var attrName = key.ToLowerInvariant() == "width" ? "cx" : "cy";
-                                var ext = fbXfrm.ChildElements.FirstOrDefault(e => e.LocalName == "ext");
-                                ext?.SetAttribute(new OpenXmlAttribute("", attrName, null!, emu.ToString()));
-                            }
-                        }
-                        break;
-                    }
-                    case "name":
-                    {
-                        var nvSpPr = sp?.ChildElements.FirstOrDefault(e => e.LocalName == "nvGraphicFramePr")
-                                  ?? sp?.ChildElements.FirstOrDefault(e => e.LocalName == "nvSpPr");
-                        var cNvPr = nvSpPr?.ChildElements.FirstOrDefault(e => e.LocalName == "cNvPr");
-                        cNvPr?.SetAttribute(new OpenXmlAttribute("", "name", null!, value));
-                        // Also update fallback name
-                        var fbPic = fallback?.ChildElements.FirstOrDefault(e => e.LocalName == "pic");
-                        var fbCNvPr = fbPic?.Descendants().FirstOrDefault(d => d.LocalName == "cNvPr");
-                        fbCNvPr?.SetAttribute(new OpenXmlAttribute("", "name", null!, value));
-                        break;
-                    }
-                    case "rotx" or "roty" or "rotz":
-                    {
-                        var model3dEl = acElement.Descendants().FirstOrDefault(d => d.LocalName == "model3d");
-                        var trans = model3dEl?.ChildElements.FirstOrDefault(e => e.LocalName == "trans");
-                        if (trans != null)
-                        {
-                            var rot = trans.ChildElements.FirstOrDefault(e => e.LocalName == "rot");
-                            if (rot == null)
-                            {
-                                rot = new OpenXmlUnknownElement("am3d", "rot", Am3dNs);
-                                trans.AppendChild(rot);
-                            }
-                            var attrName = key.ToLowerInvariant() switch { "rotx" => "ax", "roty" => "ay", _ => "az" };
-                            rot.SetAttribute(new OpenXmlAttribute("", attrName, null!, ParseAngle60k(value).ToString()));
-                        }
-                        break;
-                    }
-                    default:
-                        unsupported.Add(key);
-                        break;
-                }
-            }
-            GetSlide(m3dSlidePart).Save();
-            return unsupported;
-        }
+        if (model3dSetMatch.Success) return SetModel3DByPath(model3dSetMatch, properties);
 
         // Try zoom-level path: /slide[N]/zoom[M]
         var zoomSetMatch = Regex.Match(path, @"^/slide\[(\d+)\]/zoom\[(\d+)\]$");
@@ -1788,6 +1683,113 @@ public partial class PowerPointHandler
         var allRuns = shape.Descendants<Drawing.Run>().ToList();
         var unsupported = SetRunOrShapeProperties(properties, allRuns, shape, slidePart);
         GetSlide(slidePart).Save();
+        return unsupported;
+    }
+
+    private List<string> SetModel3DByPath(Match model3dSetMatch, Dictionary<string, string> properties)
+    {
+        var slideIdx = int.Parse(model3dSetMatch.Groups[1].Value);
+        var m3dIdx = int.Parse(model3dSetMatch.Groups[2].Value);
+        var m3dSlideParts = GetSlideParts().ToList();
+        if (slideIdx < 1 || slideIdx > m3dSlideParts.Count)
+            throw new ArgumentException($"Slide {slideIdx} not found (total: {m3dSlideParts.Count})");
+        var m3dSlidePart = m3dSlideParts[slideIdx - 1];
+        var m3dShapeTree = GetSlide(m3dSlidePart).CommonSlideData?.ShapeTree
+            ?? throw new InvalidOperationException("Slide has no shape tree");
+        var model3dElements = GetModel3DElements(m3dShapeTree);
+        if (m3dIdx < 1 || m3dIdx > model3dElements.Count)
+            throw new ArgumentException($"3D model {m3dIdx} not found (total: {model3dElements.Count})");
+
+        var acElement = model3dElements[m3dIdx - 1];
+        var choice = acElement.ChildElements.FirstOrDefault(e => e.LocalName == "Choice");
+        var fallback = acElement.ChildElements.FirstOrDefault(e => e.LocalName == "Fallback");
+        var sp = choice?.ChildElements.FirstOrDefault(e => e.LocalName == "graphicFrame")
+              ?? choice?.ChildElements.FirstOrDefault(e => e.LocalName == "sp");
+
+        var unsupported = new List<string>();
+        foreach (var (key, value) in properties)
+        {
+            switch (key.ToLowerInvariant())
+            {
+                case "x" or "y" or "width" or "height":
+                {
+                    var emu = ParseEmu(value);
+                    // Update xfrm (graphicFrame level or spPr level)
+                    var xfrmEl = sp?.ChildElements.FirstOrDefault(e => e.LocalName == "xfrm");
+                    if (xfrmEl == null)
+                    {
+                        var spPr = sp?.ChildElements.FirstOrDefault(e => e.LocalName == "spPr");
+                        xfrmEl = spPr?.ChildElements.FirstOrDefault(e => e.LocalName == "xfrm");
+                    }
+                    if (xfrmEl != null)
+                    {
+                        if (key.ToLowerInvariant() is "x" or "y")
+                        {
+                            var off = xfrmEl.ChildElements.FirstOrDefault(e => e.LocalName == "off");
+                            off?.SetAttribute(new OpenXmlAttribute("", key.ToLowerInvariant(), null!, emu.ToString()));
+                        }
+                        else
+                        {
+                            var attrName = key.ToLowerInvariant() == "width" ? "cx" : "cy";
+                            var ext = xfrmEl.ChildElements.FirstOrDefault(e => e.LocalName == "ext");
+                            ext?.SetAttribute(new OpenXmlAttribute("", attrName, null!, emu.ToString()));
+                        }
+                    }
+                    // Also update fallback pic spPr
+                    var fbPic = fallback?.ChildElements.FirstOrDefault(e => e.LocalName == "pic");
+                    var fbSpPr = fbPic?.ChildElements.FirstOrDefault(e => e.LocalName == "spPr");
+                    var fbXfrm = fbSpPr?.ChildElements.FirstOrDefault(e => e.LocalName == "xfrm");
+                    if (fbXfrm != null)
+                    {
+                        if (key.ToLowerInvariant() is "x" or "y")
+                        {
+                            var off = fbXfrm.ChildElements.FirstOrDefault(e => e.LocalName == "off");
+                            off?.SetAttribute(new OpenXmlAttribute("", key.ToLowerInvariant(), null!, emu.ToString()));
+                        }
+                        else
+                        {
+                            var attrName = key.ToLowerInvariant() == "width" ? "cx" : "cy";
+                            var ext = fbXfrm.ChildElements.FirstOrDefault(e => e.LocalName == "ext");
+                            ext?.SetAttribute(new OpenXmlAttribute("", attrName, null!, emu.ToString()));
+                        }
+                    }
+                    break;
+                }
+                case "name":
+                {
+                    var nvSpPr = sp?.ChildElements.FirstOrDefault(e => e.LocalName == "nvGraphicFramePr")
+                              ?? sp?.ChildElements.FirstOrDefault(e => e.LocalName == "nvSpPr");
+                    var cNvPr = nvSpPr?.ChildElements.FirstOrDefault(e => e.LocalName == "cNvPr");
+                    cNvPr?.SetAttribute(new OpenXmlAttribute("", "name", null!, value));
+                    // Also update fallback name
+                    var fbPic = fallback?.ChildElements.FirstOrDefault(e => e.LocalName == "pic");
+                    var fbCNvPr = fbPic?.Descendants().FirstOrDefault(d => d.LocalName == "cNvPr");
+                    fbCNvPr?.SetAttribute(new OpenXmlAttribute("", "name", null!, value));
+                    break;
+                }
+                case "rotx" or "roty" or "rotz":
+                {
+                    var model3dEl = acElement.Descendants().FirstOrDefault(d => d.LocalName == "model3d");
+                    var trans = model3dEl?.ChildElements.FirstOrDefault(e => e.LocalName == "trans");
+                    if (trans != null)
+                    {
+                        var rot = trans.ChildElements.FirstOrDefault(e => e.LocalName == "rot");
+                        if (rot == null)
+                        {
+                            rot = new OpenXmlUnknownElement("am3d", "rot", Am3dNs);
+                            trans.AppendChild(rot);
+                        }
+                        var attrName = key.ToLowerInvariant() switch { "rotx" => "ax", "roty" => "ay", _ => "az" };
+                        rot.SetAttribute(new OpenXmlAttribute("", attrName, null!, ParseAngle60k(value).ToString()));
+                    }
+                    break;
+                }
+                default:
+                    unsupported.Add(key);
+                    break;
+            }
+        }
+        GetSlide(m3dSlidePart).Save();
         return unsupported;
     }
 
