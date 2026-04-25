@@ -521,6 +521,19 @@ internal static partial class ChartHelper
                 return true;
             }
 
+            // R26-2: `series{N}.displayEquation` / `series{N}.displayRSquared`
+            // are convenience aliases that target the series' existing
+            // trendline (equivalent to `series{N}.trendline.displayEquation`).
+            // Mirrors the chart-level `trendline.displayequation` fan-out.
+            case "displayequation" or "equation" or "dispeq":
+            case "displayrsquared" or "rsquared" or "r2" or "disprsqr":
+            {
+                var tl = ser.GetFirstChild<C.Trendline>();
+                if (tl == null) return false;
+                ApplyTrendlineOptions(tl, prop, value);
+                return true;
+            }
+
             default:
                 // Trendline sub-properties: series{N}.trendline.name, .forward, .backward, etc.
                 // NOTE: this is an inner dispatch — if the sub-property is not one of
