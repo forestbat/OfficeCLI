@@ -34,22 +34,47 @@ public partial class PowerPointHandler
     };
 
     // Schema-typed sub-sets used for value validation in run-context Set.
-    // Without these, a non-numeric value for an int-typed attribute (e.g.
-    // kern=abc) would be silently written as invalid OOXML — the file then
-    // fails strict validation downstream. Source: ECMA-376 Part 1 21.1.2.3.9
-    // (a:rPr) — int attrs are sz/kern/spc/baseline/smtId; bool attrs are
-    // b/i/noProof/normalizeH/dirty/err/smtClean.
+    // Without these, an out-of-domain value for any typed attribute (e.g.
+    // kern=abc, u=GARBAGE) would be silently written as invalid OOXML — the
+    // file then fails strict validation downstream. Source: ECMA-376 Part 1
+    // 21.1.2.3.9 (a:rPr).
     private static readonly System.Collections.Generic.HashSet<string> DrawingRunIntAttrs =
         new(System.StringComparer.Ordinal) { "sz", "kern", "spc", "baseline", "smtId" };
     private static readonly System.Collections.Generic.HashSet<string> DrawingRunBoolAttrs =
         new(System.StringComparer.Ordinal) { "b", "i", "noProof", "normalizeH", "dirty", "err", "smtClean", "kumimoji" };
+
+    // ST_TextUnderlineType — full enumeration per ECMA-376 §21.1.10.82.
+    private static readonly System.Collections.Generic.HashSet<string> DrawingUnderlineEnum =
+        new(System.StringComparer.Ordinal)
+    {
+        "none", "words", "sng", "dbl", "heavy", "dotted", "dottedHeavy",
+        "dash", "dashHeavy", "dashLong", "dashLongHeavy",
+        "dotDash", "dotDashHeavy", "dotDotDash", "dotDotDashHeavy",
+        "wavy", "wavyHeavy", "wavyDbl",
+    };
+    // ST_TextStrikeType per ECMA-376 §21.1.10.78.
+    private static readonly System.Collections.Generic.HashSet<string> DrawingStrikeEnum =
+        new(System.StringComparer.Ordinal) { "noStrike", "sngStrike", "dblStrike" };
+    // ST_TextCapsType per ECMA-376 §21.1.10.7.
+    private static readonly System.Collections.Generic.HashSet<string> DrawingCapsEnum =
+        new(System.StringComparer.Ordinal) { "none", "small", "all" };
+
+    // Tolerant BCP-47 shape: starts with letter, allows letters/digits/hyphens.
+    // Stricter than xsd:language but loose enough to accept all real-world tags
+    // (zh-Hant-TW, en-US, x-private, ...). Rejects whitespace and special chars.
+    private static readonly System.Text.RegularExpressions.Regex Bcp47Shape =
+        new(@"^[A-Za-z][A-Za-z0-9-]*$", System.Text.RegularExpressions.RegexOptions.Compiled);
 
     private static bool IsValidDrawingRunAttrValue(string key, string value)
     {
         if (DrawingRunIntAttrs.Contains(key)) return int.TryParse(value, out _);
         if (DrawingRunBoolAttrs.Contains(key))
             return value is "0" or "1" or "true" or "false" or "True" or "False";
-        return true; // string / enum attrs: pass through
+        if (key == "u") return DrawingUnderlineEnum.Contains(value);
+        if (key == "strike") return DrawingStrikeEnum.Contains(value);
+        if (key == "cap") return DrawingCapsEnum.Contains(value);
+        if (key is "lang" or "altLang") return string.IsNullOrEmpty(value) || Bcp47Shape.IsMatch(value);
+        return true; // remaining string attrs (kumimoji handled above; bmk arbitrary string)
     }
 
     // runContext=true when the caller is a run-targeted Set path (e.g.

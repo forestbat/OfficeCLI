@@ -266,12 +266,20 @@ internal class ExcelStyleManager
             // Long-tail Alignment attributes (e.g. justifyLastLine,
             // relativeIndent). Walk styleProps directly to preserve original
             // case — OOXML attribute names are case-sensitive (Excel rejects
-            // `justifylastline`, only accepts `justifyLastLine`).
+            // `justifylastline`, only accepts `justifyLastLine`). Validate
+            // value against the schema type so garbage like
+            // `alignment.justifyLastLine=GARBAGE` is rejected, not silently
+            // written as invalid OOXML.
             foreach (var (origKey, value) in styleProps)
             {
                 if (!origKey.StartsWith("alignment.", StringComparison.OrdinalIgnoreCase)) continue;
                 var subKey = origKey.Substring(10); // preserve case after "alignment."
                 if (CuratedAlignmentSubKeysLower.Contains(subKey.ToLowerInvariant())) continue;
+                if (!IsValidAlignmentLongTailValue(subKey, value))
+                {
+                    unsupportedOut?.Add($"{origKey} (value '{value}' is not valid for OOXML alignment/{subKey} type)");
+                    continue;
+                }
                 alignment.SetAttribute(new DocumentFormat.OpenXml.OpenXmlAttribute("", subKey, "", value));
             }
             applyAlignment = true;
@@ -569,6 +577,24 @@ internal class ExcelStyleManager
     {
         "b", "i", "strike", "u", "vertAlign", "sz", "color", "name",
     };
+
+    // CT_CellAlignment long-tail attributes (i.e. those NOT in
+    // CuratedAlignmentSubKeysLower) and their schema types per ECMA-376
+    // §18.8.1. Used to reject e.g. `alignment.justifyLastLine=GARBAGE`
+    // before it gets serialized as invalid OOXML.
+    private static readonly HashSet<string> AlignmentLongTailBoolAttrs =
+        new(StringComparer.Ordinal) { "justifyLastLine" };
+    private static readonly HashSet<string> AlignmentLongTailIntAttrs =
+        new(StringComparer.Ordinal) { "relativeIndent" };
+
+    private static bool IsValidAlignmentLongTailValue(string key, string value)
+    {
+        if (AlignmentLongTailBoolAttrs.Contains(key))
+            return value is "0" or "1" or "true" or "false" or "True" or "False";
+        if (AlignmentLongTailIntAttrs.Contains(key))
+            return int.TryParse(value, out _);
+        return true; // unknown attrs: pass through (forward-compat)
+    }
 
     private static uint GetOrCreateFont(Stylesheet stylesheet, uint baseFontId,
         Dictionary<string, string> fontProps,
