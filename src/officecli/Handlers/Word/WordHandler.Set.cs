@@ -505,7 +505,10 @@ public partial class WordHandler
                 return true;
             case "numId" or "numid":
                 var numPr = pProps.NumberingProperties ?? (pProps.NumberingProperties = new NumberingProperties());
-                numPr.NumberingId = new NumberingId { Val = ParseHelpers.SafeParseInt(value, "numId") };
+                var numIdVal = ParseHelpers.SafeParseInt(value, "numId");
+                if (numIdVal < 0)
+                    throw new ArgumentException($"numId must be >= 0 (got {numIdVal}). Use numId=0 to remove numbering.");
+                numPr.NumberingId = new NumberingId { Val = numIdVal };
                 return true;
             case "numLevel" or "numlevel" or "ilvl":
                 var numPr2 = pProps.NumberingProperties ?? (pProps.NumberingProperties = new NumberingProperties());
