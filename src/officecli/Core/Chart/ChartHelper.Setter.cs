@@ -2349,7 +2349,10 @@ internal static partial class ChartHelper
                 "variant first (e.g. column3d -> column) before applying secondaryaxis.");
         }
 
-        // Create a new chart element of the same type for secondary axis
+        // Create a new chart element of the same type for secondary axis.
+        // Must match the source's series schema — moving a CT_ScatterSer
+        // (xVal/yVal) into a c:lineChart group produces a schema-invalid
+        // file because CT_LineSer has no xVal child.
         OpenXmlCompositeElement secondaryChart;
         var localName = sourceLocalName;
         if (localName.StartsWith("line", StringComparison.OrdinalIgnoreCase))
@@ -2375,13 +2378,40 @@ internal static partial class ChartHelper
                 new C.VaryColors { Val = false }
             );
         }
-        else
+        else if (localName.StartsWith("scatter", StringComparison.OrdinalIgnoreCase))
         {
-            // Default to line for secondary axis
-            secondaryChart = new C.LineChart(
-                new C.Grouping { Val = C.GroupingValues.Standard },
+            var origStyle = sourceChartType.GetFirstChild<C.ScatterStyle>()?.Val?.Value
+                            ?? C.ScatterStyleValues.LineMarker;
+            secondaryChart = new C.ScatterChart(
+                new C.ScatterStyle { Val = origStyle },
                 new C.VaryColors { Val = false }
             );
+        }
+        else if (localName.StartsWith("bubble", StringComparison.OrdinalIgnoreCase))
+        {
+            secondaryChart = new C.BubbleChart(
+                new C.VaryColors { Val = false }
+            );
+        }
+        else if (localName.StartsWith("radar", StringComparison.OrdinalIgnoreCase))
+        {
+            var origStyle = sourceChartType.GetFirstChild<C.RadarStyle>()?.Val?.Value
+                            ?? C.RadarStyleValues.Standard;
+            secondaryChart = new C.RadarChart(
+                new C.RadarStyle { Val = origStyle },
+                new C.VaryColors { Val = false }
+            );
+        }
+        else
+        {
+            // pie / doughnut / surface / stock / etc. — no meaningful concept
+            // of a secondary value axis (pie is a single-axis chart; surface/
+            // stock have rigid axis layouts). Reject loudly instead of writing
+            // a schema-invalid line chart with the wrong series schema.
+            throw new ArgumentException(
+                $"secondaryaxis: source chart type '{sourceLocalName}' does not "
+                + "support a secondary axis. Supported: line, bar, column, "
+                + "area, scatter, bubble, radar.");
         }
 
         // Move series to secondary chart
