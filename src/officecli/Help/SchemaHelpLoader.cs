@@ -25,39 +25,40 @@ internal static class SchemaHelpLoader
             ["powerpoint"] = "pptx",
         };
 
-    private static string? _cachedRoot;
+    // Manifest index: canonical key "schemas/help/{format}/{element}.json"
+    // (lowercased, forward slashes) → the actual resource name as MSBuild
+    // emitted it. MSBuild may use either '/' or '\' in %(RecursiveDir) on
+    // Windows; we normalize both forms at index-build time.
+    private static Dictionary<string, string>? _manifestIndex;
+    private static readonly object _manifestLock = new();
 
-    internal static string LocateSchemasRoot()
+    private static Dictionary<string, string> ManifestIndex
     {
-        if (_cachedRoot != null) return _cachedRoot;
-
-        // 1. AppContext.BaseDirectory direct: schemas ship as Content next to
-        //    the built binary (bin/Debug/.../ or published single-file location).
-        var baseDir = AppContext.BaseDirectory;
-        var direct = Path.Combine(baseDir, "schemas", "help");
-        if (Directory.Exists(direct))
+        get
         {
-            _cachedRoot = direct;
-            return direct;
-        }
-
-        // 2. Walk up from AppContext.BaseDirectory looking for schemas/help
-        //    (same logic as SchemaContractTests). Handles dev-tree `dotnet run`
-        //    where bin/ is several levels below the repo root.
-        var dir = baseDir;
-        for (int i = 0; i < 10 && dir is not null; i++)
-        {
-            var candidate = Path.Combine(dir, "schemas", "help");
-            if (Directory.Exists(candidate))
+            if (_manifestIndex != null) return _manifestIndex;
+            lock (_manifestLock)
             {
-                _cachedRoot = candidate;
-                return candidate;
+                if (_manifestIndex != null) return _manifestIndex;
+                var asm = typeof(SchemaHelpLoader).Assembly;
+                var idx = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+                foreach (var name in asm.GetManifestResourceNames())
+                {
+                    var canonical = name.Replace('\\', '/');
+                    if (canonical.StartsWith("schemas/help/", StringComparison.OrdinalIgnoreCase))
+                        idx[canonical] = name;
+                }
+                _manifestIndex = idx;
+                return idx;
             }
-            dir = Path.GetDirectoryName(dir);
         }
+    }
 
-        throw new DirectoryNotFoundException(
-            "Could not locate schemas/help/ starting from " + baseDir);
+    private static Stream? OpenSchemaStream(string format, string element)
+    {
+        var key = $"schemas/help/{format}/{element}.json";
+        if (!ManifestIndex.TryGetValue(key, out var resourceName)) return null;
+        return typeof(SchemaHelpLoader).Assembly.GetManifestResourceStream(resourceName);
     }
 
     internal static IReadOnlyList<string> ListFormats() => CanonicalFormats;
@@ -90,16 +91,19 @@ internal static class SchemaHelpLoader
     internal static IReadOnlyList<string> ListElements(string format)
     {
         var canonical = NormalizeFormat(format);
-        var dir = Path.Combine(LocateSchemasRoot(), canonical);
-        if (!Directory.Exists(dir))
-            throw new DirectoryNotFoundException($"Schema directory missing: {dir}");
-
-        return Directory.GetFiles(dir, "*.json")
-            .Select(Path.GetFileNameWithoutExtension)
-            .Where(n => !string.IsNullOrEmpty(n))
-            .Select(n => n!)
-            .OrderBy(n => n, StringComparer.Ordinal)
-            .ToList();
+        var prefix = $"schemas/help/{canonical}/";
+        var elements = new List<string>();
+        foreach (var key in ManifestIndex.Keys)
+        {
+            if (!key.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)) continue;
+            var rest = key.Substring(prefix.Length);
+            // Skip nested entries (none today, but future-proof).
+            if (rest.Contains('/')) continue;
+            if (!rest.EndsWith(".json", StringComparison.OrdinalIgnoreCase)) continue;
+            elements.Add(rest.Substring(0, rest.Length - ".json".Length));
+        }
+        elements.Sort(StringComparer.Ordinal);
+        return elements;
     }
 
     /// <summary>
@@ -110,7 +114,6 @@ internal static class SchemaHelpLoader
     internal static JsonDocument LoadSchema(string format, string element)
     {
         var canonical = NormalizeFormat(format);
-        var dir = Path.Combine(LocateSchemasRoot(), canonical);
         var elements = ListElements(canonical);
 
         // 1. Exact filename match (case-insensitive).
@@ -118,8 +121,10 @@ internal static class SchemaHelpLoader
             e => string.Equals(e, element, StringComparison.OrdinalIgnoreCase));
         if (match != null)
         {
-            var full = Path.Combine(dir, match + ".json");
-            return JsonDocument.Parse(File.ReadAllText(full));
+            using var stream = OpenSchemaStream(canonical, match)
+                ?? throw new InvalidOperationException(
+                    $"Embedded schema resource missing: schemas/help/{canonical}/{match}.json");
+            return JsonDocument.Parse(stream);
         }
 
         // 2. Unknown element — suggest closest match.
