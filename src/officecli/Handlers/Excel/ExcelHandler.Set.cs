@@ -592,6 +592,52 @@ public partial class ExcelHandler
                     }
                     break;
                 }
+                case "merge":
+                {
+                    // CONSISTENCY(cell-merge): cell Add already accepts
+                    // merge=A1:C3 (see ExcelHandler.Add.Cells.cs); cell Set
+                    // mirrors it. Empty/false/none/unmerge clears any merge
+                    // anchored at this cell.
+                    var ws = GetSheet(worksheet);
+                    var mergeCellsEl = ws.GetFirstChild<MergeCells>();
+                    var clear = string.IsNullOrWhiteSpace(value)
+                        || value.Equals("false", StringComparison.OrdinalIgnoreCase)
+                        || value.Equals("none", StringComparison.OrdinalIgnoreCase)
+                        || value.Equals("unmerge", StringComparison.OrdinalIgnoreCase);
+                    if (clear)
+                    {
+                        // Drop any merge whose top-left equals this cell.
+                        if (mergeCellsEl != null)
+                        {
+                            foreach (var mc in mergeCellsEl.Elements<MergeCell>().ToList())
+                            {
+                                var refStr = mc.Reference?.Value ?? "";
+                                var topLeft = refStr.Split(':')[0];
+                                if (string.Equals(topLeft, cellRef, StringComparison.OrdinalIgnoreCase))
+                                    mc.Remove();
+                            }
+                            if (!mergeCellsEl.HasChildren) mergeCellsEl.Remove();
+                            else mergeCellsEl.Count = (uint)mergeCellsEl.Elements<MergeCell>().Count();
+                        }
+                    }
+                    else
+                    {
+                        if (mergeCellsEl == null)
+                        {
+                            mergeCellsEl = new MergeCells();
+                            ws.AppendChild(mergeCellsEl);
+                        }
+                        foreach (var rangeRef in value.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+                        {
+                            var existing = mergeCellsEl.Elements<MergeCell>()
+                                .FirstOrDefault(m => m.Reference?.Value?.Equals(rangeRef, StringComparison.OrdinalIgnoreCase) == true);
+                            if (existing == null)
+                                mergeCellsEl.AppendChild(new MergeCell { Reference = rangeRef });
+                        }
+                        mergeCellsEl.Count = (uint)mergeCellsEl.Elements<MergeCell>().Count();
+                    }
+                    break;
+                }
                 case "tooltip":
                 case "screentip":
                 {
