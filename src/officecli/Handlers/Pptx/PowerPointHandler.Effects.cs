@@ -240,7 +240,16 @@ public partial class PowerPointHandler
     {
         var scene3d = EnsureScene3D(spPr);
         var camera = scene3d.Camera!;
-        var rot = camera.Rotation ?? (camera.Rotation = new Drawing.Rotation());
+        // CT_SphereCoords requires lat / lon / rev attributes — schema rejects
+        // a:rot when any one is missing. Pre-fill all three to 0 so setting
+        // only z-rotation (the common case) doesn't leave the other two
+        // attributes off the element.
+        var rot = camera.Rotation ?? (camera.Rotation = new Drawing.Rotation
+        {
+            Latitude = 0,
+            Longitude = 0,
+            Revolution = 0,
+        });
         if (!double.TryParse(value, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var degVal) || double.IsNaN(degVal) || double.IsInfinity(degVal))
             throw new ArgumentException($"Invalid '3drotation.{axis}' value: '{value}'. Expected a finite number in degrees.");
         var deg = NormalizeDegrees60k(degVal);
