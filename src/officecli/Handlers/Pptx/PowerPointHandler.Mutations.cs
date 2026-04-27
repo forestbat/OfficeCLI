@@ -24,6 +24,15 @@ public partial class PowerPointHandler
         path = NormalizeCellPath(path);
         path = ResolveIdPath(path);
 
+        // BUG-R36-B11: /slide[N]/comment[M] removal.
+        var cmtRemoveMatch = Regex.Match(path, @"^/slide\[(\d+)\]/comment\[(\d+)\]$");
+        if (cmtRemoveMatch.Success)
+        {
+            if (!RemoveSlideComment(path))
+                throw new ArgumentException($"Comment not found: {path}");
+            return null;
+        }
+
         // Handle /slide[N]/notes path (no index bracket)
         var notesMatch = Regex.Match(path, @"^/slide\[(\d+)\]/notes$");
         if (notesMatch.Success)

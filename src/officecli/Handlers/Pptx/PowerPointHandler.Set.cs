@@ -262,6 +262,17 @@ public partial class PowerPointHandler
         var grpMatch = Regex.Match(path, @"^/slide\[(\d+)\]/group\[(\d+)\]$");
         if (grpMatch.Success) return SetGroupByPath(grpMatch, properties);
 
+        // BUG-R36-B11: comment path /slide[N]/comment[M].
+        var cmtMatch = Regex.Match(path, @"^/slide\[(\d+)\]/comment\[(\d+)\]$");
+        if (cmtMatch.Success)
+        {
+            var resolved = ResolveSlideComment(path)
+                ?? throw new ArgumentException($"Comment not found: {path}");
+            var unsupported = SetSlideCommentProperties(resolved.comment, properties);
+            resolved.slide.SlideCommentsPart!.CommentList!.Save();
+            return unsupported;
+        }
+
         // Generic XML fallback: navigate to element and set attributes
         {
             SlidePart fbSlidePart;

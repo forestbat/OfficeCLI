@@ -63,6 +63,8 @@ public partial class PowerPointHandler
             "run" => AddRun(parentPath, index, properties),
             "zoom" or "slidezoom" or "slide-zoom" => AddZoom(parentPath, index, properties),
             "3dmodel" or "model3d" or "model" or "glb" => AddModel3D(parentPath, index, properties),
+            // BUG-R36-B11: legacy slide comments lifecycle.
+            "comment" or "note-comment" => AddSlideComment(parentPath, index, properties),
             _ => AddDefault(parentPath, index, properties, type)
         };
     }

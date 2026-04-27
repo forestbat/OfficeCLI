@@ -708,6 +708,18 @@ public partial class PowerPointHandler
         if (shapeTreeEl == null)
             throw new ArgumentException($"Slide {slideIdx} has no shapes");
 
+        // BUG-R36-B11: comments live in the SlideCommentsPart, not the shape tree.
+        if (elementType == "comment")
+        {
+            var commentsPart = targetSlidePart.SlideCommentsPart;
+            var comments = commentsPart?.CommentList?
+                .Elements<DocumentFormat.OpenXml.Presentation.Comment>().ToList()
+                ?? new List<DocumentFormat.OpenXml.Presentation.Comment>();
+            if (elementIdx < 1 || elementIdx > comments.Count)
+                throw new ArgumentException($"Comment {elementIdx} not found (total: {comments.Count})");
+            return CommentToNode(targetSlidePart, slideIdx, comments[elementIdx - 1], elementIdx);
+        }
+
         if (elementType == "shape")
         {
             var shapes = shapeTreeEl.Elements<Shape>().ToList();
@@ -898,7 +910,9 @@ public partial class PowerPointHandler
                 // CONSISTENCY(ole-alias): "oleobject" mirrors Add's case switch
                 or "ole" or "oleobject" or "object" or "embed"
                 or "animation" or "animate"
-                or "tc" or "cell" or "tr" or "row";
+                or "tc" or "cell" or "tr" or "row"
+                // BUG-R36-B11: query("comment") enumerates all slide comments.
+                or "comment";
         if (!isKnownType)
         {
             var genericParsed = GenericXmlQuery.ParseSelector(selector);
@@ -967,6 +981,22 @@ public partial class PowerPointHandler
                 }
                 if (MatchesGenericAttributes(slideNode, parsed.Attributes))
                     results.Add(slideNode);
+            }
+            return results;
+        }
+
+        // BUG-R36-B11: comment query — enumerate per-slide comments.
+        if (rawType == "comment")
+        {
+            var slideFilter = parsed.SlideNum;
+            var commentNodes = EnumerateComments(slideFilter);
+            foreach (var n in commentNodes)
+            {
+                if (parsed.TextContains != null
+                    && !(n.Text ?? "").Contains(parsed.TextContains, StringComparison.OrdinalIgnoreCase))
+                    continue;
+                if (MatchesGenericAttributes(n, parsed.Attributes))
+                    results.Add(n);
             }
             return results;
         }
