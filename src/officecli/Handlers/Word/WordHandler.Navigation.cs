@@ -442,6 +442,23 @@ public partial class WordHandler
                 .FirstOrDefault(b => b.Name?.Value == targetName);
         }
 
+        // Handle /bookmark[N] (1-based positional, document order). Skips
+        // _GoBack and other reserved bookmarks (names starting with '_') so
+        // the index matches what `query bookmark` returns.
+        if (first.Name.ToLowerInvariant() == "bookmark" && segments.Count == 1
+            && first.Index.HasValue)
+        {
+            var body = _doc.MainDocumentPart?.Document?.Body;
+            if (body != null)
+            {
+                var bks = body.Descendants<BookmarkStart>()
+                    .Where(b => !(b.Name?.Value ?? "").StartsWith("_", StringComparison.Ordinal))
+                    .ToList();
+                var n = first.Index.Value;
+                if (n >= 1 && n <= bks.Count) return bks[n - 1];
+            }
+        }
+
         // Top-level /section[N] anchor routing. `add --type section` returns
         // "/section[N]" as the new element's identity; resolving it to the
         // carrier paragraph (the one whose pPr holds the Nth sectPr) lets
