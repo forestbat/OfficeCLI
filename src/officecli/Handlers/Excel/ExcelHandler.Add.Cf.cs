@@ -187,12 +187,34 @@ public partial class ExcelHandler
             _ => X14.DataBarAxisPositionValues.Automatic
         };
 
+        // CF6 — accept user-supplied bar length bounds (defaults follow Excel's
+        // 0/100 percentage convention) and bar direction (leftToRight/rightToLeft).
+        var dbMinLength = 0U;
+        if (properties.TryGetValue("minLength", out var dbMinLenStr)
+            && uint.TryParse(dbMinLenStr, out var dbMinLenParsed))
+            dbMinLength = dbMinLenParsed;
+        var dbMaxLength = 100U;
+        if (properties.TryGetValue("maxLength", out var dbMaxLenStr)
+            && uint.TryParse(dbMaxLenStr, out var dbMaxLenParsed))
+            dbMaxLength = dbMaxLenParsed;
+
         var x14DataBar = new X14.DataBar
         {
-            MinLength = 0U,
-            MaxLength = 100U,
+            MinLength = dbMinLength,
+            MaxLength = dbMaxLength,
             AxisPosition = dbAxisPosVal
         };
+        if (properties.TryGetValue("direction", out var dbDir))
+        {
+            var dirNorm = dbDir.ToLowerInvariant().Replace("-", "").Replace("_", "");
+            x14DataBar.Direction = dirNorm switch
+            {
+                "lefttoright" or "ltr" => X14.DataBarDirectionValues.LeftToRight,
+                "righttoleft" or "rtl" => X14.DataBarDirectionValues.RightToLeft,
+                "context" => X14.DataBarDirectionValues.Context,
+                _ => X14.DataBarDirectionValues.Context
+            };
+        }
         var x14MinCfvo = new X14.ConditionalFormattingValueObject
         {
             Type = minVal != null

@@ -6,6 +6,7 @@ using DocumentFormat.OpenXml;
 using DocumentFormat.OpenXml.Packaging;
 using DocumentFormat.OpenXml.Spreadsheet;
 using OfficeCli.Core;
+using X14 = DocumentFormat.OpenXml.Office2010.Excel;
 
 namespace OfficeCli.Handlers;
 
@@ -478,6 +479,15 @@ public partial class ExcelHandler
                     { csColors2[^1].Rgb = ParseHelpers.NormalizeArgbColor(value); }
                     else unsup.Add(key);
                     break;
+                case "midcolor":
+                {
+                    // 3-stop color scale only — assumes the rule already has min/mid/max.
+                    var csColors3 = rule?.GetFirstChild<ColorScale>()?.Elements<DocumentFormat.OpenXml.Spreadsheet.Color>().ToList();
+                    if (csColors3 != null && csColors3.Count >= 3)
+                        csColors3[1].Rgb = ParseHelpers.NormalizeArgbColor(value);
+                    else unsup.Add(key);
+                    break;
+                }
                 case "iconset":
                 case "icons":
                     var iconSetEl = rule?.GetFirstChild<IconSet>();
@@ -491,10 +501,78 @@ public partial class ExcelHandler
                     else unsup.Add(key);
                     break;
                 case "showvalue":
+                {
+                    // showValue applies to both IconSet and DataBar rules.
                     var isEl2 = rule?.GetFirstChild<IconSet>();
+                    var dbEl = rule?.GetFirstChild<DataBar>();
                     if (isEl2 != null) isEl2.ShowValue = IsTruthy(value);
+                    else if (dbEl != null) dbEl.ShowValue = IsTruthy(value);
                     else unsup.Add(key);
                     break;
+                }
+                case "minlength":
+                {
+                    var dbEl = rule?.GetFirstChild<DataBar>();
+                    if (dbEl != null && uint.TryParse(value, out var mlen))
+                    {
+                        dbEl.MinLength = mlen;
+                        var x14Db = ResolveX14DataBar(ws, rule!);
+                        if (x14Db != null) x14Db.MinLength = mlen;
+                    }
+                    else unsup.Add(key);
+                    break;
+                }
+                case "maxlength":
+                {
+                    var dbEl = rule?.GetFirstChild<DataBar>();
+                    if (dbEl != null && uint.TryParse(value, out var xlen))
+                    {
+                        dbEl.MaxLength = xlen;
+                        var x14Db = ResolveX14DataBar(ws, rule!);
+                        if (x14Db != null) x14Db.MaxLength = xlen;
+                    }
+                    else unsup.Add(key);
+                    break;
+                }
+                case "negativecolor":
+                {
+                    var x14Db = rule != null ? ResolveX14DataBar(ws, rule) : null;
+                    if (x14Db != null)
+                    {
+                        x14Db.RemoveAllChildren<X14.NegativeFillColor>();
+                        x14Db.Append(new X14.NegativeFillColor { Rgb = ParseHelpers.NormalizeArgbColor(value) });
+                    }
+                    else unsup.Add(key);
+                    break;
+                }
+                case "axiscolor":
+                {
+                    var x14Db = rule != null ? ResolveX14DataBar(ws, rule) : null;
+                    if (x14Db != null)
+                    {
+                        x14Db.RemoveAllChildren<X14.BarAxisColor>();
+                        x14Db.Append(new X14.BarAxisColor { Rgb = ParseHelpers.NormalizeArgbColor(value) });
+                    }
+                    else unsup.Add(key);
+                    break;
+                }
+                case "direction":
+                {
+                    var x14Db = rule != null ? ResolveX14DataBar(ws, rule) : null;
+                    if (x14Db != null)
+                    {
+                        var dirNorm = value.ToLowerInvariant().Replace("-", "").Replace("_", "");
+                        x14Db.Direction = dirNorm switch
+                        {
+                            "lefttoright" or "ltr" => X14.DataBarDirectionValues.LeftToRight,
+                            "righttoleft" or "rtl" => X14.DataBarDirectionValues.RightToLeft,
+                            "context" => X14.DataBarDirectionValues.Context,
+                            _ => X14.DataBarDirectionValues.Context
+                        };
+                    }
+                    else unsup.Add(key);
+                    break;
+                }
                 default:
                     unsup.Add(key);
                     break;
@@ -502,6 +580,35 @@ public partial class ExcelHandler
         }
         SaveWorksheet(worksheet);
         return unsup;
+    }
+
+    /// <summary>
+    /// Resolve the x14:dataBar element paired with a 2007 dataBar rule via x14:id reference.
+    /// Returns null if the rule has no x14 extension or the worksheet has no matching x14 cf.
+    /// </summary>
+    private static X14.DataBar? ResolveX14DataBar(Worksheet ws, ConditionalFormattingRule rule)
+    {
+        var extList = rule.GetFirstChild<ConditionalFormattingRuleExtensionList>();
+        if (extList == null) return null;
+        var idExt = extList.Elements<ConditionalFormattingRuleExtension>()
+            .FirstOrDefault(e => string.Equals(e.Uri?.Value, "{B025F937-C7B1-47D3-B67F-A62EFF666E3E}", StringComparison.OrdinalIgnoreCase));
+        var refId = idExt?.GetFirstChild<X14.Id>()?.Text;
+        if (string.IsNullOrEmpty(refId)) return null;
+
+        const string cfExtUri = "{78C0D931-6437-407d-A8EE-F0AAD7539E65}";
+        var wsExtList = ws.GetFirstChild<WorksheetExtensionList>();
+        if (wsExtList == null) return null;
+        foreach (var wsExt in wsExtList.Elements<WorksheetExtension>().Where(e => e.Uri == cfExtUri))
+        {
+            foreach (var x14Cfs in wsExt.Elements<X14.ConditionalFormattings>())
+            foreach (var x14Cf in x14Cfs.Elements<X14.ConditionalFormatting>())
+            foreach (var x14Rule in x14Cf.Elements<X14.ConditionalFormattingRule>())
+            {
+                if (string.Equals(x14Rule.Id?.Value, refId, StringComparison.OrdinalIgnoreCase))
+                    return x14Rule.GetFirstChild<X14.DataBar>();
+            }
+        }
+        return null;
     }
 
     private List<string> SetPivotTableByPath(Match m, WorksheetPart worksheet, Dictionary<string, string> properties)

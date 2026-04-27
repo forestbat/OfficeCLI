@@ -434,6 +434,30 @@ public partial class ExcelHandler
                         cfNode.Format["color"] = ParseHelpers.FormatHexColor(dbColor.Rgb.Value);
                     else if (dbColor?.Theme?.Value != null)
                         cfNode.Format["color"] = $"theme{dbColor.Theme.Value}";
+                    // ShowValue defaults to true; only emit when explicitly false on the OOXML
+                    if (dataBar.ShowValue?.Value == false) cfNode.Format["showValue"] = false;
+                    if (dataBar.MinLength?.Value is uint dbMinLen) cfNode.Format["minLength"] = dbMinLen;
+                    if (dataBar.MaxLength?.Value is uint dbMaxLen) cfNode.Format["maxLength"] = dbMaxLen;
+
+                    // x14 extension: direction, negativeColor, axisColor
+                    var dbExtList = rule.GetFirstChild<ConditionalFormattingRuleExtensionList>();
+                    if (dbExtList != null)
+                    {
+                        // Look up the matching x14:cfRule by id reference; fall back to scanning worksheet extLst
+                        var x14CfRule = FindMatchingX14DataBarRule(GetSheet(worksheet), dbExtList);
+                        var x14Db = x14CfRule?.GetFirstChild<X14.DataBar>();
+                        if (x14Db != null)
+                        {
+                            if (x14Db.Direction?.HasValue == true)
+                                cfNode.Format["direction"] = x14Db.Direction.InnerText;
+                            var negCol = x14Db.GetFirstChild<X14.NegativeFillColor>();
+                            if (negCol?.Rgb?.Value != null)
+                                cfNode.Format["negativeColor"] = ParseHelpers.FormatHexColor(negCol.Rgb.Value);
+                            var axCol = x14Db.GetFirstChild<X14.BarAxisColor>();
+                            if (axCol?.Rgb?.Value != null)
+                                cfNode.Format["axisColor"] = ParseHelpers.FormatHexColor(axCol.Rgb.Value);
+                        }
+                    }
                 }
 
                 // ColorScale
@@ -1492,5 +1516,35 @@ public partial class ExcelHandler
             if (fontColor?.Rgb?.Value != null)
                 cfNode.Format["font.color"] = ParseHelpers.FormatHexColor(fontColor.Rgb.Value);
         }
+    }
+
+    /// <summary>
+    /// Resolve the x14:cfRule that pairs with a 2007 dataBar rule via x14:id reference,
+    /// by scanning the worksheet's extLst x14:conditionalFormattings.
+    /// </summary>
+    private static X14.ConditionalFormattingRule? FindMatchingX14DataBarRule(
+        Worksheet ws,
+        ConditionalFormattingRuleExtensionList extList)
+    {
+        var idExt = extList.Elements<ConditionalFormattingRuleExtension>()
+            .FirstOrDefault(e => string.Equals(e.Uri?.Value, "{B025F937-C7B1-47D3-B67F-A62EFF666E3E}", StringComparison.OrdinalIgnoreCase));
+        var idEl = idExt?.GetFirstChild<X14.Id>();
+        var refId = idEl?.Text;
+        if (string.IsNullOrEmpty(refId)) return null;
+
+        const string cfExtUri = "{78C0D931-6437-407d-A8EE-F0AAD7539E65}";
+        var wsExtList = ws.GetFirstChild<WorksheetExtensionList>();
+        if (wsExtList == null) return null;
+        foreach (var wsExt in wsExtList.Elements<WorksheetExtension>().Where(e => e.Uri == cfExtUri))
+        {
+            foreach (var x14Cfs in wsExt.Elements<X14.ConditionalFormattings>())
+            foreach (var x14Cf in x14Cfs.Elements<X14.ConditionalFormatting>())
+            foreach (var x14Rule in x14Cf.Elements<X14.ConditionalFormattingRule>())
+            {
+                if (string.Equals(x14Rule.Id?.Value, refId, StringComparison.OrdinalIgnoreCase))
+                    return x14Rule;
+            }
+        }
+        return null;
     }
 }
