@@ -96,6 +96,14 @@ public class ResidentServer : IDisposable
     // ordered teardown: drain in-flight command → dispose handler → ack client.
     private readonly object _shutdownLock = new();
     private Task? _shutdownTask;
+    // BUG-BT-R26-2: silent data loss when the resident-held file is unlinked
+    // out from under us. OpenXML SDK keeps writing to the orphaned inode on
+    // Dispose, so the on-disk path stays missing and the user loses every
+    // edit made during the resident session. We can't reliably resurrect
+    // the data (the inode may have been replaced), but we MUST escalate so
+    // close/set/get stop reporting bogus success. Set during DoShutdownAsync
+    // and surfaced through the __close__ ack.
+    private volatile bool _shutdownFileMissing;
 
     public string PipeName => _pipeName;
 
@@ -396,7 +404,13 @@ public class ResidentServer : IDisposable
                     LogStderr($"Shutdown error during __close__: {ex.Message}");
                 }
 
-                var response = MakeResponse(0, "Closing resident.", "");
+                // BUG-BT-R26-2: report shutdown-time data-loss to the
+                // client so the close command exits non-zero instead of
+                // confirming a save that didn't land on disk.
+                var response = _shutdownFileMissing
+                    ? MakeResponse(1, "",
+                        $"file vanished during resident session — data may be lost: {_filePath}")
+                    : MakeResponse(0, "Closing resident.", "");
                 // ShutdownAsync cancelled the ping token; write on a
                 // fresh CTS so the client still gets the ack.
                 using var writeCts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
@@ -1387,6 +1401,22 @@ public class ResidentServer : IDisposable
         {
             LogStderr($"Warning: handler dispose error: {ex.Message}");
         }
+
+        // BUG-BT-R26-2: detect file-deleted-mid-session. If the user (or an
+        // external process) unlinked the file while the resident held it
+        // open, OpenXML wrote into a now-orphaned inode and the on-disk
+        // path no longer points at our data. Loud-fail so the close
+        // command's exit code + stderr message reflect the loss instead
+        // of pretending the save succeeded.
+        try
+        {
+            if (!File.Exists(_filePath))
+            {
+                _shutdownFileMissing = true;
+                LogStderr($"ERROR: file vanished during resident session — data may be lost: {_filePath}");
+            }
+        }
+        catch { /* best-effort probe; don't mask the real shutdown */ }
 
         // 5. NOW cancel ping + idle. Clients observing the ping pipe from
         //    this moment on will see it dead and can safely open the file

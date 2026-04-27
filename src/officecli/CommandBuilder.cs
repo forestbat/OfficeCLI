@@ -73,8 +73,18 @@ static partial class CommandBuilder
         closeCommand.SetAction(result => { var json = result.GetValue(jsonOption); return SafeRun(() =>
         {
             var file = result.GetValue(closeFileArg)!;
-            if (ResidentClient.SendClose(file.FullName))
+            if (ResidentClient.SendCloseWithResponse(file.FullName, out var closeResp))
             {
+                // BUG-BT-R26-2: resident may report a non-zero shutdown
+                // (e.g. file vanished mid-session → data loss). Bubble
+                // that up instead of pretending the close succeeded.
+                if (closeResp != null && closeResp.ExitCode != 0)
+                {
+                    var err = !string.IsNullOrEmpty(closeResp.Stderr)
+                        ? closeResp.Stderr
+                        : $"Resident close reported error (exit {closeResp.ExitCode})";
+                    throw new InvalidOperationException(err);
+                }
                 var msg = $"Resident closed for {file.Name}";
                 if (json) Console.WriteLine(OutputFormatter.WrapEnvelopeText(msg));
                 else Console.WriteLine(msg);

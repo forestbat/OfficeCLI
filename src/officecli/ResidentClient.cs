@@ -121,6 +121,18 @@ public static class ResidentClient
     /// </summary>
     public static bool SendClose(string filePath)
     {
+        return SendCloseWithResponse(filePath, out _);
+    }
+
+    /// <summary>
+    /// Send a close command and surface the resident's response so callers
+    /// can distinguish "no resident running" (return false) from "resident
+    /// shut down but reported an error during teardown" (return true with
+    /// non-zero ExitCode + Stderr — see BUG-BT-R26-2 file-vanished case).
+    /// </summary>
+    public static bool SendCloseWithResponse(string filePath, out ResidentResponse? response)
+    {
+        response = null;
         // Send close via the dedicated ping pipe (always responsive)
         var pipeName = ResidentServer.GetPipeName(filePath) + "-ping";
         try
@@ -135,8 +147,10 @@ public static class ResidentClient
             var responseLine = PipeReadLine(client);
             if (responseLine == null) return false;
 
-            var response = System.Text.Json.JsonSerializer.Deserialize<ResidentResponse>(responseLine, ResidentJsonContext.Default.ResidentResponse);
-            return response != null && response.ExitCode == 0;
+            response = System.Text.Json.JsonSerializer.Deserialize<ResidentResponse>(responseLine, ResidentJsonContext.Default.ResidentResponse);
+            // Reaching the resident at all (any deserializable response) means
+            // a resident was running — even if it reported teardown errors.
+            return response != null;
         }
         catch
         {
