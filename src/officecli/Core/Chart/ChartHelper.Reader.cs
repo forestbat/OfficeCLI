@@ -72,7 +72,24 @@ internal static partial class ChartHelper
             if (dataLabels.GetFirstChild<C.ShowPercent>()?.Val?.Value == true) parts.Add("percent");
             if (parts.Count > 0) node.Format["dataLabels"] = string.Join(",", parts);
             var dlPos = dataLabels.GetFirstChild<C.DataLabelPosition>()?.Val;
-            if (dlPos?.HasValue == true) node.Format["labelPos"] = dlPos.InnerText;
+            if (dlPos?.HasValue == true)
+            {
+                // Normalize OOXML's mix of short codes (ctr, t, b, l, r, outEnd) and long
+                // forms (inBase, inEnd, bestFit) to a consistent friendly vocabulary on
+                // readback. Set continues to accept both forms — see B12 alias map.
+                node.Format["labelPos"] = dlPos.InnerText switch
+                {
+                    "ctr" => "center",
+                    "t" => "top",
+                    "b" => "bottom",
+                    "l" => "left",
+                    "r" => "right",
+                    "outEnd" => "outsideEnd",
+                    "inEnd" => "insideEnd",
+                    "inBase" => "insideBase",
+                    _ => dlPos.InnerText
+                };
+            }
         }
 
         // Chart style

@@ -184,7 +184,22 @@ internal static partial class ChartHelper
                         if (!value.Equals("none", StringComparison.OrdinalIgnoreCase))
                         {
                             var dl = new C.DataLabels();
-                            var parts = value.ToLowerInvariant().Split(',').Select(s => s.Trim()).ToHashSet();
+                            // Normalize friendly aliases: seriesName→series, categoryName→category,
+                            // percentage→percent. Keeps the dataLabels vocabulary consistent with
+                            // the dotted datalabels.show* setter family (see CL15-derived cases below).
+                            var partsRaw = value.ToLowerInvariant().Split(',').Select(s => s.Trim()).ToList();
+                            for (int pi = 0; pi < partsRaw.Count; pi++)
+                            {
+                                partsRaw[pi] = partsRaw[pi] switch
+                                {
+                                    "seriesname" => "series",
+                                    "categoryname" => "category",
+                                    "percentage" => "percent",
+                                    "valuelabel" or "values" => "value",
+                                    _ => partsRaw[pi]
+                                };
+                            }
+                            var parts = partsRaw.ToHashSet();
                             // Position values (outsideEnd, center, insideEnd, insideBase, top, bottom, left, right)
                             // implicitly enable showVal when used as the dataLabels value
                             var positionValues = new HashSet<string> { "outsideend", "center", "insideend", "insidebase",
@@ -284,9 +299,9 @@ internal static partial class ChartHelper
                     var dlblPos = value.ToLowerInvariant() switch
                     {
                         "center" or "ctr" => C.DataLabelPositionValues.Center,
-                        "insideend" or "inside" => C.DataLabelPositionValues.InsideEnd,
-                        "insidebase" or "base" => C.DataLabelPositionValues.InsideBase,
-                        "outsideend" or "outside" => isPie
+                        "insideend" or "inend" or "inside" => C.DataLabelPositionValues.InsideEnd,
+                        "insidebase" or "inbase" or "base" => C.DataLabelPositionValues.InsideBase,
+                        "outsideend" or "outend" or "outside" => isPie
                             ? C.DataLabelPositionValues.BestFit
                             : isStacked
                                 ? C.DataLabelPositionValues.InsideEnd
