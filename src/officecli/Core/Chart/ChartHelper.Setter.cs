@@ -290,11 +290,11 @@ internal static partial class ChartHelper
                         || plotArea2.Elements<C.LineChart>().Any(c =>
                             IsStackedLineGrouping(c.GetFirstChild<C.Grouping>()?.Val))
                         || plotArea2.Elements<C.Line3DChart>().Any(c =>
-                            IsStackedLineGrouping(c.GetFirstChild<C.Grouping>()?.Val))
-                        || plotArea2.Elements<C.AreaChart>().Any(c =>
-                            IsStackedLineGrouping(c.GetFirstChild<C.Grouping>()?.Val))
-                        || plotArea2.Elements<C.Area3DChart>().Any(c =>
                             IsStackedLineGrouping(c.GetFirstChild<C.Grouping>()?.Val));
+                        // AreaChart/Area3DChart are not checked here: the
+                        // dLblPos handler early-exits for area charts above
+                        // (line 256-259), so any area-stacked check below
+                        // would be unreachable dead code.
 
                     var dlblPos = value.ToLowerInvariant() switch
                     {
