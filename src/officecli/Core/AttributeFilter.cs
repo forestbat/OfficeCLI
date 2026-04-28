@@ -254,6 +254,23 @@ internal static class AttributeFilter
         // Resolve actual value from node
         var (hasKey, actualStr) = ResolveValue(node, cond.Key);
 
+        // CONSISTENCY(style-dual-key): paragraph `style` has two surfacings —
+        // OOXML styleId (Format["style"]/["styleId"], e.g. "H5") and the
+        // user-facing display name (node.Style/Format["styleName"], e.g.
+        // "H正文"). The Word handler-level selector matches either; the CLI
+        // post-filter must mirror that, otherwise `[style=H正文]` returns the
+        // 3 handler-matched paragraphs only to have the post-filter drop them
+        // because Format["style"] holds the styleId. styleId= / styleName=
+        // are precise keys with no fallback.
+        if ((cond.Op == FilterOp.Equal || cond.Op == FilterOp.NotEqual)
+            && string.Equals(cond.Key, "style", StringComparison.OrdinalIgnoreCase))
+        {
+            bool dualHit = StringEquals(node.Style ?? "", cond.Value)
+                || (node.Format.TryGetValue("style", out var sid) && StringEquals(sid?.ToString() ?? "", cond.Value))
+                || (node.Format.TryGetValue("styleName", out var sname) && StringEquals(sname?.ToString() ?? "", cond.Value));
+            return cond.Op == FilterOp.Equal ? dualHit : !dualHit;
+        }
+
         switch (cond.Op)
         {
             case FilterOp.Exists:

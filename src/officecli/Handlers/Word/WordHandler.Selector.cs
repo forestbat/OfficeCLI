@@ -178,7 +178,12 @@ public partial class WordHandler
 
             string? actual = key.ToLowerInvariant() switch
             {
+                // CONSISTENCY(style-dual-key): `style` is lenient — matches
+                // either styleId (`H5`) or display name (`H正文`). For
+                // unambiguous queries use `styleId=` or `styleName=` below.
                 "style" => GetStyleName(para),
+                "styleid" => para.ParagraphProperties?.ParagraphStyleId?.Val?.Value,
+                "stylename" => GetStyleName(para),
                 "alignment" => para.ParagraphProperties?.Justification?.Val != null
                     ? para.ParagraphProperties.Justification.Val.InnerText : null,
                 "firstlineindent" => para.ParagraphProperties?.Indentation?.FirstLine?.Value,
