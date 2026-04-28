@@ -499,15 +499,22 @@ public partial class PowerPointHandler
                 "callout, process, decision, smiley, frame, gear6")
         };
 
+    // BUG-FIX(B8): canonical names mirror OOXML LineEndValues so that the
+    // value passed to Add/Set round-trips through Get. The previous mapping
+    // had 'arrow' → Triangle (input) but Get emitted the OOXML name 'arrow'
+    // for LineEndValues.Arrow, producing input/output asymmetry. Aliases
+    // (open/closed/circle) are accepted but Get always returns the canonical
+    // OOXML token (triangle, arrow, stealth, diamond, oval, none).
     private static Drawing.LineEndValues ParseLineEndType(string name) =>
         name.ToLowerInvariant() switch
         {
-            "triangle" or "arrow" => Drawing.LineEndValues.Triangle,
+            "triangle" or "closed" => Drawing.LineEndValues.Triangle,
             "stealth" => Drawing.LineEndValues.Stealth,
             "diamond" => Drawing.LineEndValues.Diamond,
             "oval" or "circle" => Drawing.LineEndValues.Oval,
-            "open" => Drawing.LineEndValues.Arrow,
+            "arrow" or "open" => Drawing.LineEndValues.Arrow,
             "none" => Drawing.LineEndValues.None,
-            _ => Drawing.LineEndValues.Triangle
+            _ => throw new ArgumentException(
+                $"Invalid line end type: '{name}'. Valid values: triangle, arrow, stealth, diamond, oval, none.")
         };
 }
