@@ -1198,12 +1198,34 @@ public partial class WordHandler
                 var pRunFonts = rp?.RunFonts ?? markRp?.GetFirstChild<RunFonts>();
                 if (pRunFonts != null)
                 {
-                    if (pRunFonts.Ascii?.Value != null && !node.Format.ContainsKey("font.ascii"))
-                        node.Format["font.ascii"] = pRunFonts.Ascii.Value;
-                    if (pRunFonts.EastAsia?.Value != null && !node.Format.ContainsKey("font.eastAsia"))
-                        node.Format["font.eastAsia"] = pRunFonts.EastAsia.Value;
-                    if (pRunFonts.HighAnsi?.Value != null && !node.Format.ContainsKey("font.hAnsi"))
-                        node.Format["font.hAnsi"] = pRunFonts.HighAnsi.Value;
+                    // CONSISTENCY(canonical-keys): schema (docx/run.json,
+                    // docx/paragraph.json) declares `font.latin` and `font.ea`
+                    // as canonical. Collapse Ascii+HighAnsi to `font.latin`
+                    // when they match (the round-trip case for `font.latin=`
+                    // Set). When they differ, emit both legacy slots so no
+                    // information is lost.
+                    var ascii = pRunFonts.Ascii?.Value;
+                    var hAnsi = pRunFonts.HighAnsi?.Value;
+                    if (ascii != null && hAnsi != null && ascii == hAnsi)
+                    {
+                        if (!node.Format.ContainsKey("font.latin"))
+                            node.Format["font.latin"] = ascii;
+                    }
+                    else
+                    {
+                        if (ascii != null && !node.Format.ContainsKey("font.ascii"))
+                            node.Format["font.ascii"] = ascii;
+                        if (hAnsi != null && !node.Format.ContainsKey("font.hAnsi"))
+                            node.Format["font.hAnsi"] = hAnsi;
+                        // Single-slot emit: prefer canonical font.latin if
+                        // only one of ascii/hAnsi is set.
+                        if (ascii != null && hAnsi == null && !node.Format.ContainsKey("font.latin"))
+                            node.Format["font.latin"] = ascii;
+                        else if (hAnsi != null && ascii == null && !node.Format.ContainsKey("font.latin"))
+                            node.Format["font.latin"] = hAnsi;
+                    }
+                    if (pRunFonts.EastAsia?.Value != null && !node.Format.ContainsKey("font.ea"))
+                        node.Format["font.ea"] = pRunFonts.EastAsia.Value;
                     if (pRunFonts.ComplexScript?.Value != null && !node.Format.ContainsKey("font.cs"))
                         node.Format["font.cs"] = pRunFonts.ComplexScript.Value;
                 }
@@ -1275,9 +1297,25 @@ public partial class WordHandler
             var rFonts = run.RunProperties?.RunFonts;
             if (rFonts != null)
             {
-                if (rFonts.Ascii?.Value != null) node.Format["font.ascii"] = rFonts.Ascii.Value;
-                if (rFonts.EastAsia?.Value != null) node.Format["font.eastAsia"] = rFonts.EastAsia.Value;
-                if (rFonts.HighAnsi?.Value != null) node.Format["font.hAnsi"] = rFonts.HighAnsi.Value;
+                // CONSISTENCY(canonical-keys): collapse Ascii+HighAnsi into
+                // `font.latin` (canonical per schema docx/run.json) when they
+                // match — the round-trip case for `font.latin=` Set. Differing
+                // slots fall back to legacy `font.ascii` / `font.hAnsi` keys.
+                var ascii = rFonts.Ascii?.Value;
+                var hAnsi = rFonts.HighAnsi?.Value;
+                if (ascii != null && hAnsi != null && ascii == hAnsi)
+                    node.Format["font.latin"] = ascii;
+                else
+                {
+                    if (ascii != null && hAnsi != null)
+                    {
+                        node.Format["font.ascii"] = ascii;
+                        node.Format["font.hAnsi"] = hAnsi;
+                    }
+                    else if (ascii != null) node.Format["font.latin"] = ascii;
+                    else if (hAnsi != null) node.Format["font.latin"] = hAnsi;
+                }
+                if (rFonts.EastAsia?.Value != null) node.Format["font.ea"] = rFonts.EastAsia.Value;
                 if (rFonts.ComplexScript?.Value != null) node.Format["font.cs"] = rFonts.ComplexScript.Value;
             }
             var size = GetRunFontSize(run);
