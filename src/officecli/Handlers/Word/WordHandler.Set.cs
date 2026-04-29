@@ -48,7 +48,11 @@ public partial class WordHandler
                     or "indent" or "rightindent" or "indentright" or "hangingindent" or "spacebefore"
                     or "spaceafter" or "linespacing" or "keepnext" or "keeplines" or "pagebreakbefore"
                     or "widowcontrol" or "liststyle" or "start" or "text" or "formula"
-                    or "contextualspacing")
+                    or "contextualspacing"
+                    // direction is paragraph-scope (writes <w:bidi/> on pPr +
+                    // <w:rtl/> cascade to runs); routing it as run-level
+                    // would only stamp the run flag and skip the pPr bidi.
+                    or "direction" or "dir" or "bidi")
                     paraProps[key] = value;
                 else
                     formatProps[key] = value;
