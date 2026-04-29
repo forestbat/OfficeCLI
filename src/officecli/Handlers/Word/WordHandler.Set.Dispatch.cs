@@ -785,7 +785,7 @@ public partial class WordHandler
                         if (pgNum == null)
                         {
                             pgNum = new PageNumberType();
-                            sectPr.AppendChild(pgNum);
+                            InsertSectPrChildInOrder(sectPr, pgNum);
                         }
                         pgNum.Start = startN;
                     }
@@ -797,7 +797,7 @@ public partial class WordHandler
                     if (pgNum == null)
                     {
                         pgNum = new PageNumberType();
-                        sectPr.AppendChild(pgNum);
+                        InsertSectPrChildInOrder(sectPr, pgNum);
                     }
                     pgNum.Format = ParseNumberFormat(value);
                     break;
@@ -817,7 +817,7 @@ public partial class WordHandler
                     if (IsTruthy(value))
                     {
                         if (sectPr.GetFirstChild<TitlePage>() == null)
-                            sectPr.AppendChild(new TitlePage());
+                            InsertSectPrChildInOrder(sectPr, new TitlePage());
                     }
                     else
                     {
@@ -838,7 +838,7 @@ public partial class WordHandler
                         if (lnNum == null)
                         {
                             lnNum = new LineNumberType();
-                            sectPr.AppendChild(lnNum);
+                            InsertSectPrChildInOrder(sectPr, lnNum);
                         }
                         // If value is a number, set CountBy to that number
                         if (int.TryParse(lower, out var countBy))
