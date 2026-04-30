@@ -36,6 +36,7 @@ internal static class SkillInstaller
         ["word"]            = "officecli-docx",
         ["excel"]           = "officecli-xlsx",
         ["morph-ppt"]       = "morph-ppt",
+        ["morph-ppt-3d"]    = "morph-ppt-3d",
         ["pitch-deck"]      = "officecli-pitch-deck",
         ["academic-paper"]  = "officecli-academic-paper",
         ["data-dashboard"]  = "officecli-data-dashboard",
@@ -149,6 +150,45 @@ internal static class SkillInstaller
     public static HashSet<string> InstallSkill(string skillName)
     {
         return InstallSkillToAll(skillName);
+    }
+
+    /// <summary>True if <paramref name="key"/> is a known skill alias (in <see cref="SkillMap"/>).</summary>
+    public static bool IsKnownSkill(string key) => SkillMap.ContainsKey(key);
+
+    /// <summary>
+    /// Agent-friendly facade: ensure the skill is installed to all detected
+    /// agents (idempotent, install summary on stderr) and print the SKILL.md
+    /// content to stdout. One command, agent doesn't need to know per-agent
+    /// skill paths or track install state.
+    /// Called as: officecli skill pitch-deck
+    /// </summary>
+    public static int LoadSkill(string skillName)
+    {
+        if (!SkillMap.TryGetValue(skillName, out var folder))
+        {
+            Console.Error.WriteLine($"Unknown skill: {skillName}");
+            Console.Error.WriteLine($"Available: {string.Join(", ", SkillMap.Keys.OrderBy(k => k))}");
+            return 1;
+        }
+
+        // Side-effect install (idempotent). Redirect stdout → stderr so
+        // install banners don't contaminate the SKILL.md content the agent
+        // is expected to consume from stdout.
+        var origOut = Console.Out;
+        Console.SetOut(Console.Error);
+        try { InstallSkillToAll(skillName); }
+        finally { Console.SetOut(origOut); }
+
+        // Pull SKILL.md from the embedded copy — same content the install
+        // just wrote, so agent never has to know the on-disk path.
+        var content = LoadEmbeddedResource($"skills/{folder}/SKILL.md");
+        if (content == null)
+        {
+            Console.Error.WriteLine($"  Embedded SKILL.md not found for '{skillName}'");
+            return 1;
+        }
+        Console.Out.Write(content);
+        return 0;
     }
 
     /// <summary>

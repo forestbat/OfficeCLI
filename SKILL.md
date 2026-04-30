@@ -364,31 +364,39 @@ officecli add-part <file> <parent>                   # create new document part 
 
 ## Specialized Skills
 
-Load the dedicated skill from `skills/<skill-name>/SKILL.md`. Skills are organized as **base layer + scene layer**: scene-layer skills inherit every rule from their base — pick the most specific one that fits the user's ask; if none fits, fall back to the base.
+Load a specialized skill on demand:
+
+    officecli skill <name>
+
+That single command ensures the skill is installed (idempotent) and prints its full SKILL.md to stdout — read the output and follow its rules. No need to know on-disk paths.
+
+Skills are organized as **base layer + scene layer**: scene-layer skills inherit every rule from their base — pick the most specific one that fits the user's ask; if none fits, fall back to the base.
 
 ### Word (.docx)
 
-| Skill | When to use | Layer |
-|-------|-------------|-------|
-| `officecli-docx` | Reports, letters, memos, proposals, generic documents | **base** |
-| `officecli-academic-paper` | Journal / conference / thesis: APA / Chicago / IEEE / MLA citations, equations, SEQ + PAGEREF cross-refs, multi-column journal layout, bibliography | scene (inherits docx) |
+| Name | When to use | Layer |
+|------|-------------|-------|
+| `word` | Reports, letters, memos, proposals, generic documents | **base** |
+| `academic-paper` | Journal / conference / thesis: APA / Chicago / IEEE / MLA citations, equations, SEQ + PAGEREF cross-refs, multi-column journal layout, bibliography | scene (inherits word) |
 
 ### PowerPoint (.pptx)
 
-| Skill | When to use | Layer |
-|-------|-------------|-------|
-| `officecli-pptx` | Generic decks: board reviews, sales decks, all-hands, product launches | **base** |
-| `officecli-pitch-deck` | **Fundraising only** — seed / Series A-C / SAFE / convertible / strategic raise. NOT for sales / product / board decks (route those to `officecli-pptx`) | scene (inherits pptx) |
+| Name | When to use | Layer |
+|------|-------------|-------|
+| `pptx` | Generic decks: board reviews, sales decks, all-hands, product launches | **base** |
+| `pitch-deck` | **Fundraising only** — seed / Series A-C / SAFE / convertible / strategic raise. NOT for sales / product / board decks (route those to `pptx`) | scene (inherits pptx) |
 | `morph-ppt` | Cinematic Morph-animated presentations | scene (inherits pptx) |
 | `morph-ppt-3d` | 3D Morph: GLB models, camera moves, depth (extends `morph-ppt`) | scene (extends morph-ppt) |
 
 ### Excel (.xlsx)
 
-| Skill | When to use | Layer |
-|-------|-------------|-------|
-| `officecli-xlsx` | Generic workbooks, formulas, pivots, trackers | **base** |
-| `officecli-financial-model` | Financial models, scenarios, projections | scene (inherits xlsx) |
-| `officecli-data-dashboard` | CSV/tabular data → KPI / analytics / executive dashboards with charts and sparklines | scene (inherits xlsx) |
+| Name | When to use | Layer |
+|------|-------------|-------|
+| `excel` | Generic workbooks, formulas, pivots, trackers | **base** |
+| `financial-model` | Financial models, scenarios, projections | scene (inherits excel) |
+| `data-dashboard` | CSV/tabular data → KPI / analytics / executive dashboards with charts and sparklines | scene (inherits excel) |
+
+Example: a fundraising deck task → `officecli skill pitch-deck` → use the printed rules.
 
 ---
 

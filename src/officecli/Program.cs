@@ -89,8 +89,9 @@ if (args.Length == 1 && args[0] == "mcp-serve")
     return 0;
 }
 
-// Skills commands: officecli skills install [skill-name]
-if (args.Length >= 1 && args[0] == "skills")
+// Skill[s] commands. `skill` and `skills` are interchangeable to forgive
+// the singular/plural typo; routing is by the second token, not the first.
+if (args.Length >= 1 && (args[0] == "skills" || args[0] == "skill"))
 {
     if (args.Length == 2 && args[1] == "list")
     {
@@ -119,9 +120,11 @@ if (args.Length >= 1 && args[0] == "skills")
     }
     if (args.Length == 2)
     {
-        // Legacy: officecli skills claude → base SKILL.md to specific agent.
-        // SkillInstaller.Install returns the set of agents written to;
-        // empty set means the target wasn't recognized.
+        // 2-arg form, second token disambiguates:
+        //   <skill-name>  → agent-friendly facade (ensure-install + print SKILL.md)
+        //   <agent-alias> → legacy: install base SKILL.md to that specific agent
+        if (OfficeCli.Core.SkillInstaller.IsKnownSkill(args[1]))
+            return OfficeCli.Core.SkillInstaller.LoadSkill(args[1]);
         var result = OfficeCli.Core.SkillInstaller.Install(args[1]);
         return result.Count > 0 ? 0 : 1;
     }
