@@ -95,8 +95,17 @@ internal static class EmuConverter
     /// </summary>
     public static string FormatEmu(long emu)
     {
+        if (emu == 0) return "0cm";
         var cm = emu / 360000.0;
-        return $"{cm:0.##}cm";
+        var cmStr = cm.ToString("0.##", CultureInfo.InvariantCulture);
+        // The "0.##" cm format loses precision below ~1800 EMU per side
+        // (rounded to two decimal places of cm). For values that round
+        // either to "0"/"-0" or to a string that does not faithfully
+        // represent the original EMU, fall back to the raw EMU integer
+        // so Get readback is non-lossy. ParseEmu accepts raw integers.
+        if (cmStr == "0" || cmStr == "-0")
+            return emu.ToString(CultureInfo.InvariantCulture);
+        return $"{cmStr}cm";
     }
 
     /// <summary>
