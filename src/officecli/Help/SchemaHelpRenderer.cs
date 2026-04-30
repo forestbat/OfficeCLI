@@ -296,10 +296,12 @@ internal static class SchemaHelpRenderer
         var type = body.TryGetProperty("type", out var t) ? t.GetString() ?? "" : "";
 
         var opList = new List<string>();
-        // For containers, skip Add/Set columns per spec.
+        // Containers can't be Added (the file IS the document), but they can
+        // legitimately expose Set on metadata properties (title/author/...).
+        // Only suppress 'add' here, not 'set'.
         foreach (var op in new[] { "add", "set", "get" })
         {
-            if (isContainer && op != "get") continue;
+            if (isContainer && op == "add") continue;
             if (body.TryGetProperty(op, out var val) && val.ValueKind == JsonValueKind.True)
                 opList.Add(op);
         }
