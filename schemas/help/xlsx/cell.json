@@ -80,10 +80,17 @@
     },
     "fill": {
       "type": "color",
-      "description": "cell background fill color",
+      "description": "cell background fill. Solid color (hex / named / rgb(...)) or a linear gradient as 'COLOR1-COLOR2[-ANGLE]' / 'gradient;COLOR1;COLOR2[;ANGLE]'. Scheme color names (accent1..) and 'none' are not accepted on input — readback may surface them when a cell already carries them.",
+      "aliases": ["bgcolor"],
       "add": true, "set": true, "get": true,
-      "examples": ["--prop fill=FFFF00"],
-      "readback": "#RRGGBB uppercase",
+      "examples": [
+        "--prop fill=FFFF00",
+        "--prop fill=#FF0000",
+        "--prop fill=red",
+        "--prop fill=\"FF0000-0000FF-90\"",
+        "--prop fill=\"gradient;FF0000;0000FF;90\""
+      ],
+      "readback": "#RRGGBB uppercase, 'gradient;#START;#END;ANGLE' for gradients, scheme color name (e.g. accent1) when set externally",
       "enforcement": "report"
     },
     "strike": {
