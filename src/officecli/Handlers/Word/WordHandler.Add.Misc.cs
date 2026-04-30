@@ -618,6 +618,27 @@ public partial class WordHandler
                 resultPath = $"{fieldParaPath}/r[{runIdx}]";
             }
         }
+        else if (parent is Run hostRun && hostRun.Parent is Paragraph hostRunPara)
+        {
+            // Adding a field "to" an existing run: insert the 5 field runs as
+            // siblings of the host run inside its paragraph. NEVER nest a
+            // <w:p> inside a <w:r> — that violates schema and produces an
+            // unreadable document. Default position: after the host run.
+            hostRunPara.TextId = GenerateParaId();
+            var anchor = (OpenXmlElement)hostRun;
+            anchor.InsertAfterSelf(fieldRunBegin);
+            fieldRunBegin.InsertAfterSelf(fieldRunInstr);
+            fieldRunInstr.InsertAfterSelf(fieldRunSep);
+            fieldRunSep.InsertAfterSelf(fieldRunResult);
+            fieldRunResult.InsertAfterSelf(fieldRunEnd);
+            var hostParaPath = ReplaceTrailingParaSegment(parentPath, hostRunPara);
+            // parentPath is .../r[K]; canonicalize to .../p[@paraId=...] form.
+            // Strip the trailing /r[K] segment to get the paragraph path.
+            var slashIdx = hostParaPath.LastIndexOf("/r[", StringComparison.Ordinal);
+            if (slashIdx > 0) hostParaPath = hostParaPath.Substring(0, slashIdx);
+            var runIdxAfter = hostRunPara.Elements<Run>().TakeWhile(r => r != fieldRunResult).Count();
+            resultPath = $"{hostParaPath}/r[{runIdxAfter + 1}]";
+        }
         else
         {
             // Create a new paragraph containing the field
