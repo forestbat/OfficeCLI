@@ -117,10 +117,8 @@ public partial class ExcelHandler
             case "calc.fullprecision" or "fullprecision":
             {
                 var calc = EnsureCalculationProperties();
-                if (IsTruthy(value))
-                    calc.FullPrecision = true;
-                else
-                    calc.FullPrecision = null;
+                // OOXML default is true; must write explicit false to override.
+                calc.FullPrecision = IsTruthy(value) ? null : false;
                 SaveWorkbook();
                 return true;
             }
@@ -408,7 +406,7 @@ public partial class ExcelHandler
             if (calc.Iterate?.Value == true) node.Format["calc.iterate"] = true;
             if (calc.IterateCount?.Value != null) node.Format["calc.iterateCount"] = (int)calc.IterateCount.Value;
             if (calc.IterateDelta?.Value != null) node.Format["calc.iterateDelta"] = calc.IterateDelta.Value;
-            if (calc.FullPrecision?.Value == true) node.Format["calc.fullPrecision"] = true;
+            node.Format["calc.fullPrecision"] = calc.FullPrecision?.Value ?? true;
             if (calc.FullCalculationOnLoad?.Value == true) node.Format["calc.fullCalcOnLoad"] = true;
             if (calc.ReferenceMode?.Value != null) node.Format["calc.refMode"] = calc.ReferenceMode.InnerText;
         }
