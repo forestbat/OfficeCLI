@@ -58,6 +58,49 @@
       "examples": ["--prop lastModifiedBy=\"Bob\""],
       "readback": "last-modified author",
       "enforcement": "report"
+    },
+    "category": {
+      "type": "string",
+      "description": "document category metadata. Emitted only when present.",
+      "add": false, "set": false, "get": true,
+      "readback": "category string",
+      "enforcement": "report"
+    },
+    "revision": {
+      "type": "string",
+      "description": "document revision counter. Emitted only when present.",
+      "add": false, "set": false, "get": true,
+      "readback": "revision string",
+      "enforcement": "report"
+    },
+    "created": {
+      "type": "string",
+      "description": "creation timestamp (ISO-8601). Emitted only when present.",
+      "add": false, "set": false, "get": true,
+      "readback": "ISO-8601 timestamp",
+      "enforcement": "report"
+    },
+    "modified": {
+      "type": "string",
+      "description": "last modification timestamp (ISO-8601). Emitted only when present.",
+      "add": false, "set": false, "get": true,
+      "readback": "ISO-8601 timestamp",
+      "enforcement": "report"
+    },
+    "protection": {
+      "type": "enum",
+      "values": ["none", "readOnly", "comments", "trackedChanges", "forms"],
+      "description": "document protection mode.",
+      "add": false, "set": false, "get": true,
+      "readback": "protection mode name",
+      "enforcement": "report"
+    },
+    "protectionEnforced": {
+      "type": "bool",
+      "description": "whether document protection is enforced.",
+      "add": false, "set": false, "get": true,
+      "readback": "true | false",
+      "enforcement": "report"
     }
   },
   "children": [

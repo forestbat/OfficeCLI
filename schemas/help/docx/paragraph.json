@@ -553,6 +553,97 @@
       "add": false, "set": false, "get": true,
       "readback": "style/docDefaults path",
       "enforcement": "report"
+    },
+    "numFmt": {
+      "type": "string",
+      "description": "raw numbering format (e.g. bullet, decimal, lowerLetter). Emitted only when present.",
+      "add": false, "set": false, "get": true,
+      "readback": "numbering format token",
+      "enforcement": "report"
+    },
+    "shading.val": {
+      "type": "string",
+      "description": "shading pattern value (decomposed from `shd`). Add/Set use `shd`.",
+      "add": false, "set": false, "get": true,
+      "readback": "shading pattern token",
+      "enforcement": "report"
+    },
+    "shading.fill": {
+      "type": "string",
+      "description": "shading fill color hex (decomposed from `shd`).",
+      "add": false, "set": false, "get": true,
+      "readback": "#RRGGBB",
+      "enforcement": "report"
+    },
+    "shading.color": {
+      "type": "string",
+      "description": "shading foreground color hex.",
+      "add": false, "set": false, "get": true,
+      "readback": "#RRGGBB",
+      "enforcement": "report"
+    },
+    "paraId": {
+      "type": "string",
+      "description": "paragraph stable id (source of @paraId in stable path). Emitted only when present.",
+      "add": false, "set": false, "get": true,
+      "readback": "paraId hex string",
+      "enforcement": "report"
+    },
+    "outlineLvl": {
+      "type": "number",
+      "description": "outline level (0-9). Emitted only when present.",
+      "add": false, "set": false, "get": true,
+      "readback": "integer",
+      "enforcement": "report"
+    },
+    "tabs": {
+      "type": "array",
+      "description": "tab stops array. Emitted only when present.",
+      "add": false, "set": false, "get": true,
+      "readback": "array of tab stop descriptors",
+      "enforcement": "report"
+    },
+    "pbdr.top": {
+      "type": "string",
+      "description": "paragraph border edge descriptor. Emitted only when present.",
+      "add": false, "set": false, "get": true,
+      "readback": "border descriptor",
+      "enforcement": "report"
+    },
+    "pbdr.bottom": {
+      "type": "string",
+      "description": "paragraph border edge descriptor. Emitted only when present.",
+      "add": false, "set": false, "get": true,
+      "readback": "border descriptor",
+      "enforcement": "report"
+    },
+    "pbdr.left": {
+      "type": "string",
+      "description": "paragraph border edge descriptor. Emitted only when present.",
+      "add": false, "set": false, "get": true,
+      "readback": "border descriptor",
+      "enforcement": "report"
+    },
+    "pbdr.right": {
+      "type": "string",
+      "description": "paragraph border edge descriptor. Emitted only when present.",
+      "add": false, "set": false, "get": true,
+      "readback": "border descriptor",
+      "enforcement": "report"
+    },
+    "pbdr.between": {
+      "type": "string",
+      "description": "paragraph border edge descriptor. Emitted only when present.",
+      "add": false, "set": false, "get": true,
+      "readback": "border descriptor",
+      "enforcement": "report"
+    },
+    "pbdr.bar": {
+      "type": "string",
+      "description": "paragraph border edge descriptor. Emitted only when present.",
+      "add": false, "set": false, "get": true,
+      "readback": "border descriptor",
+      "enforcement": "report"
     }
   },
   "children": [
