@@ -13,7 +13,7 @@
   "paths": {
     "positional": ["/slide[N]/group[M]"]
   },
-  "note": "Groups existing shapes on a slide. 'shapes' takes comma-separated shape indices or DOM paths. Group bounding box auto-computed from member transforms. Shapes inside a group are addressable via /slide[N]/group[M]/shape[K] for direct Set/Get.",
+  "note": "Groups existing shapes on a slide. 'shapes' takes comma-separated shape indices or DOM paths. Group bounding box auto-computed from member transforms. Shapes inside a group are addressable via /slide[N]/group[M]/shape[K] for direct Set/Get. zorder is emitted only when the group appears as a child in slide Query results, not via direct Get on /slide[N]/group[N]. This is a known C# Query/Get inconsistency.",
   "properties": {
     "shapes": {
       "type": "string",
@@ -34,7 +34,7 @@
     "zorder": {
       "type": "number",
       "description": "1-based z-order in slide shape tree.",
-      "add": false, "set": false, "get": true,
+      "add": false, "set": false, "get": false,
       "readback": "1-based integer (1 = back)",
       "enforcement": "report"
     },

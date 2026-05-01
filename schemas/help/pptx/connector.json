@@ -26,18 +26,18 @@
     },
     "from": {
       "type": "string",
-      "description": "start-point shape reference (Add/Set only). Accepts /slide[N]/shape[M] (positional) or /slide[N]/shape[@id=M] (as returned by 'query shape'). Get readback exposes the resolved shape ID via Format[startShape] (a separate read-only key); reverse path resolution is not implemented.",
+      "description": "start-point shape reference (Add/Set only). Accepts /slide[N]/shape[M] (positional) or /slide[N]/shape[@id=M] (as returned by 'query shape'). Reverse path resolution is not implemented.",
       "add": true, "set": true, "get": false,
       "examples": ["--prop from=/slide[1]/shape[1]", "--prop from=/slide[1]/shape[@id=10001]"],
-      "readback": "see Format[startShape] (id, not path)",
+      "readback": "see startShape/endShape get-only properties for resolved endpoint shape ids",
       "enforcement": "report"
     },
     "to": {
       "type": "string",
-      "description": "end-point shape reference (Add/Set only). Accepts /slide[N]/shape[M] (positional) or /slide[N]/shape[@id=M] (as returned by 'query shape'). Get readback exposes the resolved shape ID via Format[endShape] (a separate read-only key); reverse path resolution is not implemented.",
+      "description": "end-point shape reference (Add/Set only). Accepts /slide[N]/shape[M] (positional) or /slide[N]/shape[@id=M] (as returned by 'query shape'). Reverse path resolution is not implemented.",
       "add": true, "set": true, "get": false,
       "examples": ["--prop to=/slide[1]/shape[2]", "--prop to=/slide[1]/shape[@id=10002]"],
-      "readback": "see Format[endShape] (id, not path)",
+      "readback": "see startShape/endShape get-only properties for resolved endpoint shape ids",
       "enforcement": "report"
     },
     "x": {
@@ -124,6 +124,10 @@
       "examples": ["--prop name=\"Arrow1\""],
       "readback": "plain string",
       "enforcement": "report"
-    }
+    },
+    "startShape": { "type":"number", "add":false, "set":false, "get":true, "description":"shape id of the start connection endpoint.", "readback":"integer shape id", "enforcement":"report" },
+    "startIdx":   { "type":"number", "add":false, "set":false, "get":true, "description":"connection point index on start shape (0-based; omitted when 0).", "readback":"integer", "enforcement":"report" },
+    "endShape":   { "type":"number", "add":false, "set":false, "get":true, "description":"shape id of the end connection endpoint.", "readback":"integer shape id", "enforcement":"report" },
+    "endIdx":     { "type":"number", "add":false, "set":false, "get":true, "description":"connection point index on end shape (0-based; omitted when 0).", "readback":"integer", "enforcement":"report" }
   }
 }
