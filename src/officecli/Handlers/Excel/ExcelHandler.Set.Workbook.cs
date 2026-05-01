@@ -398,15 +398,16 @@ public partial class ExcelHandler
             if (props.DateCompatibility?.Value == true) node.Format["workbook.dateCompatibility"] = true;
         }
 
-        // CalculationProperties
+        // CalculationProperties — fullPrecision defaults to true per OOXML spec
+        // even when the calc element is absent or attribute is omitted.
         var calc = workbook.GetFirstChild<CalculationProperties>();
+        node.Format["calc.fullPrecision"] = calc?.FullPrecision?.Value ?? true;
         if (calc != null)
         {
             if (calc.CalculationMode?.Value != null) node.Format["calc.mode"] = calc.CalculationMode.InnerText;
             if (calc.Iterate?.Value == true) node.Format["calc.iterate"] = true;
             if (calc.IterateCount?.Value != null) node.Format["calc.iterateCount"] = (int)calc.IterateCount.Value;
             if (calc.IterateDelta?.Value != null) node.Format["calc.iterateDelta"] = calc.IterateDelta.Value;
-            node.Format["calc.fullPrecision"] = calc.FullPrecision?.Value ?? true;
             if (calc.FullCalculationOnLoad?.Value == true) node.Format["calc.fullCalcOnLoad"] = true;
             if (calc.ReferenceMode?.Value != null) node.Format["calc.refMode"] = calc.ReferenceMode.InnerText;
         }
