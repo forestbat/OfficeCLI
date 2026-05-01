@@ -282,6 +282,34 @@
       "examples": ["--prop mergeLabels=true"],
       "readback": "n/a",
       "enforcement": "report"
+    },
+    "cacheId": {
+      "type": "number",
+      "description": "pivot cache index (read-only; assigned by Excel when the pivot table is created).",
+      "add": false, "set": false, "get": true,
+      "readback": "pivot cache index (read-only; assigned by Excel)",
+      "enforcement": "report"
+    },
+    "fieldCount": {
+      "type": "number",
+      "description": "total number of pivot fields in the source range (read-only).",
+      "add": false, "set": false, "get": true,
+      "readback": "total number of pivot fields in the source range",
+      "enforcement": "report"
+    },
+    "dataFieldCount": {
+      "type": "number",
+      "description": "number of data field aggregations (read-only; equals the count of dataField{N} entries).",
+      "add": false, "set": false, "get": true,
+      "readback": "number of data field aggregations",
+      "enforcement": "report"
+    },
+    "dataField{N}": {
+      "type": "string",
+      "description": "per-data-field readback (1-indexed: dataField1, dataField2, …) packed as 'name:aggFunc:fieldIdx'.",
+      "add": false, "set": false, "get": true,
+      "readback": "packed as 'name:aggFunc:fieldIdx' (e.g. 'Revenue:sum:1')",
+      "enforcement": "report"
     }
   }
 }

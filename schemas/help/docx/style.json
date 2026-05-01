@@ -12,10 +12,9 @@
     "remove": true
   },
   "paths": {
-    "stable":     ["/styles/StyleId"],
-    "positional": ["/style[@name=NAME]", "/style[N]"]
+    "stable":     ["/styles/StyleId"]
   },
-  "note": "Style type defaults to paragraph. 'id' must be unique in styles.xml; duplicate id rejected if explicit, else auto-suffixed. Built-in ids (Normal, Heading1..9, Title, Subtitle, Quote, IntenseQuote, ListParagraph, NoSpacing, TOCHeading) bypass the customStyle=true flag.",
+  "note": "Style type defaults to paragraph. 'id' must be unique in styles.xml; duplicate id rejected if explicit, else auto-suffixed. Built-in ids (Normal, Heading1..9, Title, Subtitle, Quote, IntenseQuote, ListParagraph, NoSpacing, TOCHeading) bypass the customStyle=true flag. Path forms /style[@name=NAME] and /style[N] are NOT supported — only /styles/StyleId resolves; navigation does not handle a bare 'style' top-level segment.",
   "properties": {
     "id": {
       "type": "string",

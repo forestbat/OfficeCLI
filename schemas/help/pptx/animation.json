@@ -13,7 +13,7 @@
   "paths": {
     "positional": ["/slide[N]/shape[M]/animation[K]"]
   },
-  "note": "Animation attached to a specific shape. Effect name drives the timing preset; trigger controls sequencing (onClick / withPrevious / afterPrevious).",
+  "note": "Animation attached to a specific shape. Effect name drives the timing preset; trigger controls sequencing (onClick / withPrevious / afterPrevious). On Get, effect/class/direction/duration are packed into the 'animation' key value as 'effectName-class-direction-duration' (e.g. 'fly-entrance-left-500'); there is no standalone 'direction' readback key.",
   "properties": {
     "effect": {
       "type": "enum",
@@ -61,9 +61,9 @@
     "direction": {
       "type": "string",
       "description": "direction for directional effects (in/out/left/right/up/down).",
-      "add": true, "set": true, "get": true,
+      "add": true, "set": true, "get": false,
       "examples": ["--prop direction=in"],
-      "readback": "direction",
+      "readback": "packed into the 'animation' key value as 'effectName-class-direction-duration' (e.g. 'fly-entrance-left-500'); no standalone 'direction' key is emitted on Get",
       "enforcement": "report"
     }
   }
