@@ -595,22 +595,18 @@ Parallel to (d) — swap recipes per row; each divider must appear BEFORE its se
 Grid math for 3 cards across, 1.5cm margins, 0.76cm gap: `col_width = (33.87 − 3 − 2·0.76) / 3 = 9.78cm`. x-positions: `1.5, 12.04, 22.58`.
 
 ```bash
-# 3 KPI cards (navy fill, white number, ice-blue sublabel, terracotta pct chip for the watch-card).
-# All 12 adds in one batch. Replace $SLIDE with your target slide index.
+# 2 cards demo: navy standard (left) + terracotta watch (right). Middle card at x=12.04cm
+# is the same shape as left, omitted for brevity. Each card = background + big number + sublabel + tagline.
 cat <<EOF | officecli batch "$FILE"
 [
-  {"command":"add","parent":"/slide[$SLIDE]","type":"shape","props":{"name":"K1Card","preset":"roundRect","fill":"1E2761","line":"none","x":"1.5cm","y":"4cm","width":"9.78cm","height":"7cm"}},
-  {"command":"add","parent":"/slide[$SLIDE]","type":"shape","props":{"text":"84.2","x":"1.5cm","y":"4.8cm","width":"9.78cm","height":"2.8cm","font":"Georgia","size":"60","bold":"true","color":"FFFFFF","align":"center","fill":"none"}},
-  {"command":"add","parent":"/slide[$SLIDE]","type":"shape","props":{"text":"USD millions · ARR","x":"1.5cm","y":"8cm","width":"9.78cm","height":"0.8cm","font":"Calibri","size":"14","color":"CADCFC","align":"center","fill":"none"}},
-  {"command":"add","parent":"/slide[$SLIDE]","type":"shape","props":{"text":"+24% YoY","x":"1.5cm","y":"9cm","width":"9.78cm","height":"0.8cm","font":"Calibri","size":"14","bold":"true","color":"CADCFC","align":"center","fill":"none"}},
-  {"command":"add","parent":"/slide[$SLIDE]","type":"shape","props":{"name":"K2Card","preset":"roundRect","fill":"1E2761","line":"none","x":"12.04cm","y":"4cm","width":"9.78cm","height":"7cm"}},
-  {"command":"add","parent":"/slide[$SLIDE]","type":"shape","props":{"text":"118%","x":"12.04cm","y":"4.8cm","width":"9.78cm","height":"2.8cm","font":"Georgia","size":"60","bold":"true","color":"FFFFFF","align":"center","fill":"none"}},
-  {"command":"add","parent":"/slide[$SLIDE]","type":"shape","props":{"text":"Net revenue retention","x":"12.04cm","y":"8cm","width":"9.78cm","height":"0.8cm","font":"Calibri","size":"14","color":"CADCFC","align":"center","fill":"none"}},
-  {"command":"add","parent":"/slide[$SLIDE]","type":"shape","props":{"text":"best-in-class floor 115%","x":"12.04cm","y":"9cm","width":"9.78cm","height":"0.8cm","font":"Calibri","size":"14","italic":"true","color":"CADCFC","align":"center","fill":"none"}},
-  {"command":"add","parent":"/slide[$SLIDE]","type":"shape","props":{"name":"K3Card","preset":"roundRect","fill":"B85042","line":"none","x":"22.58cm","y":"4cm","width":"9.78cm","height":"7cm"}},
-  {"command":"add","parent":"/slide[$SLIDE]","type":"shape","props":{"text":"$1.42","x":"22.58cm","y":"4.8cm","width":"9.78cm","height":"2.8cm","font":"Georgia","size":"60","bold":"true","color":"FFFFFF","align":"center","fill":"none"}},
-  {"command":"add","parent":"/slide[$SLIDE]","type":"shape","props":{"text":"CAC payback (yrs)","x":"22.58cm","y":"8cm","width":"9.78cm","height":"0.8cm","font":"Calibri","size":"14","color":"FFFFFF","align":"center","fill":"none"}},
-  {"command":"add","parent":"/slide[$SLIDE]","type":"shape","props":{"text":"+8% — watch","x":"22.58cm","y":"9cm","width":"9.78cm","height":"0.8cm","font":"Calibri","size":"14","bold":"true","color":"FFFFFF","align":"center","fill":"none"}}
+  {"command":"add","parent":"/slide[$SLIDE]","type":"shape","props":{"preset":"roundRect","fill":"1E2761","line":"none","x":"1.5cm","y":"4cm","width":"9.78cm","height":"7cm"}},
+  {"command":"add","parent":"/slide[$SLIDE]","type":"shape","props":{"text":"84.2","x":"1.5cm","y":"4.8cm","width":"9.78cm","height":"2.8cm","font":"Georgia","size":"60","bold":"true","color":"FFFFFF","align":"center"}},
+  {"command":"add","parent":"/slide[$SLIDE]","type":"shape","props":{"text":"USD millions · ARR","x":"1.5cm","y":"8cm","width":"9.78cm","height":"0.8cm","font":"Calibri","size":"14","color":"CADCFC","align":"center"}},
+  {"command":"add","parent":"/slide[$SLIDE]","type":"shape","props":{"text":"+24% YoY","x":"1.5cm","y":"9cm","width":"9.78cm","height":"0.8cm","font":"Calibri","size":"14","bold":"true","color":"CADCFC","align":"center"}},
+  {"command":"add","parent":"/slide[$SLIDE]","type":"shape","props":{"preset":"roundRect","fill":"B85042","line":"none","x":"22.58cm","y":"4cm","width":"9.78cm","height":"7cm"}},
+  {"command":"add","parent":"/slide[$SLIDE]","type":"shape","props":{"text":"$1.42","x":"22.58cm","y":"4.8cm","width":"9.78cm","height":"2.8cm","font":"Georgia","size":"60","bold":"true","color":"FFFFFF","align":"center"}},
+  {"command":"add","parent":"/slide[$SLIDE]","type":"shape","props":{"text":"CAC payback (yrs)","x":"22.58cm","y":"8cm","width":"9.78cm","height":"0.8cm","font":"Calibri","size":"14","color":"FFFFFF","align":"center"}},
+  {"command":"add","parent":"/slide[$SLIDE]","type":"shape","props":{"text":"+8% — watch","x":"22.58cm","y":"9cm","width":"9.78cm","height":"0.8cm","font":"Calibri","size":"14","bold":"true","color":"FFFFFF","align":"center"}}
 ]
 EOF
 ```
