@@ -88,9 +88,17 @@ internal static class UpdateChecker
             var currentVersion = GetCurrentVersion();
             if (currentVersion == null) return;
 
-            // Get latest version from redirect URL (no API, no rate limit)
-            // Try primary (officecli.ai) first, fallback to GitHub
-            using var handler = new HttpClientHandler { AllowAutoRedirect = false };
+            // Get latest version by following the full redirect chain and
+            // parsing the version out of the *final* URL (no API, no rate limit).
+            //
+            // Why follow the whole chain instead of reading the first Location:
+            // officecli.ai is the canonical entry point — today it 302s to
+            // GitHub, but it may later route through its own host. A first-hop
+            // reader only works when that single hop happens to land on
+            // /tag/vX.Y.Z, which is brittle. Cloudflare-style "officecli.ai →
+            // github.com/.../releases/latest → github.com/.../tag/vX.Y.Z" is
+            // a 2-hop chain whose first Location carries no version.
+            using var handler = new HttpClientHandler { AllowAutoRedirect = true };
             using var client = new HttpClient(handler);
             client.DefaultRequestHeaders.Add("User-Agent", "OfficeCLI-UpdateChecker");
             client.Timeout = TimeSpan.FromSeconds(10);
@@ -101,12 +109,14 @@ internal static class UpdateChecker
             {
                 try
                 {
-                    var response = client.GetAsync($"{baseUrl}/releases/latest")
-                        .GetAwaiter().GetResult();
-                    var location = response.Headers.Location?.ToString();
-                    if (string.IsNullOrEmpty(location)) continue;
+                    // HEAD avoids downloading the release page body; we only need
+                    // the final URL after redirects.
+                    using var req = new HttpRequestMessage(HttpMethod.Head, $"{baseUrl}/releases/latest");
+                    var response = client.SendAsync(req).GetAwaiter().GetResult();
+                    var finalUrl = response.RequestMessage?.RequestUri?.ToString();
+                    if (string.IsNullOrEmpty(finalUrl)) continue;
 
-                    var versionMatch = Regex.Match(location, @"/tag/v?(\d+\.\d+\.\d+)");
+                    var versionMatch = Regex.Match(finalUrl, @"/tag/v?(\d+\.\d+\.\d+)");
                     if (versionMatch.Success)
                     {
                         latestVersion = versionMatch.Groups[1].Value;
