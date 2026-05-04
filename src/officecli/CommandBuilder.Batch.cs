@@ -98,6 +98,16 @@ static partial class CommandBuilder
             }
             if (items.Count == 0)
             {
+                // BUG-R6-07: empty command array previously short-circuited
+                // before the file-existence check, so
+                //   officecli batch /missing.docx --commands '[]' --json
+                // returned a clean zero-result success instead of the
+                // expected file_not_found. Validate the target file
+                // exists first so empty-array semantics match the
+                // non-empty path's diagnostics.
+                if (!file.Exists)
+                    throw new CliException($"File not found: {file.FullName}")
+                        { Code = "file_not_found" };
                 PrintBatchResults(new List<BatchResult>(), json, 0);
                 return 0;
             }
