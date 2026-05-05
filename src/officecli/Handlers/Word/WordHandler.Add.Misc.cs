@@ -162,6 +162,18 @@ public partial class WordHandler
         var bookmarkStart = new BookmarkStart { Id = bkId, Name = bkName };
         var bookmarkEnd = new BookmarkEnd { Id = bkId };
 
+        // BUG-DUMP10-04: optional endPara offset (>0) defers BookmarkEnd
+        // placement to a later paragraph in the same body so multi-
+        // paragraph bookmark spans round-trip through dump→batch. Default
+        // (0 / unset) keeps the End next to the Start as before.
+        int crossParaEndOffset = 0;
+        if ((properties.TryGetValue("endPara", out var bkEndStr)
+                || properties.TryGetValue("endpara", out bkEndStr))
+            && int.TryParse(bkEndStr, out var bkEndN) && bkEndN > 0)
+        {
+            crossParaEndOffset = bkEndN;
+        }
+
         // index is a childElement-index (ResolveAnchorPosition counts pPr).
         // When anchor-based insert is requested, bypass the text-wrapping path
         // (which finds its own position inside existing runs) and do a positional
@@ -224,6 +236,31 @@ public partial class WordHandler
             // InsertAtIndexOrAppend (which falls back to AppendToParent).
             InsertAtIndexOrAppend(parent, bookmarkStart, index);
             InsertAtIndexOrAppend(parent, bookmarkEnd, index.HasValue ? index + 1 : null);
+        }
+
+        // BUG-DUMP10-04: relocate the BookmarkEnd to a downstream sibling
+        // paragraph when endPara was specified. Done after the initial
+        // placement so all the existing schema-aware insertion paths
+        // (text wrap, anchor index, body fallback) still run unmodified.
+        if (crossParaEndOffset > 0 && bookmarkEnd.Parent != null)
+        {
+            // Walk up to the start's enclosing paragraph (it may be inside
+            // a run if TryWrapExistingRunsWithBookmark wrapped runs).
+            var startEnclosingPara = bookmarkStart.Ancestors<Paragraph>().FirstOrDefault()
+                ?? bookmarkStart.Parent as Paragraph;
+            // Sibling list lives on the paragraph's parent (Body, TableCell, …).
+            var siblingHost = startEnclosingPara?.Parent;
+            if (startEnclosingPara != null && siblingHost != null)
+            {
+                var siblings = siblingHost.Elements<Paragraph>().ToList();
+                int startIdx = siblings.IndexOf(startEnclosingPara);
+                int targetIdx = startIdx + crossParaEndOffset;
+                if (startIdx >= 0 && targetIdx < siblings.Count)
+                {
+                    bookmarkEnd.Remove();
+                    siblings[targetIdx].AppendChild(bookmarkEnd);
+                }
+            }
         }
 
         // Return a navigable path: /...parent/bookmarkStart[@name=<name>] is

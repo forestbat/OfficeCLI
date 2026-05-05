@@ -527,7 +527,14 @@ public static class BatchEmitter
         NoteCursor EndnoteCursor,
         List<ChartSpec> ChartSpecs,
         NoteCursor ChartCursor,
-        Dictionary<string, int>? ParaIdToTargetIdx);
+        Dictionary<string, int>? ParaIdToTargetIdx,
+        // BUG-DUMP10-04: cross-paragraph bookmarks (endPara > 0) need to be
+        // emitted *after* every host paragraph already exists on replay,
+        // because AddBookmark relocates the BookmarkEnd to siblings[N+endPara]
+        // and that sibling does not exist yet during the in-order walk.
+        // EmitParagraph stashes the deferred `add bookmark` rows here;
+        // EmitBody appends them once all paragraphs are emitted.
+        List<BatchItem> DeferredBookmarks);
 
     private static void EmitBody(WordHandler word, List<BatchItem> items,
                                  Dictionary<string, int>? paraIdToTargetIdx = null)
@@ -558,7 +565,8 @@ public static class BatchEmitter
             EndnoteCursor: new NoteCursor(),
             ChartSpecs: chartSpecs,
             ChartCursor: new NoteCursor(),
-            ParaIdToTargetIdx: paraIdToTargetIdx);
+            ParaIdToTargetIdx: paraIdToTargetIdx,
+            DeferredBookmarks: new List<BatchItem>());
 
         int pIndex = 0, tblIndex = 0;
         foreach (var child in bodyNode.Children)
@@ -605,6 +613,11 @@ public static class BatchEmitter
                     break;
             }
         }
+
+        // BUG-DUMP10-04: flush deferred cross-paragraph bookmark rows. They
+        // are emitted last so AddBookmark sees the full sibling list when
+        // walking forward to the BookmarkEnd's target paragraph.
+        items.AddRange(ctx.DeferredBookmarks);
     }
 
     /// <summary>
@@ -1062,13 +1075,34 @@ public static class BatchEmitter
                 if (!string.IsNullOrEmpty(s)) bmProps["name"] = s;
             }
             if (bmProps.Count == 0) continue; // skip unnamed/anonymous bookmarks
-            items.Add(new BatchItem
+            // BUG-DUMP10-04: forward cross-paragraph bookmark span offset
+            // so AddBookmark can place the BookmarkEnd N paragraphs
+            // downstream instead of collapsing it into the start paragraph.
+            bool deferred = false;
+            if (bm.Format.TryGetValue("endPara", out var bmEnd) && bmEnd != null)
+            {
+                var s = bmEnd.ToString();
+                if (!string.IsNullOrEmpty(s) && s != "0")
+                {
+                    bmProps["endPara"] = s;
+                    deferred = true;
+                }
+            }
+            var bmItem = new BatchItem
             {
                 Command = "add",
                 Parent = paraTargetPath,
                 Type = "bookmark",
                 Props = bmProps
-            });
+            };
+            // Deferred bookmarks must run after every host paragraph exists
+            // (the End sibling is at index startIdx + endPara). When ctx is
+            // null (header/footer/cell paths) fall back to inline emit —
+            // those scopes don't host multi-paragraph bookmarks in practice.
+            if (deferred && ctx != null)
+                ctx.DeferredBookmarks.Add(bmItem);
+            else
+                items.Add(bmItem);
         }
 
         // BUG-DUMP4-06: emit inline SdtRun children. Mirror EmitSdt's whitelist
