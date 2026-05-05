@@ -1534,6 +1534,24 @@ public static class BatchEmitter
                 // The sentinel itself is not a real Add prop; drop it before
                 // emission so AddHyperlink doesn't see an unsupported key.
                 rProps.Remove("isHyperlink");
+                // Bare <w:hyperlink> wrapper with neither r:id nor anchor (and
+                // no tooltip/tgtFrame/history) carries no semantically
+                // meaningful round-trip property — AddHyperlink would reject
+                // it ("'url' or 'anchor' property is required"). Fall through
+                // and emit as a plain run so the visible text survives.
+                if (!rProps.ContainsKey("url") && !rProps.ContainsKey("anchor")
+                    && !rProps.ContainsKey("tooltip") && !rProps.ContainsKey("tgtFrame")
+                    && !rProps.ContainsKey("tgtframe") && !rProps.ContainsKey("history"))
+                {
+                    items.Add(new BatchItem
+                    {
+                        Command = "add",
+                        Parent = paraTargetPath,
+                        Type = "r",
+                        Props = rProps.Count > 0 ? rProps : null
+                    });
+                    continue;
+                }
                 items.Add(new BatchItem
                 {
                     Command = "add",
