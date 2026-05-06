@@ -241,6 +241,10 @@ public partial class ExcelHandler
         int? l = null, r = null, t = null, b = null;
         if (properties.TryGetValue("srcRect", out var compound) && !string.IsNullOrWhiteSpace(compound))
         {
+            // Track whether any piece parsed so we can throw a clear error
+            // instead of silently no-oping (which would also wipe existing
+            // srcRect because the caller replaces with ParseSrcRect's null).
+            bool anyParsed = false;
             foreach (var piece in compound.Split(',', StringSplitOptions.RemoveEmptyEntries))
             {
                 var kv = piece.Split('=', 2);
@@ -249,7 +253,12 @@ public partial class ExcelHandler
                 var val = ParseCropPercent(kv[1]);
                 if (!val.HasValue) continue;
                 switch (key) { case "l": l = val; break; case "r": r = val; break; case "t": t = val; break; case "b": b = val; break; }
+                anyParsed = true;
             }
+            if (!anyParsed)
+                throw new ArgumentException(
+                    $"Invalid srcRect '{compound}'. Expected 'l=10,r=10,t=5,b=5' (any subset; values are percent 0-100). "
+                    + "For raw l/t/r/b numbers use cropLeft/cropTop/cropRight/cropBottom keys.");
         }
         foreach (var (key, fld) in new[] { ("crop.l", "l"), ("crop.r", "r"), ("crop.t", "t"), ("crop.b", "b") })
         {
