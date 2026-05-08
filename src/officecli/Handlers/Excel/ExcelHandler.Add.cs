@@ -230,13 +230,59 @@ public partial class ExcelHandler
             var row = (rowIdx >= 1 && rowIdx <= allRows.Count ? allRows[rowIdx - 1] : null)
                 ?? sheetData.Elements<Row>().FirstOrDefault(r => r.RowIndex?.Value == (uint)rowIdx)
                 ?? throw new ArgumentException($"Row {rowIdx} not found");
+
+            // Resolve --before / --after anchors to a 0-based document-order
+            // position in the target sheet. Anchor must be /<TargetSheet>/row[K].
+            // Resolved BEFORE removing the moved row so the anchor is found by
+            // its current position.
+            int? targetIndex = index;
+            string targetSheetName = string.IsNullOrEmpty(targetParentPath)
+                ? sheetName
+                : targetParentPath.TrimStart('/').Split('/', 2)[0];
+            if (targetIndex == null && position != null && (position.After != null || position.Before != null))
+            {
+                int FindAnchorRowPos(string anchorPath)
+                {
+                    var aSegs = anchorPath.TrimStart('/').Split('/', 2);
+                    if (aSegs.Length < 2)
+                        throw new ArgumentException(
+                            $"Anchor must be a row path like /{targetSheetName}/row[K], got: {anchorPath}");
+                    if (!aSegs[0].Equals(targetSheetName, StringComparison.OrdinalIgnoreCase))
+                        throw new ArgumentException(
+                            $"Anchor sheet '{aSegs[0]}' must match target sheet '{targetSheetName}'");
+                    var am = Regex.Match(aSegs[1], @"^row\[(\d+)\]$");
+                    if (!am.Success)
+                        throw new ArgumentException(
+                            $"Anchor must be a row path like /{targetSheetName}/row[K], got: {anchorPath}");
+                    var anchorRowIdx = uint.Parse(am.Groups[1].Value);
+                    var pos = targetSheetData.Elements<Row>().ToList()
+                        .FindIndex(r => r.RowIndex?.Value == anchorRowIdx);
+                    if (pos < 0)
+                        throw new ArgumentException($"Anchor row {anchorRowIdx} not found in {targetSheetName}");
+                    return pos;
+                }
+                if (position.Before != null) targetIndex = FindAnchorRowPos(position.Before);
+                else targetIndex = FindAnchorRowPos(position.After!) + 1;
+            }
+
+            // If the moved row sits before the anchor in the same sheet,
+            // removing it shifts everything (including the anchor) up by one.
+            // Adjust the resolved target index so it still points at the
+            // intended slot in post-remove document order.
+            if (targetIndex.HasValue && targetSheetData == sheetData)
+            {
+                var srcPos = sheetData.Elements<Row>().ToList().IndexOf(row);
+                if (srcPos >= 0 && srcPos < targetIndex.Value)
+                    targetIndex = targetIndex.Value - 1;
+            }
+
             row.Remove();
 
-            if (index.HasValue)
+            if (targetIndex.HasValue)
             {
                 var rows = targetSheetData.Elements<Row>().ToList();
-                if (index.Value >= 0 && index.Value < rows.Count)
-                    rows[index.Value].InsertBeforeSelf(row);
+                if (targetIndex.Value >= 0 && targetIndex.Value < rows.Count)
+                    rows[targetIndex.Value].InsertBeforeSelf(row);
                 else
                     targetSheetData.AppendChild(row);
             }
@@ -245,12 +291,53 @@ public partial class ExcelHandler
                 targetSheetData.AppendChild(row);
             }
 
+            // Renumber every row in document order so Excel reads them in the
+            // intended sequence — Excel ignores XML document order and uses
+            // <row r="N"> as the source of truth. Without renumbering, a move
+            // operation appears to do nothing on reopen.
+            //
+            // Limitation: this collapses any gaps the original sheet may have
+            // had (e.g. rows 1, 3, 5 → rows 1, 2, 3). Sheets with intentional
+            // RowIndex gaps are unusual; if the user needs gap preservation,
+            // they should perform the move via direct cell-level set ops.
+            RenumberRowsAndCellRefs(targetSheetData);
+            if (targetSheetData != sheetData)
+                RenumberRowsAndCellRefs(sheetData);
+
             SaveWorksheet(worksheet);
-            var rowIndex = row.RowIndex?.Value ?? (uint)(targetSheetData.Elements<Row>().ToList().IndexOf(row) + 1);
-            return $"{effectiveParentPath}/row[{rowIndex}]";
+            if (targetSheetData != sheetData)
+            {
+                var tgtWs = GetWorksheets().FirstOrDefault(w => GetSheet(w.Part).GetFirstChild<SheetData>() == targetSheetData).Part;
+                if (tgtWs != null) SaveWorksheet(tgtWs);
+            }
+            var newRowIndex = row.RowIndex?.Value ?? 0u;
+            return $"{effectiveParentPath}/row[{newRowIndex}]";
         }
 
         throw new ArgumentException($"Move not supported for: {elementRef}. Supported: row[N]");
+    }
+
+    /// <summary>
+    /// Walk every Row in document order and reassign RowIndex to its 1-based
+    /// position, then rewrite every cell's CellReference to match the new
+    /// row number. Used after Move to make Excel honor the document-order
+    /// rearrangement.
+    /// </summary>
+    private void RenumberRowsAndCellRefs(SheetData sheetData)
+    {
+        InvalidateRowIndex(sheetData);
+        uint newIdx = 1;
+        foreach (var row in sheetData.Elements<Row>())
+        {
+            row.RowIndex = newIdx;
+            foreach (var cell in row.Elements<Cell>())
+            {
+                if (cell.CellReference?.Value == null) continue;
+                var (col, _) = ParseCellReference(cell.CellReference.Value);
+                cell.CellReference = $"{col}{newIdx}";
+            }
+            newIdx++;
+        }
     }
 
     public (string NewPath1, string NewPath2) Swap(string path1, string path2)
