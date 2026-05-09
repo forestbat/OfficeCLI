@@ -396,18 +396,42 @@ internal static class RawXmlHelper
         using var stream = part.GetStream(FileMode.Open, FileAccess.Read);
         using var reader = new StreamReader(stream);
         var content = reader.ReadToEnd();
-        return StripXmlProlog(content);
+        var stripped = StripXmlProlog(content);
+        if (stripped.Length == 0)
+            throw new InvalidDataException(
+                $"Part '{part.Uri.OriginalString}' contains no root element " +
+                $"(only an XML declaration, whitespace, or BOM). The package " +
+                $"may be corrupt; investigate before treating output as data.");
+        return stripped;
     }
 
     private static string StripXmlProlog(string xml)
     {
         var s = xml.AsSpan().TrimStart();
-        // BOM stripping (StreamReader usually handles this, but defensive)
-        if (s.Length > 0 && s[0] == '﻿') s = s[1..];
-        if (s.StartsWith("<?xml"))
+        // Loop: handle multiple stacked prologs / BOMs (defensive — input may
+        // be byte-concatenated from upstream tools or a corrupted package).
+        while (s.Length > 0)
         {
-            var end = s.IndexOf("?>", StringComparison.Ordinal);
-            if (end >= 0) s = s[(end + 2)..].TrimStart();
+            // BOM (U+FEFF). StreamReader normally consumes it but we may be
+            // reading a re-encoded inner segment.
+            if (s[0] == '﻿') { s = s[1..].TrimStart(); continue; }
+
+            // XML declaration: per spec must be `<?xml` followed by whitespace
+            // or `?>`. Crucially must NOT match other PIs whose target starts
+            // with `xml` (e.g. `<?xml-stylesheet ...?>`), which is a legal
+            // processing instruction we must preserve.
+            if (s.Length >= 6
+                && s[0] == '<' && s[1] == '?'
+                && s[2] == 'x' && s[3] == 'm' && s[4] == 'l'
+                && (s[5] == ' ' || s[5] == '\t' || s[5] == '\n' || s[5] == '\r'
+                    || (s[5] == '?' && s.Length >= 7 && s[6] == '>')))
+            {
+                var end = s.IndexOf("?>", StringComparison.Ordinal);
+                if (end < 0) break;
+                s = s[(end + 2)..].TrimStart();
+                continue;
+            }
+            break;
         }
         return s.ToString();
     }
