@@ -696,7 +696,15 @@ public partial class ExcelHandler
         // Because this is opt-in only, it is intentionally NOT part of the
         // `--type content` broad-bucket scan. Document this in help so the
         // omission is discoverable rather than surprising.
-        if (issueType != null && string.Equals(issueType, Core.IssueSubtypes.ChartCacheStale, StringComparison.OrdinalIgnoreCase))
+        // Outer check via OptInSubtypes is the canonical opt-in gate
+        // (see IssueSubtypes.OptInSubtypes). The inner equality keeps the
+        // chart-cache-stale scan from running on some hypothetical future
+        // opt-in subtype that lives elsewhere. A new opt-in scan should add
+        // its own scoped block and register its name in OptInSubtypes so
+        // both --type help and bucket exclusion stay in sync.
+        if (issueType != null
+            && Core.IssueSubtypes.OptInSubtypes.Any(s => string.Equals(issueType, s, StringComparison.OrdinalIgnoreCase))
+            && string.Equals(issueType, Core.IssueSubtypes.ChartCacheStale, StringComparison.OrdinalIgnoreCase))
         {
             foreach (var (slug, numRef) in EnumerateChartNumberRefs())
             {
