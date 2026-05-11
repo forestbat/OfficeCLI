@@ -120,8 +120,13 @@ public partial class ExcelHandler
     /// display value (delegates to the string overload) or via the explicit
     /// <c>t="e"</c> data type. The DataType check covers writers that tag
     /// the cell type but leave the cached <c>&lt;v&gt;</c> in some unusual
-    /// form (or empty). Centralised here so view stats, view outline, and
-    /// view issues all classify the same cells as errors.
+    /// form (or empty). Shared by <c>view stats</c> and <c>view outline</c>
+    /// for the <c>errorCells</c> count; <c>view issues</c> calls the same
+    /// helper but additionally requires <c>cell.CellFormula != null</c>
+    /// because the <c>formula_eval_error</c> subtype is, by definition,
+    /// scoped to formula cells (a literal <c>#VALUE!</c> typed by a user
+    /// into a non-formula cell is counted in stats/outline but is not a
+    /// formula evaluation failure and has no matching subtype).
     /// </summary>
     internal static bool IsExcelErrorValue(Cell cell, string? displayValue)
     {
