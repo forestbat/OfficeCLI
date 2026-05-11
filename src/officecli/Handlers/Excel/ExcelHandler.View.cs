@@ -495,15 +495,40 @@ public partial class ExcelHandler
 
                     if (cell.CellFormula != null && value is "#REF!" or "#VALUE!" or "#NAME?" or "#DIV/0!")
                     {
-                        issues.Add(new DocumentIssue
+                        // Surface the specific cause when we can name it.
+                        // A cached #REF! whose formula refs a deleted sheet
+                        // belongs in formula_ref_missing_sheet — agents
+                        // filtering on subtypes need the specific failure
+                        // mode, not a generic "Formula error: #REF!".
+                        var fTextForErr = cell.CellFormula.Text;
+                        var specificSubtype = (value == "#REF!" && fTextForErr != null
+                                && FormulaReferencesMissingSheet(fTextForErr)
+                                && ShouldScan(Core.IssueSubtypes.FormulaRefMissingSheet))
+                            ? Core.IssueSubtypes.FormulaRefMissingSheet
+                            : null;
+                        if (specificSubtype == null && issueType != null
+                            && !ShouldScan(Core.IssueSubtypes.FormulaNotEvaluated))
                         {
-                            Id = $"F{++issueNum}",
-                            Type = IssueType.Content,
-                            Severity = IssueSeverity.Error,
-                            Path = $"{sheetName}!{cellRef}",
-                            Message = $"Formula error: {value}",
-                            Context = $"={cell.CellFormula.Text}"
-                        });
+                            // Generic formula-error path only emits under
+                            // no-filter or the broad Content bucket; a
+                            // subtype filter looking for something more
+                            // specific shouldn't see the generic row.
+                        }
+                        else
+                        {
+                            issues.Add(new DocumentIssue
+                            {
+                                Id = $"F{++issueNum}",
+                                Type = IssueType.Content,
+                                Subtype = specificSubtype,
+                                Severity = IssueSeverity.Error,
+                                Path = $"{sheetName}!{cellRef}",
+                                Message = specificSubtype == Core.IssueSubtypes.FormulaRefMissingSheet
+                                    ? $"Formula references missing sheet (cached as {value}; Excel would show #REF!)"
+                                    : $"Formula error: {value}",
+                                Context = $"={cell.CellFormula.Text}"
+                            });
+                        }
                     }
                     else if (cell.CellFormula?.Text is { } fText
                         && (ShouldScan(Core.IssueSubtypes.FormulaNotEvaluated)
@@ -538,12 +563,16 @@ public partial class ExcelHandler
 
                         if (missingSheet && ShouldScan(Core.IssueSubtypes.FormulaRefMissingSheet))
                         {
+                            // Severity=Error matches chart_series_ref_missing_sheet
+                            // (the same failure mode at chart-data level) —
+                            // a missing-sheet ref is a real load-time error in
+                            // Excel, not a soft "needs recompute" warning.
                             issues.Add(new DocumentIssue
                             {
                                 Id = $"U{++issueNum}",
                                 Type = IssueType.Content,
                                 Subtype = Core.IssueSubtypes.FormulaRefMissingSheet,
-                                Severity = IssueSeverity.Warning,
+                                Severity = IssueSeverity.Error,
                                 Path = $"{sheetName}!{cellRef}",
                                 Message = "Formula references missing sheet (officecli evaluator silently returns 0; Excel would show #REF!)",
                                 Context = $"={fText}"
