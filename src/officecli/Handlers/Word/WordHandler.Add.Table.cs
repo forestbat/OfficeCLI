@@ -116,6 +116,24 @@ public partial class WordHandler
         if (colWidthArr != null && cols < colWidthArr.Length)
             cols = colWidthArr.Length;
 
+        // gridCols=N opt-out for sources whose <w:tblGrid/> is intentionally
+        // empty (cells carry their own tcW, or auto-fit + no explicit widths).
+        // Without this, AddTable always seeded `cols` GridColumn entries which
+        // dump's back-fill (ReadCellProps width-from-gridCol mitigation) then
+        // surfaced as `set tc width=…` rows that the source dump never had —
+        // up to N×M extra commands per round-trip on test.docx-style tables.
+        // gridCols defaults to cols; gridCols=0 yields an empty <w:tblGrid/>.
+        int gridCols = cols;
+        bool gridColsExplicit = false;
+        if (properties.TryGetValue("gridcols", out var gridColsStr)
+            || properties.TryGetValue("gridCols", out gridColsStr))
+        {
+            gridCols = ParseHelpers.SafeParseInt(gridColsStr, "gridCols");
+            if (gridCols < 0)
+                throw new ArgumentException($"Invalid 'gridCols' value: '{gridColsStr}'. Must be 0 or a positive integer.");
+            gridColsExplicit = true;
+        }
+
         // Add table grid
         // BUG-R1-P0-4: when colWidths is not specified, default per-column
         // width should be computed from the section's usable body width
@@ -137,7 +155,7 @@ public partial class WordHandler
         }
 
         var tblGrid = new TableGrid();
-        for (int gc = 0; gc < cols; gc++)
+        for (int gc = 0; gc < gridCols; gc++)
         {
             // BUG-R1-01: reject negative or zero gridCol widths up front
             // (Set already does this; Add did not). Invalid OOXML otherwise.
@@ -158,10 +176,13 @@ public partial class WordHandler
         // auto-fit and squashes columns to the visible text width, ignoring the
         // tblGrid we just wrote. The user-supplied width= path below overrides
         // this default when present (assignment to tblProps.TableWidth wins).
-        if (!properties.ContainsKey("width"))
+        // Skip the auto-tblW path when gridCols=0 was explicitly requested
+        // (empty tblGrid → no widths to sum → emitting `<w:tblW w:w="0"/>` would
+        // poison the dump round-trip with a width key the source never had).
+        if (!properties.ContainsKey("width") && !(gridColsExplicit && gridCols == 0))
         {
             long totalTwips = 0;
-            for (int gc = 0; gc < cols; gc++)
+            for (int gc = 0; gc < gridCols; gc++)
             {
                 totalTwips += colWidthArr != null && gc < colWidthArr.Length
                     ? colWidthArr[gc]
@@ -211,7 +232,7 @@ public partial class WordHandler
                         $"firstRow, lastRow, firstCol, lastCol, bandRow, bandCol, " +
                         $"noHBand, noVBand. Or use the bare hex form tblLook=04A0.");
             }
-            if (tkl is "rows" or "cols" or "colwidths" || tkl.StartsWith("border")) continue;
+            if (tkl is "rows" or "cols" or "colwidths" or "gridcols" || tkl.StartsWith("border")) continue;
             // ACCOUNTING(handler-as-truth): see AddStyle. ContainsKey only
             // when the switch will consume this key — otherwise typos would
             // leak past UnusedKeys detection.

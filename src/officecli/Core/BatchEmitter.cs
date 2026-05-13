@@ -1906,12 +1906,34 @@ public static class BatchEmitter
         {
             colsFromGrid = gridCols;
         }
+        // Format["cols"] back-fills from first-row cell count when source has
+        // no <w:tblGrid> at all, so it can't tell us "source had zero gridCol".
+        // _gridCols is the unbiased count (Navigation emits 0 when TableGrid
+        // is missing or empty). EmitTable uses this to drive the gridCols=0
+        // opt-out on the dumped `add table`.
+        int actualGridCols = colsFromGrid;
+        if (tableNode.Format.TryGetValue("_gridCols", out var actualGridObj) &&
+            int.TryParse(actualGridObj?.ToString(), out var ag))
+        {
+            actualGridCols = ag;
+        }
         int cols = Math.Max(colsFromGrid, colsFromRows);
         if (cols == 0) return;
 
         var tableProps = FilterEmittableProps(tableNode.Format);
         tableProps["rows"] = rows.Count.ToString();
         tableProps["cols"] = cols.ToString();
+        // Source had no <w:tblGrid> or an empty one — cells (if any) carry
+        // their own tcW, or the table is auto-fit. Without an explicit
+        // `gridCols=0`, AddTable would seed `cols` default GridColumn entries
+        // which ReadCellProps then back-fills as per-cell widths on the next
+        // dump, producing N×M extra `set tc width=…` rows the source never
+        // had (test.docx tbl[1]). Signal AddTable to leave tblGrid empty.
+        if (actualGridCols == 0)
+            tableProps["gridCols"] = "0";
+        // Drop the internal-only marker from emitted props (BatchItem.Props
+        // never carries it; only Navigation→EmitTable consumes it).
+        tableProps.Remove("_gridCols");
         // BUG-R2-P1-5: AddTable seeds all 6 default borders and overlays user
         // props on top, so a partial border spec (e.g. only border.top +
         // border.bottom for a banner-line table) replays as 6 single-borders.

@@ -2586,6 +2586,14 @@ public partial class WordHandler
             // spacing "12pt"). Avoids object-vs-int comparison surprises.
             node.Format["cols"] = (gridColCount ?? firstRow?.Elements<TableCell>().Count() ?? 0).ToString();
             node.Format["rows"] = node.ChildCount.ToString();
+            // _gridCols: actual <w:gridCol> count (0 when TableGrid is missing
+            // or empty), unbiased by the row-cell fallback that `cols` uses for
+            // backward-compat. EmitTable reads this to decide whether to emit
+            // `gridCols=0` on the dumped `add table` so AddTable leaves the
+            // <w:tblGrid/> empty — preserving sources whose cells encode width
+            // via tcW (or auto-fit). Underscore-prefixed to mark it as
+            // internal-only (not a user-facing Set/Add key).
+            node.Format["_gridCols"] = (gridColCount ?? 0).ToString();
 
             var tp = table.GetFirstChild<TableProperties>();
             if (tp != null)
