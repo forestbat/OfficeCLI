@@ -1406,37 +1406,23 @@ public partial class WordHandler
                     else InsertRunPropInSchemaOrder(props, new RunFonts { ComplexScript = fv });
                 }
                 return true;
-            // CONSISTENCY(toggle-explicit-false): preserve `<w:b w:val="false"/>`
-            // as an explicit style override. Sources whose style chain asserts
-            // bold/italic and need a per-run/markRPr toggle off rely on the
-            // val=false marker; without it the override silently disappears
-            // on dump round-trip. Pure "remove" semantics still apply when
-            // value is null/empty (unset).
             case "bold":
             case "font.bold":
                 props.RemoveAllChildren<Bold>();
                 if (IsTruthy(value)) InsertRunPropInSchemaOrder(props, new Bold());
-                else if (IsExplicitFalseAddOverride(value))
-                    InsertRunPropInSchemaOrder(props, new Bold { Val = DocumentFormat.OpenXml.OnOffValue.FromBoolean(false) });
                 return true;
             case "bold.cs" or "font.bold.cs" or "boldcs":
                 props.RemoveAllChildren<BoldComplexScript>();
                 if (IsTruthy(value)) InsertRunPropInSchemaOrder(props, new BoldComplexScript());
-                else if (IsExplicitFalseAddOverride(value))
-                    InsertRunPropInSchemaOrder(props, new BoldComplexScript { Val = DocumentFormat.OpenXml.OnOffValue.FromBoolean(false) });
                 return true;
             case "italic":
             case "font.italic":
                 props.RemoveAllChildren<Italic>();
                 if (IsTruthy(value)) InsertRunPropInSchemaOrder(props, new Italic());
-                else if (IsExplicitFalseAddOverride(value))
-                    InsertRunPropInSchemaOrder(props, new Italic { Val = DocumentFormat.OpenXml.OnOffValue.FromBoolean(false) });
                 return true;
             case "italic.cs" or "font.italic.cs" or "italiccs":
                 props.RemoveAllChildren<ItalicComplexScript>();
                 if (IsTruthy(value)) InsertRunPropInSchemaOrder(props, new ItalicComplexScript());
-                else if (IsExplicitFalseAddOverride(value))
-                    InsertRunPropInSchemaOrder(props, new ItalicComplexScript { Val = DocumentFormat.OpenXml.OnOffValue.FromBoolean(false) });
                 return true;
             case "size.cs" or "font.size.cs" or "sizecs":
                 // Complex-script font size (<w:szCs/>, half-points). When set,
