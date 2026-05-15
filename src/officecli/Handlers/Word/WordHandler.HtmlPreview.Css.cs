@@ -2161,14 +2161,21 @@ public partial class WordHandler
         if (best == null)
         {
             var markProps = para.ParagraphProperties?.ParagraphMarkRunProperties;
+            var synthRPr = new RunProperties();
             if (markProps != null)
             {
-                var synthRPr = new RunProperties();
                 foreach (var child in markProps.ChildElements)
                     synthRPr.AppendChild(child.CloneNode(true));
-                var synthRun = new Run(synthRPr);
-                Consider(ResolveEffectiveRunProperties(synthRun, para), includeEastAsia: true);
             }
+            // Even when the paragraph mark carries no rPr (truly bare empty
+            // paragraph), still run the synthetic run through the style
+            // cascade so the default paragraph style's rFonts apply. Per
+            // OOXML §17.7.5.2 rPrDefault and §17.3.1 paragraph-mark rPr,
+            // the empty-paragraph mark inherits through the same docDefaults
+            // → default style → direct chain that content runs traverse, so
+            // the empty paragraph resolves to the same effective font.
+            var synthRun = new Run(synthRPr);
+            Consider(ResolveEffectiveRunProperties(synthRun, para), includeEastAsia: true);
         }
         if (best != null) return best;
 
