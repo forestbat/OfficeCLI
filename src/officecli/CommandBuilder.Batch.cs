@@ -83,7 +83,7 @@ static partial class CommandBuilder
                 // skipped on purpose — '-' is not a path.)
                 if (inputFile.Name == "-")
                 {
-                    jsonText = Console.In.ReadToEnd();
+                    jsonText = StripBom(Console.In.ReadToEnd());
                 }
                 else
                 {
@@ -96,8 +96,13 @@ static partial class CommandBuilder
             }
             else
             {
-                // Read from stdin
-                jsonText = Console.In.ReadToEnd();
+                // Read from stdin. File.ReadAllText auto-detects and strips
+                // UTF-8 BOM; Console.In does not. Without an explicit strip,
+                // `cat utf8bom.json | officecli batch foo.pptx` failed
+                // System.Text.Json.Parse with "'﻿' is an invalid start of
+                // a value" while `batch --input utf8bom.json` succeeded —
+                // splitting the contract on the input source.
+                jsonText = StripBom(Console.In.ReadToEnd());
             }
 
             // Pre-validate: check for unknown JSON fields before deserializing
@@ -295,4 +300,9 @@ static partial class CommandBuilder
 
         return batchCommand;
     }
+
+    // UTF-8 BOM trim. File.ReadAllText handles this implicitly via
+    // StreamReader's detect-encoding; Console.In feeds raw chars.
+    private static string StripBom(string s)
+        => !string.IsNullOrEmpty(s) && s[0] == '﻿' ? s.Substring(1) : s;
 }
