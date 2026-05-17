@@ -295,6 +295,33 @@ public partial class PowerPointHandler
                         if (cell.VerticalMerge?.HasValue == true && cell.VerticalMerge.Value)
                             cellNode.Format["vmerge"] = true;
 
+                        // Cell text direction (a:tcPr @vert). Canonical readback
+                        // mirrors the Set vocabulary (horizontal / vertical270 /
+                        // vertical90 / stacked) so round-trip equality holds.
+                        if (tcPr?.Vertical?.HasValue == true)
+                        {
+                            cellNode.Format["textdirection"] = tcPr.Vertical.InnerText switch
+                            {
+                                "horz" => "horizontal",
+                                "vert" => "vertical90",
+                                "vert270" => "vertical270",
+                                "wordArtVert" => "stacked",
+                                "eaVert" => "eaVert",
+                                "mongolianVert" => "mongolianVert",
+                                "wordArtVertRtl" => "wordArtVertRtl",
+                                _ => tcPr.Vertical.InnerText
+                            };
+                        }
+
+                        // Cell text wrap (a:tcPr/a:txBody/a:bodyPr @wrap).
+                        // Set writes square|none on the cell's BodyProperties;
+                        // mirror back as bool (false == "none", true == "square").
+                        var cellBodyPr = cell.TextBody?.GetFirstChild<Drawing.BodyProperties>();
+                        if (cellBodyPr?.Wrap?.HasValue == true)
+                        {
+                            cellNode.Format["wrap"] = cellBodyPr.Wrap.Value != Drawing.TextWrappingValues.None;
+                        }
+
                         // Cell vertical alignment
                         if (tcPr?.Anchor?.HasValue == true)
                         {

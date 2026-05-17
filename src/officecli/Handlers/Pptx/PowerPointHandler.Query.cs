@@ -463,6 +463,28 @@ public partial class PowerPointHandler
                 };
             }
 
+            // Cell text direction (a:tcPr @vert). Canonical readback mirrors the
+            // Set vocabulary (horizontal / vertical270 / vertical90 / stacked).
+            if (tcPr?.Vertical?.HasValue == true)
+            {
+                cellNode.Format["textdirection"] = tcPr.Vertical.InnerText switch
+                {
+                    "horz" => "horizontal",
+                    "vert" => "vertical90",
+                    "vert270" => "vertical270",
+                    "wordArtVert" => "stacked",
+                    _ => tcPr.Vertical.InnerText
+                };
+            }
+
+            // Cell text wrap (a:tcPr/a:txBody/a:bodyPr @wrap). Set writes
+            // square|none on the cell's BodyProperties; mirror back as bool.
+            var qCellBodyPr = cell.TextBody?.GetFirstChild<Drawing.BodyProperties>();
+            if (qCellBodyPr?.Wrap?.HasValue == true)
+            {
+                cellNode.Format["wrap"] = qCellBodyPr.Wrap.Value != Drawing.TextWrappingValues.None;
+            }
+
             // BUG-R4-D9: padding.* readback (Set already wrote LeftMargin/etc;
             // Get was missing). Use FormatEmu to mirror cross-handler width/EMU
             // value formatting (e.g. "0.13cm").
