@@ -406,7 +406,9 @@ internal static partial class ChartHelper
 
         var doughnutChart = plotArea.GetFirstChild<C.DoughnutChart>();
         var holeSize = doughnutChart?.GetFirstChild<C.HoleSize>()?.Val?.Value;
-        if (holeSize != null) node.Format["holeSize"] = (int)holeSize;
+        // CONSISTENCY(chart-format-type): emit as string to match sister
+        // numeric chart props (gapwidth, overlap, explosion, style…).
+        if (holeSize != null) node.Format["holeSize"] = ((int)holeSize).ToString();
 
         var bubbleChart = plotArea.GetFirstChild<C.BubbleChart>();
         var bubbleScale = bubbleChart?.GetFirstChild<C.BubbleScale>()?.Val?.Value;
