@@ -555,7 +555,7 @@ internal static partial class ChartHelper
                     var valAxis = plotArea2?.GetFirstChild<C.ValueAxis>();
                     if (valAxis == null) { unsupported.Add(key); break; }
                     valAxis.RemoveAllChildren<C.MajorUnit>();
-                    valAxis.AppendChild(new C.MajorUnit { Val = ParseHelpers.SafeParseDouble(value, "majorunit") });
+                    InsertValAxChildInOrder(valAxis, new C.MajorUnit { Val = ParseHelpers.SafeParseDouble(value, "majorunit") });
                     break;
                 }
 
@@ -565,7 +565,7 @@ internal static partial class ChartHelper
                     var valAxis = plotArea2?.GetFirstChild<C.ValueAxis>();
                     if (valAxis == null) { unsupported.Add(key); break; }
                     valAxis.RemoveAllChildren<C.MinorUnit>();
-                    valAxis.AppendChild(new C.MinorUnit { Val = ParseHelpers.SafeParseDouble(value, "minorunit") });
+                    InsertValAxChildInOrder(valAxis, new C.MinorUnit { Val = ParseHelpers.SafeParseDouble(value, "minorunit") });
                     break;
                 }
 

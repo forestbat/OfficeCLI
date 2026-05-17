@@ -962,6 +962,34 @@ internal static partial class ChartHelper
     }
 
     /// <summary>
+    /// Insert a child into a CT_ValAx at the correct schema position.
+    /// Tail of CT_ValAx: ..., crossAx, crosses?, crossesAt?, crossBetween?,
+    /// majorUnit?, minorUnit?, dispUnits?, extLst?. AppendChild is unsafe when
+    /// later siblings already exist (e.g. setting majorUnit after minorUnit
+    /// already landed flips the schema order and the OpenXmlValidator rejects
+    /// the file with "unexpected child element 'majorUnit'").
+    /// </summary>
+    internal static void InsertValAxChildInOrder(OpenXmlCompositeElement valAx, OpenXmlElement child)
+    {
+        string[] insertBeforeNames = child.LocalName switch
+        {
+            "majorUnit" => ["minorUnit", "dispUnits", "extLst"],
+            "minorUnit" => ["dispUnits", "extLst"],
+            "dispUnits" => ["extLst"],
+            _ => ["extLst"]
+        };
+        foreach (var sibling in valAx.ChildElements)
+        {
+            if (insertBeforeNames.Contains(sibling.LocalName))
+            {
+                valAx.InsertBefore(child, sibling);
+                return;
+            }
+        }
+        valAx.AppendChild(child);
+    }
+
+    /// <summary>
     /// Insert effectLst into spPr respecting DrawingML schema: ..., ln, effectLst, effectDag, ...
     /// </summary>
     internal static void InsertEffectListInSpPr(Drawing.ShapeProperties spPr, Drawing.EffectList effectList)
