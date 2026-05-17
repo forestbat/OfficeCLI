@@ -48,9 +48,21 @@ public partial class PowerPointHandler
         if (solidFill == null) return null;
         var rgbEl = solidFill.GetFirstChild<Drawing.RgbColorModelHex>();
         if (rgbEl?.Val?.Value != null) return FormatHexWithAlpha(rgbEl);
-        var scheme = solidFill.GetFirstChild<Drawing.SchemeColor>()?.Val;
-        if (scheme?.HasValue == true)
-            return ParseHelpers.NormalizeSchemeColorName(scheme.InnerText) ?? scheme.InnerText;
+        var schemeEl = solidFill.GetFirstChild<Drawing.SchemeColor>();
+        if (schemeEl != null)
+        {
+            // CONSISTENCY(scheme-color-unknown): when the SDK's EnumValue can't
+            // parse the schemeClr@val (custom themes with dk3/lt3/accent7+,
+            // future OOXML additions) .Val.HasValue is false and InnerText is
+            // empty. Fall back to the raw XML attribute so the color survives
+            // round-trip instead of silently disappearing.
+            var schemeVal = schemeEl.Val;
+            string? raw = (schemeVal?.HasValue == true && !string.IsNullOrEmpty(schemeVal.InnerText))
+                ? schemeVal.InnerText
+                : schemeEl.GetAttribute("val", "").Value;
+            if (!string.IsNullOrEmpty(raw))
+                return ParseHelpers.NormalizeSchemeColorName(raw) ?? raw;
+        }
         return null;
     }
 
@@ -62,7 +74,7 @@ public partial class PowerPointHandler
         if (parent == null) return null;
         var rgbEl = parent.GetFirstChild<Drawing.RgbColorModelHex>();
         if (rgbEl?.Val?.Value != null) return FormatHexWithAlpha(rgbEl);
-        var scheme = parent.GetFirstChild<Drawing.SchemeColor>()?.Val;
+        var schemeEl = parent.GetFirstChild<Drawing.SchemeColor>();
         // CONSISTENCY(scheme-color-roundtrip): emit canonical long names
         // (dark1/light1/hyperlink/…) so OOXML internal short forms
         // (dk1/lt1/hlink/…) round-trip through Get the same way
@@ -70,8 +82,18 @@ public partial class PowerPointHandler
         // gradient-stop schemeClr readback surfaced raw InnerText
         // ("dk1"/"hlink"/…), which Add/Set accepts but Get clients
         // following the documented vocabulary wouldn't recognise.
-        if (scheme?.HasValue == true)
-            return ParseHelpers.NormalizeSchemeColorName(scheme.InnerText) ?? scheme.InnerText;
+        if (schemeEl != null)
+        {
+            // CONSISTENCY(scheme-color-unknown): mirror ReadColorFromFill —
+            // fall back to the raw @val attribute when EnumValue can't parse it
+            // (custom themes, future OOXML additions).
+            var schemeVal = schemeEl.Val;
+            string? raw = (schemeVal?.HasValue == true && !string.IsNullOrEmpty(schemeVal.InnerText))
+                ? schemeVal.InnerText
+                : schemeEl.GetAttribute("val", "").Value;
+            if (!string.IsNullOrEmpty(raw))
+                return ParseHelpers.NormalizeSchemeColorName(raw) ?? raw;
+        }
         return null;
     }
 
