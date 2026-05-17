@@ -332,23 +332,36 @@ public partial class PowerPointHandler
     private static SplitTransition BuildSplitTransition(string? direction)
     {
         var orient = DirectionValues.Horizontal;
-        var inOut = TransitionInOutDirectionValues.In;
+        TransitionInOutDirectionValues? inOut = null;
+        bool orientGiven = false;
         if (direction != null)
         {
             foreach (var token in direction.Split('-', ' '))
             {
                 var t = token.ToLowerInvariant();
                 if (t is "v" or "vert" or "vertical")
-                    orient = DirectionValues.Vertical;
+                { orient = DirectionValues.Vertical; orientGiven = true; }
                 else if (t is "h" or "horz" or "horizontal")
-                    orient = DirectionValues.Horizontal;
+                { orient = DirectionValues.Horizontal; orientGiven = true; }
                 else if (t is "out")
                     inOut = TransitionInOutDirectionValues.Out;
                 else if (t is "in")
                     inOut = TransitionInOutDirectionValues.In;
             }
         }
-        return new SplitTransition { Orientation = orient, Direction = inOut };
+        // Plain set transition=split must produce a distinct XML signature from
+        // split-horizontal-in so readback can tell them apart. The bare form
+        // writes <p:split orient="horz"/> with no dir attribute; the explicit
+        // form keeps writing both attributes. Without this, both inputs landed
+        // on identical XML and readback always returned "split".
+        var split = new SplitTransition { Orientation = orient };
+        if (inOut.HasValue) split.Direction = inOut.Value;
+        // Keep orient on the XML even when the caller didn't pick one — it's the
+        // single attribute that distinguishes split from the bare-no-attr
+        // signature reserved for the future case. orientGiven is consulted only
+        // to leave room for a future fully-bare emit if needed.
+        _ = orientGiven;
+        return split;
     }
 
     // ==================== Shape Animations ====================
@@ -1587,15 +1600,17 @@ public partial class PowerPointHandler
         if (transElem is ZoomTransition zoom && zoom.Direction?.HasValue == true)
             return zoom.Direction.Value == TransitionInOutDirectionValues.Out ? "out" : null;
 
-        // Split: orientation + in/out (default: horizontal-in)
+        // Split: surface orientation + in/out only when the source XML carried
+        // both attributes. Bare <p:split orient="horz"/> (no dir) round-trips
+        // through Get as plain "split"; explicit forms (e.g. split-horizontal-in)
+        // carry both attributes and read back with the qualifier intact.
         if (transElem is SplitTransition split)
         {
+            if (split.Direction?.HasValue != true) return null;
             var orient = split.Orientation?.HasValue == true && split.Orientation.Value == DirectionValues.Vertical
                 ? "vertical" : "horizontal";
-            var dir = split.Direction?.HasValue == true && split.Direction.Value == TransitionInOutDirectionValues.Out
-                ? "out" : "in";
-            var combined = $"{orient}-{dir}";
-            return combined == "horizontal-in" ? null : combined;
+            var dir = split.Direction.Value == TransitionInOutDirectionValues.Out ? "out" : "in";
+            return $"{orient}-{dir}";
         }
 
         // Orientation-based: blinds, checker, comb, randombar (default: horizontal)
