@@ -164,7 +164,8 @@ public partial class PowerPointHandler
             "ld", "leftdown", "downleft", "rd", "rightdown", "downright",
             "in", "out",
             "h", "horiz", "horizontal", "v", "vert", "vertical",
-            "byobject", "bypage", "byword", "byletter",
+            "byobject", "object", "bypage", "byword", "word",
+            "bychar", "char", "character", "byletter",
         };
         foreach (var part in parts.Skip(1))
         {
