@@ -175,11 +175,14 @@ public partial class ExcelHandler
             sb.Append(inStr ? ' ' : c);
         }
         var stripped = sb.ToString();
-        // Match A1-style refs: optional $ + 1-3 letters + optional $ + 1-7 digits.
+        // Match A1-style refs: optional $ + 1-3 letters + optional $ + 1-8 digits.
+        // (Excel's row ceiling 1048576 is 7-digit, but 8-digit numbers like
+        // A10000000 must still be caught so they're rejected with the clean
+        // "out-of-range" error rather than slipping through validation.)
         // Avoid matching inside an identifier (e.g. "FOO1") via a leading
         // boundary that requires either start-of-string or a non-letter.
         var rx = new System.Text.RegularExpressions.Regex(
-            @"(?<![A-Za-z_])\$?([A-Za-z]{1,3})\$?([0-9]{1,7})\b");
+            @"(?<![A-Za-z_])\$?([A-Za-z]{1,3})\$?([0-9]{1,8})\b");
         foreach (System.Text.RegularExpressions.Match m in rx.Matches(stripped))
         {
             var col = m.Groups[1].Value.ToUpperInvariant();
