@@ -1033,8 +1033,34 @@ internal static partial class ChartHelper
                     var plotArea2 = chart.GetFirstChild<C.PlotArea>();
                     if (plotArea2 == null) { unsupported.Add(key); break; }
                     if (!int.TryParse(value, out var gw)) throw new ArgumentException($"Invalid gapWidth: '{value}'. Expected integer (0-500).");
+                    bool gapUpdated = false;
                     foreach (var gapEl in plotArea2.Descendants<C.GapWidth>())
+                    {
                         gapEl.Val = (ushort)gw;
+                        gapUpdated = true;
+                    }
+                    if (!gapUpdated)
+                    {
+                        // No existing GapWidth — create one per bar/column chart element.
+                        // This occurs when RebuildComboChart (applied via deferred
+                        // comboTypes= prop) replaces the original barChart (which had
+                        // a GapWidth seeded by BuildBarChart) with freshly constructed
+                        // barChart elements that have no GapWidth child. The `foreach
+                        // Descendants` above then finds nothing and the gapwidth round-
+                        // trips as lost. Mirror the `overlap` upsert pattern.
+                        foreach (var barChartEl in plotArea2.Elements<OpenXmlCompositeElement>()
+                            .Where(e => e.LocalName == "barChart" || e.LocalName == "bar3DChart"))
+                        {
+                            // Insert before the first AxisId — mirrors BuildBarChart's
+                            // schema order: [barDirection, barGrouping, varyColors,
+                            // ser*, gapWidth, overlap?, axisId+].
+                            var axisIdEl = barChartEl.GetFirstChild<C.AxisId>();
+                            if (axisIdEl != null)
+                                axisIdEl.InsertBeforeSelf(new C.GapWidth { Val = (ushort)gw });
+                            else
+                                barChartEl.AppendChild(new C.GapWidth { Val = (ushort)gw });
+                        }
+                    }
                     break;
                 }
 
