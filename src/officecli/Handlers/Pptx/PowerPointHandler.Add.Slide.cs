@@ -17,6 +17,19 @@ public partial class PowerPointHandler
     private string AddSlide(string parentPath, int? index, Dictionary<string, string> properties)
     {
                 properties ??= new Dictionary<string, string>();
+                // A slide can only attach to the presentation root. Earlier
+                // releases silently fell back to "/" when the caller passed
+                // a non-root parent (e.g. `/slide[1]`, `/section[2]`,
+                // `/bogus`), which masked path typos and produced a slide
+                // somewhere other than where the caller expected.
+                if (!string.IsNullOrEmpty(parentPath)
+                    && parentPath != "/"
+                    && parentPath != "")
+                {
+                    throw new ArgumentException(
+                        $"Invalid parent '{parentPath}' for --type slide: a slide can only be added at '/' " +
+                        "(slides hang off the presentation root, not under another element).");
+                }
                 var presentationPart = _doc.PresentationPart
                     ?? throw new InvalidOperationException("Presentation not found");
                 var presentation = presentationPart.Presentation
