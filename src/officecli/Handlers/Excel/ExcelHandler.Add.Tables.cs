@@ -100,11 +100,33 @@ public partial class ExcelHandler
 
         var dn = new DefinedName(refVal) { Name = nrName };
 
-        if (properties.TryGetValue("scope", out var scope) && !string.IsNullOrEmpty(scope))
+        // Scope resolution: explicit --prop scope= wins. Otherwise, if the
+        // parentPath addresses a specific sheet (e.g. "/Sheet1"), default
+        // the scope to that sheet — callers who picked a sheet-level
+        // parent almost always wanted a sheet-scoped name, and previously
+        // the parentPath was silently ignored and the name landed at
+        // workbook scope. Pass scope=workbook explicitly to keep the old
+        // workbook-global behavior under a sheet parent.
+        string? effectiveScope = null;
+        bool explicitWorkbookScope = false;
+        if (properties.TryGetValue("scope", out var scopeRaw) && !string.IsNullOrEmpty(scopeRaw))
+        {
+            if (string.Equals(scopeRaw, "workbook", StringComparison.OrdinalIgnoreCase))
+                explicitWorkbookScope = true;
+            else
+                effectiveScope = scopeRaw;
+        }
+        if (effectiveScope == null && !explicitWorkbookScope)
+        {
+            var parentTrim = (parentPath ?? "").TrimStart('/').TrimEnd('/');
+            if (!string.IsNullOrEmpty(parentTrim) && !parentTrim.Contains('/'))
+                effectiveScope = parentTrim; // single-segment sheet name
+        }
+        if (effectiveScope != null)
         {
             var nrSheets = workbook.GetFirstChild<Sheets>()?.Elements<Sheet>().ToList();
             var nrSheetIdx = nrSheets?.FindIndex(s =>
-                s.Name?.Value?.Equals(scope, StringComparison.OrdinalIgnoreCase) == true) ?? -1;
+                s.Name?.Value?.Equals(effectiveScope, StringComparison.OrdinalIgnoreCase) == true) ?? -1;
             if (nrSheetIdx >= 0) dn.LocalSheetId = (uint)nrSheetIdx;
         }
         if (properties.TryGetValue("comment", out var nrComment))
