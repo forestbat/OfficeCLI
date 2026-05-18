@@ -25,6 +25,22 @@ public static partial class PptxBatchEmitter
         props.Remove("id");
         props.Remove("seriesCount");
 
+        // Scatter/bubble charts intrinsically carry TWO c:valAx (X and Y are
+        // both value-axes — no category axis), which the Reader's
+        // "multi-valAx ⇒ secondary axis" heuristic mistakes for a combo
+        // primary+secondary pair. Re-emitting `secondaryAxis=1,2` on a scatter
+        // forces ApplySecondaryAxis at replay, which retags one series's axIds
+        // and (because plotArea now contains two ScatterCharts with disjoint
+        // series binds) gets detected as `chartType=combo` on the next Get.
+        // Drop the spurious key for these chart types — primary/secondary is
+        // not a meaningful concept on a scatter or bubble plot.
+        if (props.TryGetValue("chartType", out var chartTypeStr)
+            && (chartTypeStr.Equals("scatter", StringComparison.OrdinalIgnoreCase)
+                || chartTypeStr.Equals("bubble", StringComparison.OrdinalIgnoreCase)))
+        {
+            props.Remove("secondaryAxis");
+        }
+
         // Reconstruct AddChart's data="Name1:v1,v2;..." input from the
         // series children (each carries `name` + `values` Format keys).
         var seriesParts = new List<string>();
