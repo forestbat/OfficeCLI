@@ -127,7 +127,12 @@ static partial class CommandBuilder
                 // JSON array) so it can feed `batch --input <file>`
                 // unchanged — wrapping it in an envelope would break
                 // batch consumption.
-                File.WriteAllText(outPath, output);
+                // CONSISTENCY(trailing-newline): stdout always ends with a
+                // newline (Console.WriteLine); pair it on the file form too
+                // so tools like `wc -l`, `git diff`, POSIX text-file
+                // expectations and pipe-vs-file consumers agree on the
+                // payload shape.
+                File.WriteAllText(outPath, output + "\n");
                 if (json)
                 {
                     // BUG-R6-01: previously stdout returned

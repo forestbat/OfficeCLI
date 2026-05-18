@@ -1423,7 +1423,10 @@ public class ResidentServer : IDisposable
         if (outPath == "-") outPath = null;
         if (!string.IsNullOrEmpty(outPath))
         {
-            File.WriteAllText(outPath, output);
+            // CONSISTENCY(trailing-newline): match CommandBuilder.Dump.cs —
+            // stdout path ends with a newline (Console.WriteLine), file path
+            // must too so consumers see the same payload either way.
+            File.WriteAllText(outPath, output + "\n");
             if (req.Json)
             {
                 var meta = new System.Text.Json.Nodes.JsonObject
