@@ -554,8 +554,15 @@ internal static partial class ChartHelper
                     var plotArea2 = chart.GetFirstChild<C.PlotArea>();
                     var valAxis = plotArea2?.GetFirstChild<C.ValueAxis>();
                     if (valAxis == null) { unsupported.Add(key); break; }
+                    var mu = ParseHelpers.SafeParseDouble(value, "majorunit");
+                    // OOXML ST_AxisUnit: positive double. 0 or negative would
+                    // make Excel refuse to draw any tick on the axis (or, in
+                    // older builds, freeze the chart). Reject up front instead
+                    // of writing garbage that opens to a blank plot area.
+                    if (!(mu > 0))
+                        throw new ArgumentException($"Invalid majorUnit '{value}': must be a positive number (OOXML ST_AxisUnit > 0).");
                     valAxis.RemoveAllChildren<C.MajorUnit>();
-                    InsertValAxChildInOrder(valAxis, new C.MajorUnit { Val = ParseHelpers.SafeParseDouble(value, "majorunit") });
+                    InsertValAxChildInOrder(valAxis, new C.MajorUnit { Val = mu });
                     break;
                 }
 
@@ -564,8 +571,11 @@ internal static partial class ChartHelper
                     var plotArea2 = chart.GetFirstChild<C.PlotArea>();
                     var valAxis = plotArea2?.GetFirstChild<C.ValueAxis>();
                     if (valAxis == null) { unsupported.Add(key); break; }
+                    var nu = ParseHelpers.SafeParseDouble(value, "minorunit");
+                    if (!(nu > 0))
+                        throw new ArgumentException($"Invalid minorUnit '{value}': must be a positive number (OOXML ST_AxisUnit > 0).");
                     valAxis.RemoveAllChildren<C.MinorUnit>();
-                    InsertValAxChildInOrder(valAxis, new C.MinorUnit { Val = ParseHelpers.SafeParseDouble(value, "minorunit") });
+                    InsertValAxChildInOrder(valAxis, new C.MinorUnit { Val = nu });
                     break;
                 }
 
