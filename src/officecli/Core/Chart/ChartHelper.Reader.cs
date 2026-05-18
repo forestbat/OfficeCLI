@@ -33,6 +33,48 @@ internal static partial class ChartHelper
         var chartType = DetectChartType(plotArea);
         if (chartType != null) node.Format["chartType"] = chartType;
 
+        // R24 — for combo charts surface the per-series type list (and the
+        // split point if it cleanly partitions into a primary block + tail)
+        // so dump→replay can reconstruct mixed-type charts. Without this,
+        // every combo collapsed back to a column+line split at index 1.
+        if (chartType == "combo")
+        {
+            var typesPerSeries = new List<string>();
+            foreach (var ct in plotArea.Elements<OpenXmlCompositeElement>())
+            {
+                string? ctLabel = ct switch
+                {
+                    C.BarChart bc => bc.GetFirstChild<C.BarDirection>()?.Val?.Value == C.BarDirectionValues.Bar
+                        ? "bar" : "column",
+                    C.LineChart => "line",
+                    C.AreaChart => "area",
+                    C.ScatterChart => "scatter",
+                    C.PieChart => "pie",
+                    C.DoughnutChart => "doughnut",
+                    C.BubbleChart => "bubble",
+                    C.RadarChart => "radar",
+                    _ => null,
+                };
+                if (ctLabel == null) continue;
+                var serCount = ct.Elements<OpenXmlCompositeElement>()
+                    .Count(e => e.LocalName == "ser");
+                for (int i = 0; i < serCount; i++) typesPerSeries.Add(ctLabel);
+            }
+            if (typesPerSeries.Count > 0)
+            {
+                node.Format["comboTypes"] = string.Join(",", typesPerSeries);
+                // combosplit = number of leading series of the first type — the
+                // partition the simple Builder.combo path can rebuild without
+                // touching RebuildComboChart.
+                int splitAt = 0;
+                var first = typesPerSeries[0];
+                while (splitAt < typesPerSeries.Count && typesPerSeries[splitAt] == first)
+                    splitAt++;
+                if (splitAt > 0 && splitAt < typesPerSeries.Count)
+                    node.Format["combosplit"] = splitAt;
+            }
+        }
+
         var titleEl = chart.GetFirstChild<C.Title>();
         var titleText = titleEl?.Descendants<Drawing.Text>().FirstOrDefault()?.Text;
         if (titleText == null && titleEl != null)

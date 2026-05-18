@@ -253,7 +253,7 @@ internal static partial class ChartHelper
                         var clr = colors != null && cIdx < colors.Length ? colors[cIdx] : DefaultSeriesColors[cIdx % DefaultSeriesColors.Length];
                         comboLine.AppendChild(BuildLineSeries(sIdx, lineData[ci].name, categories, lineData[ci].values, clr));
                     }
-                    comboLine.AppendChild(new C.ShowMarker { Val = true });
+                    // ShowMarker stays opt-in here too (see BuildLineChart).
                     comboLine.AppendChild(new C.AxisId { Val = catAxisId });
                     comboLine.AppendChild(new C.AxisId { Val = valAxisId });
                     plotArea.AppendChild(comboLine);
