@@ -169,6 +169,14 @@ public partial class PowerPointHandler
                         break;
                 }
             }
+            // Bump dcterms:modified on any successful Set to /. Real PowerPoint
+            // (and Word/Excel) always rewrite the last-modified timestamp on
+            // save; without this, downstream tools that diff core.xml after an
+            // edit see no change and assume the file is untouched. Skipped when
+            // every requested property was unsupported (applied.Count == 0) so
+            // a typo-only call doesn't masquerade as a successful mutation.
+            if (properties.Count > unsupported.Count)
+                _doc.PackageProperties.Modified = DateTime.UtcNow;
             presentation.Save();
             return unsupported;
         }
