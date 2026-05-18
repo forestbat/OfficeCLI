@@ -1074,8 +1074,22 @@ public partial class ExcelHandler
         selector = Regex.Replace(selector, @"(^|!)(merge|mergedrange)\b", "$1mergeCell", RegexOptions.IgnoreCase);
 
         // Check if element type is known (Scheme A) or should fall back to generic XML (Scheme B)
-        // Strip sheet prefix (Sheet1!cell[...]) but not != operator
+        // Strip sheet prefix (Sheet1!cell[...]) but not != operator.
+        // Also accept path-style: "/element" (bare) and "/Sheet/element[...]"
+        // so the same dispatch table catches query "/sheet", "/table",
+        // "/namedrange", and "/Sheet1/table[1]". Mirrors GET's bare-path
+        // listers (see ecb36111) — without this normalization, the bare
+        // path falls through to ParseCellSelector and returns cells.
         var selectorForType = Regex.Replace(selector, @"^.+?!(?!=)", "");
+        if (selectorForType.StartsWith('/'))
+        {
+            var trimmed = selectorForType.TrimStart('/');
+            var slashIdx = trimmed.IndexOf('/');
+            // "/element..."   → "element..."
+            // "/Sheet/elem"   → "elem" (the trailing element governs dispatch;
+            //                  parsed.Sheet captures the prefix separately).
+            selectorForType = slashIdx < 0 ? trimmed : trimmed[(slashIdx + 1)..];
+        }
         var elementMatch = Regex.Match(selectorForType, @"^(\w+)");
         // Lowercase once so all downstream `elementName is "..."` dispatch is
         // case-insensitive. CONSISTENCY(query-case-insensitive): matches how
