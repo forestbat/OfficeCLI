@@ -99,44 +99,69 @@ public static partial class PptxBatchEmitter
     private static void EmitMasterRaw(PowerPointHandler ppt, List<BatchItem> items)
     {
         var n = ppt.SlideMasterCount;
-        for (int i = 1; i <= n; i++)
-        {
-            string xml;
-            try { xml = ppt.Raw($"/slideMaster[{i}]"); }
-            catch { continue; }
-            if (string.IsNullOrEmpty(xml) || !xml.StartsWith("<")) continue;
-            xml = CanonicalizeRawXml(xml);
+        for (int i = 1; i <= n; i++) EmitMasterRawOne(ppt, i, items);
+    }
 
-            items.Add(new BatchItem
-            {
-                Command = "raw-set",
-                Part = $"/slideMaster[{i}]",
-                Xpath = "/p:sldMaster",
-                Action = "replace",
-                Xml = xml
-            });
-        }
+    private static bool EmitMasterRawOne(PowerPointHandler ppt, int idx, List<BatchItem> items)
+    {
+        string xml;
+        try { xml = ppt.Raw($"/slideMaster[{idx}]"); }
+        catch { return false; }
+        if (string.IsNullOrEmpty(xml) || !xml.StartsWith("<")) return false;
+        xml = CanonicalizeRawXml(xml);
+
+        items.Add(new BatchItem
+        {
+            Command = "raw-set",
+            Part = $"/slideMaster[{idx}]",
+            Xpath = "/p:sldMaster",
+            Action = "replace",
+            Xml = xml
+        });
+        return true;
     }
 
     private static void EmitLayoutRaw(PowerPointHandler ppt, List<BatchItem> items)
     {
         var n = ppt.SlideLayoutCount;
-        for (int i = 1; i <= n; i++)
-        {
-            string xml;
-            try { xml = ppt.Raw($"/slideLayout[{i}]"); }
-            catch { continue; }
-            if (string.IsNullOrEmpty(xml) || !xml.StartsWith("<")) continue;
-            xml = CanonicalizeRawXml(xml);
+        for (int i = 1; i <= n; i++) EmitLayoutRawOne(ppt, i, items);
+    }
 
-            items.Add(new BatchItem
-            {
-                Command = "raw-set",
-                Part = $"/slideLayout[{i}]",
-                Xpath = "/p:sldLayout",
-                Action = "replace",
-                Xml = xml
-            });
-        }
+    private static bool EmitLayoutRawOne(PowerPointHandler ppt, int idx, List<BatchItem> items)
+    {
+        string xml;
+        try { xml = ppt.Raw($"/slideLayout[{idx}]"); }
+        catch { return false; }
+        if (string.IsNullOrEmpty(xml) || !xml.StartsWith("<")) return false;
+        xml = CanonicalizeRawXml(xml);
+
+        items.Add(new BatchItem
+        {
+            Command = "raw-set",
+            Part = $"/slideLayout[{idx}]",
+            Xpath = "/p:sldLayout",
+            Action = "replace",
+            Xml = xml
+        });
+        return true;
+    }
+
+    private static bool EmitNoteSlideRawOne(PowerPointHandler ppt, int idx, List<BatchItem> items)
+    {
+        string xml;
+        try { xml = ppt.Raw($"/noteSlide[{idx}]"); }
+        catch { return false; }
+        if (string.IsNullOrEmpty(xml) || !xml.StartsWith("<")) return false;
+        xml = CanonicalizeRawXml(xml);
+
+        items.Add(new BatchItem
+        {
+            Command = "raw-set",
+            Part = $"/noteSlide[{idx}]",
+            Xpath = "/p:notes",
+            Action = "replace",
+            Xml = xml
+        });
+        return true;
     }
 }

@@ -196,27 +196,45 @@ public static partial class PptxBatchEmitter
         var items = new List<BatchItem>();
         var ctx = new SlideEmitContext(new List<UnsupportedWarning>());
 
-        if (path == "/presentation")
+        // CONSISTENCY(case-insensitive-subtree): paths with [N] go through
+        // regex `IgnoreCase`, so case-folding the literal-prefix branches too
+        // aligns the dispatcher to a single rule and matches the docx subtree
+        // dispatcher (WordBatchEmitter uses `path.ToLowerInvariant()`).
+        var lp = path.ToLowerInvariant();
+
+        if (lp == "/presentation")
         {
             EmitPresentationProps(ppt, items);
             return (items, ctx.Unsupported);
         }
-        if (path == "/theme")
+        if (lp == "/theme")
         {
             EmitThemeRaw(ppt, items);
             return (items, ctx.Unsupported);
         }
-        if (path == "/notesMaster")
+        if (lp == "/notesmaster")
         {
             EmitNotesMasterRaw(ppt, items);
             return (items, ctx.Unsupported);
         }
 
-        var slideMatch = System.Text.RegularExpressions.Regex.Match(path, @"^/slide\[(\d+)\]$",
+        // Index parsing: regex restricts to ASCII [0-9]+ (not Unicode \d, which
+        // matches Arabic-Indic numerals etc. that int.Parse rejects under
+        // InvariantCulture). int.TryParse guards against Int32 overflow.
+        static int ParseIndexOrThrow(string raw, string fullPath)
+        {
+            if (!int.TryParse(raw, System.Globalization.NumberStyles.Integer,
+                              System.Globalization.CultureInfo.InvariantCulture, out var n))
+                throw new CliException($"dump path not found: {fullPath} (index '{raw}' out of range or not an integer)")
+                    { Code = "path_not_found" };
+            return n;
+        }
+
+        var slideMatch = System.Text.RegularExpressions.Regex.Match(path, @"^/slide\[([0-9]+)\]$",
             System.Text.RegularExpressions.RegexOptions.IgnoreCase);
         if (slideMatch.Success)
         {
-            var idx = int.Parse(slideMatch.Groups[1].Value);
+            var idx = ParseIndexOrThrow(slideMatch.Groups[1].Value, path);
             DocumentNode slideNode;
             try { slideNode = ppt.Get(path); }
             catch (Exception ex)
@@ -227,35 +245,39 @@ public static partial class PptxBatchEmitter
             return (items, ctx.Unsupported);
         }
 
-        var masterMatch = System.Text.RegularExpressions.Regex.Match(path, @"^/slideMaster\[(\d+)\]$",
+        var masterMatch = System.Text.RegularExpressions.Regex.Match(path, @"^/slideMaster\[([0-9]+)\]$",
             System.Text.RegularExpressions.RegexOptions.IgnoreCase);
         if (masterMatch.Success)
         {
-            var idx = int.Parse(masterMatch.Groups[1].Value);
+            var idx = ParseIndexOrThrow(masterMatch.Groups[1].Value, path);
             if (idx < 1 || idx > ppt.SlideMasterCount)
                 throw new CliException($"dump path not found: {path} (total slideMasters: {ppt.SlideMasterCount})")
                     { Code = "path_not_found" };
-            EmitMasterRawOne(ppt, idx, items);
+            if (!EmitMasterRawOne(ppt, idx, items))
+                throw new CliException($"dump path not found: {path} (slideMaster {idx} raw read failed)")
+                    { Code = "path_not_found" };
             return (items, ctx.Unsupported);
         }
 
-        var layoutMatch = System.Text.RegularExpressions.Regex.Match(path, @"^/slideLayout\[(\d+)\]$",
+        var layoutMatch = System.Text.RegularExpressions.Regex.Match(path, @"^/slideLayout\[([0-9]+)\]$",
             System.Text.RegularExpressions.RegexOptions.IgnoreCase);
         if (layoutMatch.Success)
         {
-            var idx = int.Parse(layoutMatch.Groups[1].Value);
+            var idx = ParseIndexOrThrow(layoutMatch.Groups[1].Value, path);
             if (idx < 1 || idx > ppt.SlideLayoutCount)
                 throw new CliException($"dump path not found: {path} (total slideLayouts: {ppt.SlideLayoutCount})")
                     { Code = "path_not_found" };
-            EmitLayoutRawOne(ppt, idx, items);
+            if (!EmitLayoutRawOne(ppt, idx, items))
+                throw new CliException($"dump path not found: {path} (slideLayout {idx} raw read failed)")
+                    { Code = "path_not_found" };
             return (items, ctx.Unsupported);
         }
 
-        var noteMatch = System.Text.RegularExpressions.Regex.Match(path, @"^/noteSlide\[(\d+)\]$",
+        var noteMatch = System.Text.RegularExpressions.Regex.Match(path, @"^/noteSlide\[([0-9]+)\]$",
             System.Text.RegularExpressions.RegexOptions.IgnoreCase);
         if (noteMatch.Success)
         {
-            var idx = int.Parse(noteMatch.Groups[1].Value);
+            var idx = ParseIndexOrThrow(noteMatch.Groups[1].Value, path);
             if (idx < 1 || idx > ppt.SlideCount)
                 throw new CliException($"dump path not found: {path} (total slides: {ppt.SlideCount})")
                     { Code = "path_not_found" };
