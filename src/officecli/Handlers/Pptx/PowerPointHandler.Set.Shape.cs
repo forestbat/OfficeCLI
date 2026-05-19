@@ -493,6 +493,21 @@ public partial class PowerPointHandler
                     ApplyShapeFill(spPr, value);
                     break;
                 }
+                case "line.gradient" or "linegradient":
+                {
+                    var spPr = cxn.ShapeProperties ?? (cxn.ShapeProperties = new ShapeProperties());
+                    var outline = EnsureOutline(spPr);
+                    outline.RemoveAllChildren<Drawing.SolidFill>();
+                    outline.RemoveAllChildren<Drawing.NoFill>();
+                    outline.RemoveAllChildren<Drawing.GradientFill>();
+                    var cxnGrad = BuildGradientFill(value);
+                    var cxnPrstDash = outline.GetFirstChild<Drawing.PresetDash>();
+                    if (cxnPrstDash != null)
+                        outline.InsertBefore(cxnGrad, cxnPrstDash);
+                    else
+                        outline.PrependChild(cxnGrad);
+                    break;
+                }
                 case "linedash" or "line.dash":
                 {
                     var spPr = cxn.ShapeProperties ?? (cxn.ShapeProperties = new ShapeProperties());

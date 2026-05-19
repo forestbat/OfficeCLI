@@ -916,6 +916,14 @@ public partial class PowerPointHandler
             if (lineColor != null) node.Format["line"] = lineColor;
             var lineIsNone = outline.GetFirstChild<Drawing.NoFill>() != null;
             if (lineIsNone) node.Format["line"] = "none";
+            // Gradient on the line — round-trippable spec form so dump→batch
+            // replay rebuilds the gradient instead of falling back to bare
+            // <a:ln/> (which inherits theme's default thin black stroke).
+            var lineGradFill = outline.GetFirstChild<Drawing.GradientFill>();
+            if (lineGradFill != null)
+            {
+                node.Format["line.gradient"] = ReadGradientString(lineGradFill);
+            }
             // When line=none, suppress the residual width readback so users don't
             // see a stale lineWidth from a prior color-set assignment.
             if (!lineIsNone && outline.Width?.HasValue == true) node.Format["lineWidth"] = FormatLineWidth(outline.Width.Value);

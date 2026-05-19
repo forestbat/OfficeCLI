@@ -716,6 +716,30 @@ public partial class PowerPointHandler
                     break;
                 }
 
+                case "line.gradient" or "linegradient":
+                {
+                    // Gradient stroke. Reader emits this for any <a:ln> whose
+                    // child is GradientFill; without a setter the round trip
+                    // dropped the gradient and replayed as a bare <a:ln/>
+                    // (theme thin black stroke). Use the same gradient-spec
+                    // grammar the shape fill accepts ("color1-color2[:angle]"
+                    // or full multi-stop form).
+                    var spPr = shape.ShapeProperties;
+                    if (spPr == null) { unsupported.Add(key); break; }
+                    var outline = EnsureOutline(spPr);
+                    outline.RemoveAllChildren<Drawing.SolidFill>();
+                    outline.RemoveAllChildren<Drawing.NoFill>();
+                    outline.RemoveAllChildren<Drawing.GradientFill>();
+                    var grad = BuildGradientFill(value);
+                    // CT_LineProperties schema: fill (solidFill/noFill/gradFill/pattFill) → prstDash → ...
+                    var prstDashAnchor = outline.GetFirstChild<Drawing.PresetDash>();
+                    if (prstDashAnchor != null)
+                        outline.InsertBefore(grad, prstDashAnchor);
+                    else
+                        outline.PrependChild(grad);
+                    break;
+                }
+
                 case "linedash" or "line.dash":
                 {
                     var spPr = shape.ShapeProperties;
