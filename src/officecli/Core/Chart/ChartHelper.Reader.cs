@@ -703,16 +703,28 @@ internal static partial class ChartHelper
                 // Smooth
                 var serSmooth = serEl?.GetFirstChild<C.Smooth>()?.Val;
                 if (serSmooth?.HasValue == true) seriesNode.Format["smooth"] = serSmooth.Value ? "true" : "false";
-                // Trendline
-                var trendline = serEl?.GetFirstChild<C.Trendline>();
-                if (trendline != null)
+                // Trendline(s): Excel allows multiple trendlines per series
+                // (e.g. linear AND polynomial together). Emit all of them as
+                // a semicolon-joined spec list so dump→replay re-applies each.
+                // dispRSqr/dispEq mirror the FIRST trendline's display flags
+                // (chart-level fan-out targets every trendline anyway).
+                var trendlines = serEl?.Elements<C.Trendline>().ToList()
+                    ?? new List<C.Trendline>();
+                if (trendlines.Count > 0)
                 {
-                    var tlType = trendline.GetFirstChild<C.TrendlineType>()?.Val;
-                    if (tlType?.HasValue == true)
-                        seriesNode.Format["trendline"] = FormatTrendlineSpec(trendline, tlType.InnerText ?? "");
-                    var dispRSqr = trendline.GetFirstChild<C.DisplayRSquaredValue>()?.Val;
+                    var specs = new List<string>();
+                    foreach (var tl in trendlines)
+                    {
+                        var tlType = tl.GetFirstChild<C.TrendlineType>()?.Val;
+                        if (tlType?.HasValue == true)
+                            specs.Add(FormatTrendlineSpec(tl, tlType.InnerText ?? ""));
+                    }
+                    if (specs.Count > 0)
+                        seriesNode.Format["trendline"] = string.Join(";", specs);
+                    var firstTl = trendlines[0];
+                    var dispRSqr = firstTl.GetFirstChild<C.DisplayRSquaredValue>()?.Val;
                     if (dispRSqr?.HasValue == true && dispRSqr.Value) seriesNode.Format["trendline.dispRSqr"] = "true";
-                    var dispEq = trendline.GetFirstChild<C.DisplayEquation>()?.Val;
+                    var dispEq = firstTl.GetFirstChild<C.DisplayEquation>()?.Val;
                     if (dispEq?.HasValue == true && dispEq.Value) seriesNode.Format["trendline.dispEq"] = "true";
                 }
                 // Error bars

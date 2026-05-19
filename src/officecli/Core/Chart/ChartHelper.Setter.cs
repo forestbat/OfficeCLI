@@ -1631,13 +1631,22 @@ internal static partial class ChartHelper
                 {
                     var plotArea2 = chart.GetFirstChild<C.PlotArea>();
                     if (plotArea2 == null) { unsupported.Add(key); break; }
+                    // R28-B2: chart-level trendline accepts a semicolon-joined
+                    // multi-spec list (e.g. "linear;exp") so dump→replay can
+                    // restore series that carried multiple trendlines.
+                    var specs = !value.Equals("none", StringComparison.OrdinalIgnoreCase) && value.Contains(';')
+                        ? value.Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                        : new[] { value };
                     foreach (var ser in plotArea2.Descendants<OpenXmlCompositeElement>().Where(e => e.LocalName == "ser"))
                     {
                         ser.RemoveAllChildren<C.Trendline>();
                         if (!value.Equals("none", StringComparison.OrdinalIgnoreCase))
                         {
-                            var tl = BuildTrendline(value);
-                            InsertSeriesChildInOrder(ser, tl);
+                            foreach (var spec in specs)
+                            {
+                                var tl = BuildTrendline(spec);
+                                InsertSeriesChildInOrder(ser, tl);
+                            }
                         }
                     }
                     break;

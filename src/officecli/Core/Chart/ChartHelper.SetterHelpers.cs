@@ -368,24 +368,36 @@ internal static partial class ChartHelper
                 // If the requested trendline type already exists on the
                 // series, replace it in place so repeated identical sets
                 // stay idempotent; otherwise append a new one.
+                //
+                // R28-B2: Reader emits semicolon-joined spec list when a
+                // series carries multiple trendlines (e.g. "linear;poly:3").
+                // Split here so dump→replay re-applies each; single-spec
+                // input (no ';') still hits the legacy append-or-replace
+                // path unchanged.
                 if (value.Equals("none", StringComparison.OrdinalIgnoreCase))
                 {
                     ser.RemoveAllChildren<C.Trendline>();
                 }
                 else
                 {
-                    var newTl = BuildTrendline(value);
-                    var newType = newTl.GetFirstChild<C.TrendlineType>()?.Val?.Value;
-                    var dupeTl = ser.Elements<C.Trendline>()
-                        .FirstOrDefault(t => t.GetFirstChild<C.TrendlineType>()?.Val?.Value == newType);
-                    if (dupeTl != null)
+                    var specs = value.Contains(';')
+                        ? value.Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                        : new[] { value };
+                    foreach (var spec in specs)
                     {
-                        dupeTl.InsertAfterSelf(newTl);
-                        dupeTl.Remove();
-                    }
-                    else
-                    {
-                        InsertSeriesChildInOrder(ser, newTl);
+                        var newTl = BuildTrendline(spec);
+                        var newType = newTl.GetFirstChild<C.TrendlineType>()?.Val?.Value;
+                        var dupeTl = ser.Elements<C.Trendline>()
+                            .FirstOrDefault(t => t.GetFirstChild<C.TrendlineType>()?.Val?.Value == newType);
+                        if (dupeTl != null)
+                        {
+                            dupeTl.InsertAfterSelf(newTl);
+                            dupeTl.Remove();
+                        }
+                        else
+                        {
+                            InsertSeriesChildInOrder(ser, newTl);
+                        }
                     }
                 }
                 return true;
