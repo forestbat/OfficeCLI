@@ -173,6 +173,82 @@ public partial class PowerPointHandler
         return gd.ChildElements.Any(e => e.LocalName == "chart" && e.NamespaceUri == cxNs);
     }
 
+    // Read (series, category) counts from a chart graphicFrame's ChartPart.
+    // Extended cx:chart returns (0, 0) — per-element fan-out falls back to a
+    // single asWhole-style entrance in that case (cx schema doesn't expose the
+    // same per-element animation surface). CONSISTENCY(animation-chart-detect).
+    internal static (int seriesCount, int categoryCount) ReadChartDimensions(OpenXmlElement target, OpenXmlPart slidePart)
+    {
+        if (target is not GraphicFrame gf) return (0, 0);
+        var chartRef = gf.Descendants<Drawing.Charts.ChartReference>().FirstOrDefault();
+        if (chartRef?.Id?.Value == null) return (0, 0);
+        try
+        {
+            var part = slidePart.GetPartById(chartRef.Id.Value);
+            if (part is not DocumentFormat.OpenXml.Packaging.ChartPart chartPart) return (0, 0);
+            var plotArea = chartPart.ChartSpace?
+                .GetFirstChild<Drawing.Charts.Chart>()?.PlotArea;
+            if (plotArea == null) return (0, 0);
+            var sc = OfficeCli.Core.ChartHelper.CountSeries(plotArea);
+            var cats = OfficeCli.Core.ChartHelper.ReadCategories(plotArea);
+            return (sc, cats?.Length ?? 0);
+        }
+        catch { return (0, 0); }
+    }
+
+    // Enumerate (seriesIdx, categoryIdx, bldStep) tuples for the per-element
+    // click-group fan-out. PowerPoint's "By X" entrance generates exactly one
+    // data click-group per sub-element, all sharing one grpId. Sentinel value
+    // -4 = "all of this axis" (whole series / whole category). The bldStep
+    // enum comes from Drawing.ChartBuildStepValues. CONSISTENCY(animation-chart-fanout):
+    // matches a fresh PowerPoint-authored deck — no gridLegend head (an earlier
+    // hypothesis that turned out to be specific to PowerPoint's edit-rewrite
+    // path on certain pre-existing files, not the default authoring form).
+    internal static IEnumerable<(int seriesIdx, int categoryIdx, string bldStep)>
+        EnumerateChartBuildSteps(string mode, int seriesCount, int categoryCount)
+    {
+        if (seriesCount <= 0) yield break;
+        switch (mode)
+        {
+            case "series":
+                for (int s = 0; s < seriesCount; s++) yield return (s, -4, "series");
+                break;
+            case "category":
+                if (categoryCount <= 0) yield break;
+                for (int c = 0; c < categoryCount; c++) yield return (-4, c, "category");
+                break;
+            case "seriesEl":
+                if (categoryCount <= 0) yield break;
+                for (int s = 0; s < seriesCount; s++)
+                    for (int c = 0; c < categoryCount; c++)
+                        yield return (s, c, "ptInSeries");
+                break;
+            case "categoryEl":
+                if (categoryCount <= 0) yield break;
+                for (int c = 0; c < categoryCount; c++)
+                    for (int s = 0; s < seriesCount; s++)
+                        yield return (s, c, "ptInCategory");
+                break;
+        }
+    }
+
+    // Construct a TargetElement that points at a chart sub-element.
+    // Mirrors PowerPoint's authored form:
+    //   <p:tgtEl><p:spTgt spid="N"><p:graphicEl><a:chart .../></p:graphicEl></p:spTgt></p:tgtEl>
+    internal static TargetElement BuildChartSubTarget(string shapeId, int seriesIdx, int categoryIdx, string bldStep)
+    {
+        var chartEl = new Drawing.Chart
+        {
+            SeriesIndex = seriesIdx,
+            CategoryIndex = categoryIdx,
+            BuildStep = new EnumValue<Drawing.ChartBuildStepValues>(
+                new Drawing.ChartBuildStepValues(bldStep))
+        };
+        var spTgt = new ShapeTarget { ShapeId = shapeId };
+        spTgt.AppendChild(new GraphicElement(chartEl));
+        return new TargetElement(spTgt);
+    }
+
     // Canonicalize a restart input string to the matching enum value. Returns
     // null when not present (caller leaves the cTn attribute unset).
     private static TimeNodeRestartValues? ParseAnimRestart(string? value)
@@ -811,6 +887,43 @@ public partial class PowerPointHandler
         // The outer click-group delay depends on trigger
         var outerDelay = trigger == AnimTrigger.OnClick ? "indefinite" : "0";
 
+        // Per-element chart fan-out: when chartBuild is series/category/seriesEl/categoryEl
+        // PowerPoint authoring writes N+1 click-group <p:par> siblings under mainSeq
+        // (a gridLegend head plus one per sub-element), ALL sharing the same grpId.
+        // The user sees this as a single "By Series" / "By Category" entrance in the
+        // Animation Pane. Falls back to the single-shape click-group when the target
+        // isn't a chart, the mode is asWhole, or the chart dimensions can't be read.
+        // CONSISTENCY(animation-chart-fanout): mirrors PowerPoint's authored form.
+        var preChartBuildCanon = NormalizeChartBuild(chartBuildRaw);
+        var doChartFanOut = isChartTarget
+            && preChartBuildCanon != null
+            && preChartBuildCanon != "asWhole"
+            && trigger != AnimTrigger.WithPrevious;
+        if (doChartFanOut)
+        {
+            var (seriesCnt, catCnt) = ReadChartDimensions(target, slidePart);
+            var steps = EnumerateChartBuildSteps(preChartBuildCanon!, seriesCnt, catCnt).ToList();
+            // No data steps (chart with zero series or zero categories on a mode
+            // that needs them) → fall back to the single asWhole-style click-group
+            // below rather than emit a degenerate timing tree.
+            if (steps.Count > 0)
+            {
+                foreach (var (sIdx, cIdx, bldStep) in steps)
+                {
+                    var subTargetFactory = (Func<TargetElement>)(() =>
+                        BuildChartSubTarget(shapeId.ToString(), sIdx, cIdx, bldStep));
+                    var subGroup = BuildClickGroup(
+                        shapeId.ToString(), presetId, presetClass, nodeType,
+                        durationMs, filter, grpId, outerDelay, presetSubtype, ref nextId,
+                        delayMs, easingAccel, easingDecel,
+                        repeatRaw, restartRaw, autoReverse,
+                        makeTarget: subTargetFactory);
+                    mainSeqCTn.ChildTimeNodeList!.AppendChild(subGroup);
+                }
+                goto applyBldLst;
+            }
+        }
+
         // Build the animation par
         var clickGroup = BuildClickGroup(
             shapeId.ToString(), presetId, presetClass, nodeType,
@@ -849,6 +962,7 @@ public partial class PowerPointHandler
             mainSeqCTn.ChildTimeNodeList!.AppendChild(clickGroup);
         }
 
+        applyBldLst:
         // Update bldLst if not already there.
         // Shape targets get <p:bldP>; chart targets get <p:bldGraphic>, optionally
         // carrying <p:bldSub><a:bldChart bld="..."/> for per-series/category builds.
@@ -1024,8 +1138,14 @@ public partial class PowerPointHandler
         int easingDecel = 0,
         string? repeat = null,
         string? restart = null,
-        bool? autoReverse = null)
+        bool? autoReverse = null,
+        Func<TargetElement>? makeTarget = null)
     {
+        // makeTarget lets callers substitute the default plain-shape spTgt with
+        // a chart sub-element target (<p:spTgt><p:graphicEl><a:chart .../></p:graphicEl></p:spTgt>).
+        // Default keeps the long-standing shape-only behaviour.
+        TargetElement Tgt() => makeTarget?.Invoke()
+            ?? new TargetElement(new ShapeTarget { ShapeId = shapeId });
         var isEntrance = presetClass == TimeNodePresetClassValues.Entrance;
         var isEmphasis = presetClass == TimeNodePresetClassValues.Emphasis;
         var animTransition = isEntrance || isEmphasis ? AnimateEffectTransitionValues.In : AnimateEffectTransitionValues.Out;
@@ -1053,7 +1173,7 @@ public partial class PowerPointHandler
                     Fill = TimeNodeFillValues.Hold,
                     StartConditionList = setStCond
                 },
-                new TargetElement(new ShapeTarget { ShapeId = shapeId }),
+                Tgt(),
                 new AttributeNameList(new AttributeName("style.visibility"))
             ),
             new ToVariantValue(new StringVariantValue { Val = isEntrance || isEmphasis ? "visible" : "hidden" })
@@ -1074,7 +1194,7 @@ public partial class PowerPointHandler
                 ZoomContents = true,
                 CommonBehavior = new CommonBehavior(
                     new CommonTimeNode { Id = animEffId, Duration = durationMs.ToString(), Fill = TimeNodeFillValues.Hold },
-                    new TargetElement(new ShapeTarget { ShapeId = shapeId })
+                    Tgt()
                 )
             };
             if (isEntrance)
@@ -1097,7 +1217,7 @@ public partial class PowerPointHandler
                 By = isEntrance ? 21600000 : -21600000, // ±360° in 60000ths of a degree
                 CommonBehavior = new CommonBehavior(
                     new CommonTimeNode { Id = animEffId, Duration = durationMs.ToString(), Fill = TimeNodeFillValues.Hold },
-                    new TargetElement(new ShapeTarget { ShapeId = shapeId })
+                    Tgt()
                 )
             };
             effectChildList.AppendChild(animRot);
@@ -1109,7 +1229,7 @@ public partial class PowerPointHandler
                 Filter = "fade",
                 CommonBehavior = new CommonBehavior(
                     new CommonTimeNode { Id = fadeId, Duration = durationMs.ToString() },
-                    new TargetElement(new ShapeTarget { ShapeId = shapeId })
+                    Tgt()
                 )
             };
             effectChildList.AppendChild(fadeEffect);
@@ -1126,7 +1246,7 @@ public partial class PowerPointHandler
                         Id = animEffId,
                         Duration = durationMs.ToString()
                     },
-                    new TargetElement(new ShapeTarget { ShapeId = shapeId })
+                    Tgt()
                 )
             };
             effectChildList.AppendChild(animEffect);
@@ -1265,29 +1385,45 @@ public partial class PowerPointHandler
 
         var targetCTn = ctns[kIndex - 1];
 
-        // Walk up to find the top-level click-group par inside mainSeq childTnLst
-        OpenXmlElement? node = targetCTn;
-        OpenXmlElement? clickGroupPar = null;
-        while (node?.Parent != null)
+        // Determine the logical animation's grpId. Chart per-element entrances
+        // fan out to N+1 click-groups all sharing one grpId; removing animation[K]
+        // must drop EVERY click-group in that group, not just the representative
+        // cTn returned by EnumerateShapeAnimationCTns. Shape animations have
+        // unique grpId so this is a no-op widening for them.
+        // CONSISTENCY(animation-chart-fanout).
+        var targetGrpId = targetCTn.GroupId?.Value;
+        var slideTiming = slidePart.Slide?.GetFirstChild<Timing>();
+        var spIdStr0 = GetAnimationTargetSpId(target)?.ToString();
+        var clickGroupPars = new List<OpenXmlElement>();
+        if (targetGrpId.HasValue && slideTiming != null && spIdStr0 != null)
         {
-            if (node.Parent is ChildTimeNodeList ctl &&
-                ctl.Parent is CommonTimeNode ctn &&
-                ctn.NodeType?.Value == TimeNodeValues.MainSequence)
+            foreach (var cand in slideTiming.Descendants<CommonTimeNode>())
             {
-                clickGroupPar = node;
-                break;
+                if (cand.GroupId?.Value != targetGrpId.Value) continue;
+                if (!cand.Descendants<ShapeTarget>().Any(st => st.ShapeId?.Value == spIdStr0)) continue;
+                // Walk up to the click-group par under mainSeq for this cTn.
+                OpenXmlElement? node = cand;
+                while (node?.Parent != null)
+                {
+                    if (node.Parent is ChildTimeNodeList ctl &&
+                        ctl.Parent is CommonTimeNode ctn2 &&
+                        ctn2.NodeType?.Value == TimeNodeValues.MainSequence)
+                    {
+                        if (!clickGroupPars.Contains(node)) clickGroupPars.Add(node);
+                        break;
+                    }
+                    node = node.Parent;
+                }
             }
-            node = node.Parent;
         }
-
-        if (clickGroupPar == null)
+        if (clickGroupPars.Count == 0)
         {
-            // Fallback: just remove the effect CTn's nearest par ancestor.
+            // Fallback: drop the effect CTn's nearest par ancestor.
             targetCTn.Ancestors<ParallelTimeNode>().FirstOrDefault()?.Remove();
         }
         else
         {
-            clickGroupPar.Remove();
+            foreach (var par in clickGroupPars) par.Remove();
         }
 
         // If no animations remain for this target, drop its BuildList entry.

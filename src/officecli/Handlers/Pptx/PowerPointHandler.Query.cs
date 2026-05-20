@@ -1966,7 +1966,7 @@ public partial class PowerPointHandler
         var timing = GetSlide(slidePart).GetFirstChild<Timing>();
         if (timing == null) return [];
         var shapeIdStr = shapeId.Value.ToString();
-        return timing.Descendants<CommonTimeNode>()
+        var allEffect = timing.Descendants<CommonTimeNode>()
             .Where(ctn =>
             {
                 if (!ctn.Descendants<ShapeTarget>().Any(st => st.ShapeId?.Value == shapeIdStr))
@@ -1983,6 +1983,61 @@ public partial class PowerPointHandler
                 return false;
             })
             .ToList();
+        // Dedupe by GroupId: one user-visible animation = one grpId. Chart
+        // per-element entrances fan out to N+1 click-groups all sharing one
+        // grpId; the user sees a single "By Series" / "By Category" entry in
+        // PowerPoint's Animation Pane. Pick the first cTn carrying a non-gridLegend
+        // step (so Get/Set surfaces an effect with a meaningful target), falling
+        // back to the first cTn when only a header is present.
+        // Shape animations (each with a unique grpId) collapse to one entry per
+        // grpId — behaviourally unchanged from the pre-fan-out enumeration.
+        // CONSISTENCY(animation-chart-fanout).
+        var byGroup = new Dictionary<uint, CommonTimeNode>();
+        var withoutGroup = new List<CommonTimeNode>();
+        foreach (var ctn in allEffect)
+        {
+            var gid = ctn.GroupId?.Value;
+            if (!gid.HasValue) { withoutGroup.Add(ctn); continue; }
+            if (!byGroup.TryGetValue(gid.Value, out var current))
+            {
+                byGroup[gid.Value] = ctn;
+                continue;
+            }
+            // Prefer a cTn whose target is NOT a gridLegend header (i.e. the
+            // first real data step) so PopulateAnimationNode surfaces the
+            // user-meaningful effect rather than the chart's frame fade-in.
+            bool currentIsHead = HasGridLegendTarget(current);
+            bool candIsHead = HasGridLegendTarget(ctn);
+            if (currentIsHead && !candIsHead) byGroup[gid.Value] = ctn;
+        }
+        // Preserve encounter order across the original list.
+        var result = new List<CommonTimeNode>();
+        var seenGroups = new HashSet<uint>();
+        foreach (var ctn in allEffect)
+        {
+            var gid = ctn.GroupId?.Value;
+            if (!gid.HasValue) continue;
+            if (!seenGroups.Add(gid.Value)) continue;
+            result.Add(byGroup[gid.Value]);
+        }
+        result.AddRange(withoutGroup);
+        return result;
+    }
+
+    // True iff the given effect cTn's animation targets are all the chart's
+    // gridLegend header (seriesIdx=-3, categoryIdx=-3, bldStep="gridLegend").
+    // Used to dedupe chart per-element click-group fan-outs so the user-visible
+    // animation refers to the first real data step, not the header.
+    private static bool HasGridLegendTarget(CommonTimeNode ctn)
+    {
+        // Drawing.Chart (a:chart) is the animation-target chart element, distinct
+        // from Drawing.Charts.Chart (c:chart) which is the chart reference. The
+        // a:chart element appears inside <p:graphicEl> in the timing tree only.
+        return ctn.Descendants<Drawing.Chart>().Any(c =>
+        {
+            var stepEnum = c.BuildStep?.Value;
+            return stepEnum != null && ((IEnumValue)stepEnum).Value == "gridLegend";
+        });
     }
 
     /// <summary>
