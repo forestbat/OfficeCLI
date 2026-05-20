@@ -506,6 +506,14 @@ public partial class PowerPointHandler : IDocumentHandler
 
     public List<ValidationError> Validate() => RawXmlHelper.ValidateDocument(_doc);
 
+    public void Save()
+    {
+        // _doc writes through to _backingStream; force the FileStream buffer
+        // out to disk so external readers see the latest bytes immediately.
+        _doc.Save();
+        _backingStream?.Flush();
+    }
+
     public void Dispose()
     {
         // Save through the package (flush in-memory edits to the underlying

@@ -98,6 +98,12 @@ public interface IDocumentHandler : IDisposable
     /// <paramref name="byteCount"/> receives the number of bytes written.
     /// </summary>
     bool TryExtractBinary(string path, string destPath, out string? contentType, out long byteCount);
+
+    /// <summary>
+    /// Flush the in-memory OOXML package to disk without ending the session.
+    /// Only meaningful when the handler was opened with editable=true.
+    /// </summary>
+    void Save();
 }
 
 public record ValidationError(string ErrorType, string Description, string? Path, string? Part);

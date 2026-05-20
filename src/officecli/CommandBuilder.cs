@@ -133,6 +133,7 @@ static partial class CommandBuilder
         rootCommand.Add(BuildRawSetCommand(jsonOption));
         rootCommand.Add(BuildAddPartCommand(jsonOption));
         rootCommand.Add(BuildValidateCommand(jsonOption));
+        rootCommand.Add(BuildSaveCommand(jsonOption));
         rootCommand.Add(BuildBatchCommand(jsonOption));
         rootCommand.Add(BuildDumpCommand(jsonOption));
         rootCommand.Add(BuildImportCommand(jsonOption));

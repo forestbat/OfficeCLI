@@ -16,6 +16,14 @@ public partial class WordHandler : IDocumentHandler
     private int _nextParaId = 0x100000;
     public int LastFindMatchCount { get; internal set; }
 
+    // Backing FileStream — mirrors the PPT pattern. Opening via a shared
+    // FileStream (FileShare.Read in editable mode) lets external readers
+    // observe the file while the handler is alive, which is required for
+    // mid-session `save` snapshots to be useful to third-party consumers
+    // (issue #114). The package writes through the stream; the on-disk
+    // bytes lag _doc until _doc.Save() runs.
+    private FileStream? _backingStream;
+
     /// <summary>
     /// Props that the most recent Add() call could not consume. Surfaced to
     /// the CLI layer so silent-drops on the curated surface (e.g.
@@ -27,7 +35,10 @@ public partial class WordHandler : IDocumentHandler
     public WordHandler(string filePath, bool editable)
     {
         _filePath = filePath;
-        _doc = WordprocessingDocument.Open(filePath, editable);
+        var share = editable ? FileShare.Read : FileShare.ReadWrite;
+        var access = editable ? FileAccess.ReadWrite : FileAccess.Read;
+        _backingStream = new FileStream(filePath, FileMode.Open, access, share);
+        _doc = WordprocessingDocument.Open(_backingStream, editable);
         WordStrictAttributeSanitizer.Sanitize(_doc);
         if (editable)
         {
@@ -282,9 +293,28 @@ public partial class WordHandler : IDocumentHandler
 
     public List<ValidationError> Validate() => RawXmlHelper.ValidateDocument(_doc);
 
+    public void Save()
+    {
+        // Mid-session flush. The Dispose-time NormalizeSelfClosingInDocx step
+        // is intentionally skipped here — it requires opening the file as a
+        // Zip with read-write access, which can't be done while the backing
+        // stream still holds the file. The on-disk snapshot will have
+        // `<w:br />` form instead of the canonical `<w:br/>` form; both are
+        // schema-valid OOXML.
+        _doc.Save();
+        _backingStream?.Flush();
+    }
+
     public void Dispose()
     {
+        // Mirror the PPT pattern: when we own the backing FileStream the
+        // package would otherwise leave the on-disk file in whatever state
+        // the last auto-flush left it (potentially truncated for the
+        // stream-Open path). Save first, then dispose.
+        try { _doc.Save(); } catch { /* read-only or already disposed */ }
         _doc.Dispose();
+        _backingStream?.Dispose();
+        _backingStream = null;
         // CONSISTENCY(word-self-close): the OpenXml SDK serializes empty
         // elements with a space before the self-close (`<w:br />`). Several
         // downstream consumers (and test regexes) look for the canonical

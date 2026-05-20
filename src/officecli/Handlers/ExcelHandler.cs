@@ -17,6 +17,12 @@ public partial class ExcelHandler : IDocumentHandler
     private readonly HashSet<WorksheetPart> _dirtyWorksheets = new();
     private bool _dirtyStylesheet;
     private bool _disposed;
+    // Backing FileStream — mirrors the PPT/Word pattern. Opening via a shared
+    // FileStream (FileShare.Read in editable mode) lets external readers
+    // observe the file while the handler is alive, which is required for
+    // mid-session `save` snapshots to be useful to third-party consumers
+    // (issue #114).
+    private FileStream? _backingStream;
     // Row index cache: SheetData → sorted map of rowIndex → Row.
     // Turns the O(n) linear scan in FindOrCreateCell into O(1) lookup + O(log n) insert.
     // Invalidated by InvalidateRowIndex() whenever rows are structurally modified (shift, remove).
@@ -28,7 +34,10 @@ public partial class ExcelHandler : IDocumentHandler
         _filePath = filePath;
         try
         {
-            _doc = SpreadsheetDocument.Open(filePath, editable);
+            var share = editable ? FileShare.Read : FileShare.ReadWrite;
+            var access = editable ? FileAccess.ReadWrite : FileAccess.Read;
+            _backingStream = new FileStream(filePath, FileMode.Open, access, share);
+            _doc = SpreadsheetDocument.Open(_backingStream, editable);
             // Force early validation: access WorkbookPart to catch corrupt packages now
             _ = _doc.WorkbookPart?.Workbook;
             // Capture initial sheet names to detect duplicate additions
@@ -327,12 +336,29 @@ public partial class ExcelHandler : IDocumentHandler
 
     public List<ValidationError> Validate() => RawXmlHelper.ValidateDocument(_doc);
 
+    public void Save()
+    {
+        // Excel mutations defer worksheet/stylesheet writes to FlushDirtyParts
+        // (see ExcelHandler.Helpers.cs). Flush them first so the package
+        // reflects the in-memory tree, then push the package out to the
+        // backing stream and force the OS buffer to disk.
+        FlushDirtyParts();
+        _doc.Save();
+        _backingStream?.Flush();
+    }
+
     public void Dispose()
     {
         if (_disposed) return;
         _disposed = true;
-        try { FlushDirtyParts(); }
-        finally { _doc.Dispose(); }
+        try { FlushDirtyParts(); } catch { /* best-effort */ }
+        // Mirror the PPT/Word pattern: when we own the backing FileStream the
+        // package would otherwise leave the on-disk file in whatever state
+        // the last auto-flush left it. Save explicitly before disposing.
+        try { _doc.Save(); } catch { /* read-only or already disposed */ }
+        _doc.Dispose();
+        _backingStream?.Dispose();
+        _backingStream = null;
     }
 
 }

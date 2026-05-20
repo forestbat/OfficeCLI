@@ -856,6 +856,9 @@ public class ResidentServer : IDisposable
             case "validate":
                 ExecuteValidate();
                 break;
+            case "save":
+                ExecuteSave();
+                break;
             case "batch":
                 PromoteToEditable();
                 ExecuteBatch(request);
@@ -1807,6 +1810,21 @@ public class ResidentServer : IDisposable
                 if (err.Part != null) Console.Error.WriteLine($"    Part: {err.Part}");
             }
         }
+    }
+
+    private void ExecuteSave()
+    {
+        // No mutations have happened yet — the resident is still in the
+        // shared-read state, and disk already matches the in-memory tree.
+        // Treat as a no-op rather than promoting to editable (which would
+        // re-open the file and acquire a write lock for no benefit).
+        if (!_editable)
+        {
+            Console.WriteLine($"No pending changes for {Path.GetFileName(_filePath)}");
+            return;
+        }
+        _handler.Save();
+        Console.WriteLine($"Saved {Path.GetFileName(_filePath)}");
     }
 
     private static string MakeResponse(int exitCode, string stdout, string stderr)
