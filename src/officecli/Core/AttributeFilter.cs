@@ -60,7 +60,13 @@ internal static class AttributeFilter
         {
             var key = m.Groups[1].Value;
             var opStr = m.Groups[2].Value.Replace("\\", "");
-            var val = m.Groups[3].Value.Trim('\'', '"');
+            var rawVal = m.Groups[3].Value;
+            // CONSISTENCY(find-regex): preserve quotes when the value is the
+            // `r"..."` / `r'...'` regex form so MatchOne can detect it. Trim
+            // would otherwise eat the surrounding quote that marks the prefix.
+            var isRegexForm = rawVal.Length >= 3 && rawVal[0] == 'r'
+                && (rawVal[1] == '"' || rawVal[1] == '\'');
+            var val = isRegexForm ? rawVal : rawVal.Trim('\'', '"');
 
             // Detect corrupted values from mis-parsed operators (e.g. === parsed as = with value ==X)
             if (val.StartsWith("=") || val.StartsWith("~") || val.StartsWith("!"))
@@ -292,6 +298,31 @@ internal static class AttributeFilter
 
             case FilterOp.Contains:
                 if (!hasKey) return false;
+                // CONSISTENCY(find-regex): mirror Word/Pptx Set's `r"..."` /
+                // `r'...'` regex prefix on the find vocabulary. Without this,
+                // `query run[text~=r"Bold"]` literally looked for the string
+                // `r"Bold"` (with quotes) and always returned 0. Plain
+                // `~=value` still does a case-insensitive contains.
+                if (cond.Value.Length >= 3 && cond.Value[0] == 'r'
+                    && (cond.Value[1] == '"' || cond.Value[1] == '\''))
+                {
+                    var quote = cond.Value[1];
+                    var endIdx = cond.Value.LastIndexOf(quote);
+                    if (endIdx > 1)
+                    {
+                        var pattern = cond.Value[2..endIdx];
+                        try
+                        {
+                            return Regex.IsMatch(actualStr, pattern, RegexOptions.IgnoreCase);
+                        }
+                        catch (System.ArgumentException)
+                        {
+                            // Malformed regex — fall through to literal contains
+                            // so the user still gets a usable behavior, never an
+                            // opaque selector exception from deep in the query path.
+                        }
+                    }
+                }
                 return actualStr.Contains(cond.Value, StringComparison.OrdinalIgnoreCase);
 
             case FilterOp.GreaterOrEqual:

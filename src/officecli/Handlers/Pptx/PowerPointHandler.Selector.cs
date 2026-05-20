@@ -73,13 +73,22 @@ public partial class PowerPointHandler
         {
             var key = attrMatch.Groups[1].Value.ToLowerInvariant();
             var op = attrMatch.Groups[2].Value.Replace("\\", "");
-            var val = attrMatch.Groups[3].Value.Trim('\'', '"');
+            var rawVal = attrMatch.Groups[3].Value;
+            // CONSISTENCY(find-regex): preserve the surrounding quotes when the
+            // value is the `r"..."` / `r'...'` regex form so MatchesGenericAttributes
+            // can detect it. Otherwise Trim eats the quotes and the regex prefix
+            // is indistinguishable from a literal beginning with 'r'.
+            var isRegexForm = rawVal.Length >= 3 && rawVal[0] == 'r'
+                && (rawVal[1] == '"' || rawVal[1] == '\'');
+            var val = isRegexForm ? rawVal : rawVal.Trim('\'', '"');
 
             switch (key)
             {
                 case "font" when op == "=": fontEquals = val; break;
                 case "font" when op == "!=": fontNotEquals = val; break;
-                case "title": isTitle = val.ToLowerInvariant() != "false"; break;
+                case "title":
+                case "istitle":
+                    isTitle = val.ToLowerInvariant() != "false"; break;
                 case "alt": hasAlt = !string.IsNullOrEmpty(val) && val.ToLowerInvariant() != "false"; break;
                 default:
                     genericAttrs ??= new Dictionary<string, (string, bool)>();
@@ -190,6 +199,32 @@ public partial class PowerPointHandler
             {
                 var pattern = expected[3..]; // strip "\x01~="
                 if (!hasKey) return false;
+                // CONSISTENCY(find-regex): mirror Set's `r"..."` regex form so
+                // `query run[text~=r"Bold"]` matches the same elements as plain
+                // `~=Bold` for literals, and supports anchors/wildcards beyond
+                // that. Falls back to literal contains on bad regex so callers
+                // never see an opaque parse exception from deep in query.
+                if (pattern.Length >= 3 && pattern[0] == 'r'
+                    && (pattern[1] == '"' || pattern[1] == '\''))
+                {
+                    var quote = pattern[1];
+                    var endIdx = pattern.LastIndexOf(quote);
+                    if (endIdx > 1)
+                    {
+                        var rx = pattern[2..endIdx];
+                        try
+                        {
+                            if (!System.Text.RegularExpressions.Regex.IsMatch(actualStr, rx,
+                                    System.Text.RegularExpressions.RegexOptions.IgnoreCase))
+                                return false;
+                            continue;
+                        }
+                        catch (ArgumentException)
+                        {
+                            // Malformed regex — fall back to literal contains below.
+                        }
+                    }
+                }
                 if (!actualStr.Contains(pattern, StringComparison.OrdinalIgnoreCase))
                     return false;
                 continue;
@@ -214,8 +249,15 @@ public partial class PowerPointHandler
                     // Special case: boolean properties stored as `true`/`True` matching "true"
                     if (actual is bool b && string.Equals(expected, b.ToString(), StringComparison.OrdinalIgnoreCase))
                         continue;
-                    // Special case: dimension values with different units (e.g., "0.07cm" vs "2pt")
-                    if (Core.EmuConverter.TryParseEmu(actualStr, out var actualEmu)
+                    // Special case: dimension values with different units (e.g., "0.07cm" vs "2pt").
+                    // CONSISTENCY(dim-only): only apply when BOTH sides look like a
+                    // unit-qualified dimension (carry a non-digit unit suffix like
+                    // cm/in/pt/mm/px/emu). Without this guard, bare integers like
+                    // "2" / "3" got parsed as raw EMU and then matched within the
+                    // 500-EMU tolerance — which silently made `[zorder=2]` match
+                    // `zorder=3` (and similar for any small-integer attribute).
+                    if (LooksLikeDimension(actualStr) && LooksLikeDimension(expected)
+                        && Core.EmuConverter.TryParseEmu(actualStr, out var actualEmu)
                         && Core.EmuConverter.TryParseEmu(expected, out var expectedEmu)
                         && Math.Abs(actualEmu - expectedEmu) <= 500)
                         continue;
@@ -225,6 +267,23 @@ public partial class PowerPointHandler
         }
 
         return true;
+    }
+
+    /// <summary>
+    /// True when the string carries an explicit OOXML/CSS-style length unit suffix.
+    /// Used to gate the dimension-tolerance fallback in MatchesGenericAttributes so
+    /// bare integer attributes (zorder, id, count, ...) don't get cross-matched
+    /// through EMU-with-tolerance comparison.
+    /// </summary>
+    private static bool LooksLikeDimension(string s)
+    {
+        if (string.IsNullOrEmpty(s)) return false;
+        return s.EndsWith("cm", StringComparison.OrdinalIgnoreCase)
+            || s.EndsWith("mm", StringComparison.OrdinalIgnoreCase)
+            || s.EndsWith("in", StringComparison.OrdinalIgnoreCase)
+            || s.EndsWith("pt", StringComparison.OrdinalIgnoreCase)
+            || s.EndsWith("px", StringComparison.OrdinalIgnoreCase)
+            || s.EndsWith("emu", StringComparison.OrdinalIgnoreCase);
     }
 
     /// <summary>

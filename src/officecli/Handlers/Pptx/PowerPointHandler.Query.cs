@@ -90,6 +90,7 @@ public partial class PowerPointHandler
                     slideNode.Format["hidden"] = true;
                 ReadSlideBackground(GetSlide(slidePart), slideNode);
                 ReadSlideTransition(slidePart, slideNode);
+                ReadSlideHeaderFooter(GetSlide(slidePart), slideNode);
 
                 if (depth > 0)
                 {
@@ -1023,6 +1024,7 @@ public partial class PowerPointHandler
                 slideNode.Format["hidden"] = true;
             ReadSlideBackground(slide, slideNode);
             ReadSlideTransition(targetSlidePart, slideNode);
+            ReadSlideHeaderFooter(slide, slideNode);
             if (targetSlidePart.NotesSlidePart != null)
             {
                 var notesText = GetNotesText(targetSlidePart.NotesSlidePart);
@@ -1322,6 +1324,7 @@ public partial class PowerPointHandler
                     slideNode.Format["hidden"] = true;
                 ReadSlideBackground(sld, slideNode);
                 ReadSlideTransition(sp, slideNode);
+                ReadSlideHeaderFooter(sld, slideNode);
                 if (sp.NotesSlidePart != null)
                 {
                     var notesText = GetNotesText(sp.NotesSlidePart);
