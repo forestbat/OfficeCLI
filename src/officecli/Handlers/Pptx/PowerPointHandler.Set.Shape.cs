@@ -234,6 +234,30 @@ public partial class PowerPointHandler
                 case "tooltip":
                     // handled in tandem with "link"; standalone tooltip change is not supported here
                     break;
+                case "direction" or "dir" or "rtl":
+                {
+                    // CONSISTENCY(canonical-keys): paragraph-path direction must
+                    // ONLY touch pPr.RightToLeft. Falling through to the run
+                    // helper (runContext:true) would also write <a:rPr rtl="1"/>
+                    // on every run, which NodeBuilder then surfaces as the
+                    // legacy alias Format["rtl"] on the run — and the batch
+                    // emitter's single-run collapse merges that back into the
+                    // paragraph set bag, producing {direction:rtl, rtl:true}
+                    // and violating "Get returns the canonical key only"
+                    // (root CLAUDE.md). The textbox-column-flow side effect
+                    // (<a:bodyPr rtlCol="1"/>) belongs to shape-level Set,
+                    // not paragraph-level. Run-level rtl remains reachable
+                    // via /paragraph[K]/run[R] direction=rtl.
+                    var pProps = para.ParagraphProperties ?? (para.ParagraphProperties = new Drawing.ParagraphProperties());
+                    bool rtl = key.Equals("rtl", StringComparison.OrdinalIgnoreCase)
+                        ? IsTruthy(value)
+                        : ParsePptDirectionRtl(value);
+                    if (rtl)
+                        pProps.RightToLeft = true;
+                    else
+                        pProps.RightToLeft = null;
+                    break;
+                }
                 default:
                     // Apply run-level properties to all runs in this paragraph
                     var runUnsup = SetRunOrShapeProperties(
