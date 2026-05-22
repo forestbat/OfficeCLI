@@ -70,9 +70,9 @@ public partial class PowerPointHandler
             // Emphasis effects — Basic / Subtle / Moderate that PowerPoint
             // emits with multi-anim primitives (animClr / animRot / animScale /
             // animEffect). Captured from a PowerPoint-authored deck.
-            [("fillcolor",          TimeNodePresetClassValues.Emphasis)] = new(1,  2, "OfficeCli.Handlers.Pptx.EffectTemplates.emph_fillcolor.xml"),
+            [("fillcolor",          TimeNodePresetClassValues.Emphasis)] = new(1,  0, "OfficeCli.Handlers.Pptx.EffectTemplates.emph_fillcolor.xml"),
             [("growshrink",         TimeNodePresetClassValues.Emphasis)] = new(6,  0, "OfficeCli.Handlers.Pptx.EffectTemplates.emph_growshrink.xml"),
-            [("linecolor",          TimeNodePresetClassValues.Emphasis)] = new(7,  2, "OfficeCli.Handlers.Pptx.EffectTemplates.emph_linecolor.xml"),
+            [("linecolor",          TimeNodePresetClassValues.Emphasis)] = new(7,  0, "OfficeCli.Handlers.Pptx.EffectTemplates.emph_linecolor.xml"),
             // 'spin' was previously preset 27 (no template); the PowerPoint-authored
             // form is preset 8 with an <p:animRot> primitive. Template wins.
             [("spin",               TimeNodePresetClassValues.Emphasis)] = new(8,  0, "OfficeCli.Handlers.Pptx.EffectTemplates.emph_spin.xml"),
