@@ -122,6 +122,15 @@ public partial class WordHandler
             var cols = EnsureSectPrChild<Columns>(sectPr);
             cols.Space = ParseTwips(colSpace).ToString();
         }
+        // columns.equalWidth — Set.SectionLayout exposes this; mirror on Add so
+        // batch replay round-trips dumps that include it (Get emits it when the
+        // <w:cols> has w:equalWidth set).
+        if (properties.TryGetValue("columns.equalWidth", out var eqW)
+            || properties.TryGetValue("columns.equalwidth", out eqW))
+        {
+            var cols = EnsureSectPrChild<Columns>(sectPr);
+            cols.EqualWidth = IsTruthy(eqW);
+        }
 
         // Per-section margin overrides — mutate the PageMargin child of the
         // new sectPr (not the body sectPr). Margins use Int32Value for Top/
@@ -701,7 +710,8 @@ public partial class WordHandler
         bool? sStyleRtlFlag = null;
         if (properties.TryGetValue("direction", out var sDirRaw)
             || properties.TryGetValue("dir", out sDirRaw)
-            || properties.TryGetValue("bidi", out sDirRaw))
+            || properties.TryGetValue("bidi", out sDirRaw)
+            || properties.TryGetValue("rtl", out sDirRaw))
         {
             var sRtl = ParseDirectionRtl(sDirRaw);
             sStyleRtlFlag = sRtl;
