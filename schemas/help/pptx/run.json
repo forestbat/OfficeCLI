@@ -16,7 +16,7 @@
       "/slide[N]/shape[M]/p[K]/r[L]"
     ]
   },
-  "note": "Appends a:r inside a:p. Font properties live on a:rPr. Colors get #-prefixed on readback via ParseHelpers.FormatHexColor.\n\neffective.* keys (size, font, color, bold) are read-only resolved values walked up the placeholder→layout→master→presentation defaults inheritance chain. They appear only when the direct key is absent on this run; once a direct value is set, the corresponding effective.* is suppressed. There is no effective.direction on runs (the implementation does not emit it). No .src counterparts.",
+  "note": "Appends a:r inside a:p. Font properties live on a:rPr. Colors get #-prefixed on readback via ParseHelpers.FormatHexColor. effective.* keys behave as documented in pptx/shape.json (no effective.direction on runs).",
   "extends": [
     "_shared/run",
     "_shared/run.docx-pptx"

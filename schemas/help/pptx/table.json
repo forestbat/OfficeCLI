@@ -19,7 +19,7 @@
       "/slide[N]/table[M]"
     ]
   },
-  "note": "A table is a GraphicFrame wrapping a Drawing.Table. Data can be seeded inline via 'data' (semicolon-separated rows, comma-separated cells) or per-cell via 'r{R}c{C}' props. Dimensions in EMU-parseable length (1in/2cm/raw EMU/720pt). Read depth: `get /slide[N]/table[K]` (default --depth=1) returns the table node plus row stubs; cell content is not included. Pass `--depth 2` to materialize cells, or address them directly via `get /slide[N]/table[K]/row[R]/cell[C]`. The default stays at 1 because large tables (e.g. 50x10) at depth=2 dominate the response body.",
+  "note": "GraphicFrame wrapping Drawing.Table. Seed data inline via `data` (semicolons split rows, commas split cells) or per-cell via `r{R}c{C}` props. `get /slide[N]/table[K]` defaults to --depth=1 (table + row stubs only; large tables at depth=2 dominate the response). Use --depth 2 or address cells directly via `/slide[N]/table[K]/row[R]/cell[C]`.",
   "children": [
     {
       "element": "row",

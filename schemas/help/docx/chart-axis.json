@@ -9,7 +9,7 @@
     "get": true,
     "remove": false
   },
-  "note": "Axes are created/destroyed implicitly by chartType changes, not via Add/Remove on axis directly. Mirror of pptx/chart-axis.json surface. Add-time configuration: use the chart element's axis* props (axismin, axismax, axistitle, axisfont, ...) when creating the chart; chart-axis covers post-creation Set/Get. `labelFont`, `lineWidth`, `lineDash` are not yet supported on axis-by-role paths. `lineWidth`/`lineDash` Set on a chart-axis path currently apply to all series in the plot area; `labelFont` writes the axis title run, not tick labels. Use chart-series schema for series line styling.",
+  "note": "Mirror of pptx/chart-axis. Axes are created/destroyed implicitly by chartType changes — no direct Add/Remove. At chart-creation time, configure via the chart's axis* props (axismin/axismax/axistitle/axisfont/…); chart-axis covers post-creation only. Known gaps: `labelFont` writes the title run (not tick labels); `lineWidth`/`lineDash` apply to all plot-area series — use chart-series for series-specific line styling.",
   "addressing": {
     "key": "role",
     "pathForm": "/chart[N]/axis[@role=ROLE]",

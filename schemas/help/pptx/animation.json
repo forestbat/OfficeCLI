@@ -16,7 +16,7 @@
       "/slide[N]/chart[M]/animation[K]"
     ]
   },
-  "note": "Animation attached to a shape or a chart graphicFrame. Effect name drives the timing preset; trigger controls sequencing (onClick / withPrevious / afterPrevious). On Get, returns individual keys: effect (preset name), class (entrance/emphasis/exit), presetId (numeric), trigger (onClick/afterPrevious/withPrevious), duration (ms integer), and (when set) repeat / restart / autoReverse. Chart targets additionally surface chartBuild (asWhole | series | category | seriesEl | categoryEl) to control per-series/category build animation — written into <p:bldGraphic><p:bldSub><a:bldChart bld=.../> alongside the timing tree. No composite 'animation' key is emitted. The `direction` parameter is consumed at Add time and not surfaced on Get.",
+  "note": "Animation attached to a shape or chart graphicFrame. Chart targets additionally write <a:bldChart bld=…/> alongside the timing tree (see chartBuild). No composite 'animation' key on Get — each facet (effect, class, presetId, trigger, duration, …) is its own key. `direction` is consumed at Add only.",
   "properties": {
     "effect": {
       "type": "enum",

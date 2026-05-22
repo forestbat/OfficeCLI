@@ -13,7 +13,7 @@
   "paths": {
     "positional": ["/slide[N]/placeholder[M]", "/slide[N]/shape[M]"]
   },
-  "note": "Aliases: ph. Inserts a Shape with PlaceholderShape nonVisual properties — geometry comes from the slide layout. Add returns /slide[N]/shape[M] path (placeholder is a shape at the OOXML layer).\n\neffective.* keys (direction, size, font, color, bold) are read-only resolved values walked up the placeholder→layout→master→presentation defaults inheritance chain. They appear only when the direct key is absent on this placeholder; once a direct value is set, the corresponding effective.* is suppressed. There are no .src counterparts (the implementation does not emit them).",
+  "note": "Aliases: ph. Inserts a Shape with PlaceholderShape nonVisual properties — geometry comes from the slide layout. Add returns /slide[N]/shape[M] (placeholder is a shape at the OOXML layer). effective.* keys behave as documented in pptx/shape.json.",
   "properties": {
     "phType": {
       "type": "enum",

@@ -13,7 +13,7 @@
   "paths": {
     "positional": ["/slide[N]"]
   },
-  "note": "Slide layouts are resolved by name via ResolveSlideLayout. 'title' / 'text' shorthand inserts title / content text shapes at Add time. See `background` property for the full list of accepted forms (solid hex/scheme, gradients, radial/path, image). Transition 'morph...' auto-prefixes shape names. Newly added slides contain no placeholders by default — use --prop title=... / text=... shorthand, `add /slide[N] --type placeholder --prop phType=title`, or `add /slide[N] --type shape|textbox` to add content.",
+  "note": "Layouts are resolved by name (ResolveSlideLayout). 'title'/'text' shorthand inserts title/content text shapes at Add. Transition `morph…` auto-prefixes shape names. Newly added slides have no placeholders — populate via title/text shorthand, `--type placeholder --prop phType=title`, or `--type shape|textbox`.",
   "properties": {
     "layout": {
       "type": "string",

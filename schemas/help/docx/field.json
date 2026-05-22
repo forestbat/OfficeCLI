@@ -13,7 +13,7 @@
   "paths": {
     "positional": ["/field[N]"]
   },
-  "note": "Complex field (fldChar: begin/instr/separate/result/end). Path is document-level /field[N] — the field is addressed as a whole, not via its inner runs. /body/p[N]/r[M] returns the inner fieldChar run node (type=fieldChar), not the field. Field instruction selected by 'fieldType' or the element-type alias (pagenum, numpages, date, author, title, time, filename, section, sectionpages, mergefield, ref, if, seq, styleref, docproperty). Per-type required parameters: mergefield/ref need 'name' (aka fieldName, bookmarkName); seq needs 'identifier'; styleref needs 'styleName'; docproperty needs 'propertyName'; if needs 'expression' (+ optional 'trueText' / 'falseText'); date/time accept optional 'format'.",
+  "note": "Complex field (fldChar: begin/instr/separate/result/end), addressed as a whole at /field[N]; /body/p[N]/r[M] returns the inner fieldChar run, not the field. Per-type required props: mergefield/ref → name (aka fieldName/bookmarkName); seq → identifier; styleref → styleName; docproperty → propertyName; if → expression (+ optional trueText/falseText); date/time accept optional format.",
   "properties": {
     "evaluated": {
       "type": "bool",

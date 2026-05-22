@@ -15,6 +15,6 @@
       "/body/p[N]/chart[M]/series[K]"
     ]
   },
-  "note": "Mirror of pptx/chart-series. At Add time, series pass as dotted props on the parent chart (series1.name, series1.values, series1.color, series1.categories). This schema represents per-series Set/Get after creation. Combo charts (mixed chartType per series, or secondary axis) are not supported. Create a separate chart for each chart type. lineWidth (line width in pt) and lineDash (solid/dash/dot/dashDot/longDash) are available on line/scatter series; `lineStyle` is not a recognized key (rejected as UNSUPPORTED — use lineWidth/lineDash instead).",
+  "note": "At Add time, series pass as dotted props on the parent chart (series1.name, series1.values, series1.color, series1.categories); this schema is per-series Set/Get after creation. Combo charts (mixed chartType / secondary axis) are unsupported — create separate charts. `lineStyle` is not a key (rejected as UNSUPPORTED — use lineWidth + lineDash).",
   "extends": "_shared/chart-series"
 }

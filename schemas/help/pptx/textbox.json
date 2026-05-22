@@ -13,7 +13,7 @@
   "paths": {
     "positional": ["/slide[N]/shape[M]"]
   },
-  "note": "textbox is an alias for shape — both route to AddShape. 'textbox' input that includes --prop formula routes to AddEquation instead. The common text/position/size/font properties are inlined below; the full property surface (geometry, rotation, opacity, name, effects, …) is documented in pptx/shape.json.\n\neffective.* keys (direction, size, font, color, bold) are read-only resolved values walked up the placeholder→layout→master→presentation defaults inheritance chain. They appear only when the direct key is absent on this textbox; once a direct value is set, the corresponding effective.* is suppressed. There are no .src counterparts (the implementation does not emit them).",
+  "note": "Alias for shape — both route to AddShape (with --prop formula → AddEquation). Common text/position/size/font props inlined below; full surface (geometry, rotation, effects, …) in pptx/shape.json. effective.* keys behave as documented in pptx/shape.json.",
   "properties": {
     "text": {
       "type": "string",
