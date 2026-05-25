@@ -714,6 +714,31 @@ internal static partial class ChartHelper
             }
 
             default:
+                // Per-series labelFont (compound + dotted) — mirrors the chart-level
+                // labelFont fan-out (Setter.cs cases `labelfont` / `labelfont.*`)
+                // but scoped to this series' own <c:dLbls>. Without this dispatch,
+                // `series{N}.labelFont*=` fell through to the catch-all `return
+                // false;` and surfaced as UNSUPPORTED even though the chart-level
+                // form worked. dLbls is created on the series if absent so the
+                // first labelFont set is non-destructive.
+                if (prop.Equals("labelfont", StringComparison.OrdinalIgnoreCase))
+                {
+                    var dl = EnsureSeriesDataLabels(ser);
+                    dl.RemoveAllChildren<C.TextProperties>();
+                    dl.PrependChild(BuildLabelTextProperties(value));
+                    return true;
+                }
+                if (prop.StartsWith("labelfont.", StringComparison.OrdinalIgnoreCase))
+                {
+                    var subkey = prop.Substring("labelfont.".Length).ToLowerInvariant();
+                    if (subkey is "color" or "size" or "bold" or "name" or "font")
+                    {
+                        var dl = EnsureSeriesDataLabels(ser);
+                        ApplyLabelFontSubkey(dl, subkey, value);
+                        return true;
+                    }
+                    return false;
+                }
                 // Trendline sub-properties: series{N}.trendline.name, .forward, .backward, etc.
                 // NOTE: this is an inner dispatch — if the sub-property is not one of
                 // ApplyTrendlineOptions' known cases it is silently ignored. See report:
@@ -747,6 +772,28 @@ internal static partial class ChartHelper
                 // of a bogus "Updated" message.
                 return false;
         }
+    }
+
+    /// <summary>
+    /// Get-or-create a series-scoped &lt;c:dLbls&gt; container with the
+    /// minimal show* skeleton (mirrors EnsureDataLabelsOnAllChartGroups but
+    /// per-series). Used by per-series labelFont fan-out — the chart-level
+    /// EnsureDataLabelsOnAllChartGroups attaches dLbls under the chart-group,
+    /// not under each &lt;c:ser&gt;.
+    /// </summary>
+    private static C.DataLabels EnsureSeriesDataLabels(OpenXmlCompositeElement ser)
+    {
+        var existing = ser.GetFirstChild<C.DataLabels>();
+        if (existing != null) return existing;
+        var dLbls = new C.DataLabels();
+        dLbls.AppendChild(new C.ShowLegendKey { Val = false });
+        dLbls.AppendChild(new C.ShowValue { Val = false });
+        dLbls.AppendChild(new C.ShowCategoryName { Val = false });
+        dLbls.AppendChild(new C.ShowSeriesName { Val = false });
+        dLbls.AppendChild(new C.ShowPercent { Val = false });
+        dLbls.AppendChild(new C.ShowBubbleSize { Val = false });
+        InsertSeriesChildInOrder(ser, dLbls);
+        return dLbls;
     }
 
     private static bool TryParsePointKey(string prop, out int pointIndex, out string pointProp)
