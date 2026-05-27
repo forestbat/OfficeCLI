@@ -154,6 +154,22 @@ public partial class WordHandler
                     + "If you need to address a specific marker afterwards, run `query revision` "
                     + "to read the assigned ids.");
 
+            // text= cannot be combined with find: find/replace rewrites only the
+            // matched fragment, while text= would rewrite the whole paragraph
+            // body — the two intents conflict. text= has no
+            // ApplyParagraphLevelProperty case, so previously it was routed to
+            // paraProps and silently dropped while the confirmation still
+            // reported it as applied (a lie). Surface it as unsupported instead
+            // (exit 2 warning) so the caller knows it was not honoured; the
+            // find/replace still proceeds. Mirrors the handler-as-truth
+            // self-report model used by the non-find Set path.
+            // Read via the source dictionary's TryGetValue (not paraProps) so a
+            // TrackingPropertyDictionary marks "text" as accessed — otherwise the
+            // wrapper would also flag it unsupported and we'd double-report.
+            paraProps.Remove("text");
+            if (properties.TryGetValue("text", out _))
+                unsupported.Add("text");
+
             // Final gate: at least one of replace / format / para / revision-attribution
             // must be present. Bare `find=x` with nothing to do is a usage error.
             // Bare revision attribution (e.g. revision.author with no other prop) is
