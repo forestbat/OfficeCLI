@@ -2274,6 +2274,16 @@ public partial class PowerPointHandler
                     totalCount += ProcessFindInPptParagraph(para, pattern, isRegex, replace,
                         formatProps.Count > 0 ? formatProps : null);
                 slidePart.Slide!.Save();
+                // R21-2: the global root sweep must also cover speaker notes,
+                // which live in NotesSlidePart, not the slide shape tree.
+                var notesSlide = slidePart.NotesSlidePart?.NotesSlide;
+                if (notesSlide != null)
+                {
+                    foreach (var para in notesSlide.Descendants<Drawing.Paragraph>())
+                        totalCount += ProcessFindInPptParagraph(para, pattern, isRegex, replace,
+                            formatProps.Count > 0 ? formatProps : null);
+                    notesSlide.Save();
+                }
             }
         }
         else
