@@ -292,6 +292,33 @@ internal static partial class ChartHelper
                 {
                     var plotArea2 = chart.GetFirstChild<C.PlotArea>();
                     if (plotArea2 == null) { unsupported.Add(key); break; }
+                    // Position values (outsideEnd, center, insideEnd, insideBase, top, bottom, left, right)
+                    // implicitly enable showVal when used as the dataLabels value. Declared up-front
+                    // for the pre-validation step below.
+                    var positionValues = new HashSet<string> { "outsideend", "center", "insideend", "insidebase",
+                        "top", "bottom", "left", "right", "bestfit", "t", "b", "l", "r", "outend", "ctr" };
+                    // CONSISTENCY(datalabels-validate-first): the original code called
+                    // RemoveAllChildren<C.DataLabels>() BEFORE inspecting tokens, so an unknown
+                    // value (e.g. "categoryAndValue") silently wiped the existing dLbls element
+                    // and built a replacement with every Show*=false — readback then emitted
+                    // nothing, looking like a silent clear. Validate first; on any unknown token,
+                    // surface it as unsupported and leave existing dLbls untouched.
+                    if (!value.Equals("none", StringComparison.OrdinalIgnoreCase))
+                    {
+                        var validateRaw = value.ToLowerInvariant().Split(',').Select(s => s.Trim()).ToList();
+                        var knownTokens = new HashSet<string>
+                        {
+                            "value", "category", "series", "percent", "all", "true", "false",
+                            "seriesname", "categoryname", "percentage", "valuelabel", "values"
+                        };
+                        var unknown = validateRaw.FirstOrDefault(p =>
+                            !knownTokens.Contains(p) && !positionValues.Contains(p));
+                        if (unknown != null)
+                        {
+                            unsupported.Add($"{key}={unknown} (valid: value, category, series, percent, all, none, or a position like outsideEnd/center/insideEnd/insideBase/top/bottom/left/right/bestFit)");
+                            break;
+                        }
+                    }
                     foreach (var chartTypeEl in plotArea2.ChildElements
                         .Where(e => e.LocalName.Contains("Chart") || e.LocalName.Contains("chart")))
                     {
@@ -315,10 +342,7 @@ internal static partial class ChartHelper
                                 };
                             }
                             var parts = partsRaw.ToHashSet();
-                            // Position values (outsideEnd, center, insideEnd, insideBase, top, bottom, left, right)
-                            // implicitly enable showVal when used as the dataLabels value
-                            var positionValues = new HashSet<string> { "outsideend", "center", "insideend", "insidebase",
-                                "top", "bottom", "left", "right", "bestfit", "t", "b", "l", "r", "outend", "ctr" };
+                            // positionValues is declared above the validation block.
                             var isPositionValue = parts.Any(p => positionValues.Contains(p));
                             var showVal = parts.Contains("value") || parts.Contains("true") || parts.Contains("all") || isPositionValue;
                             dl.AppendChild(new C.ShowLegendKey { Val = false });
