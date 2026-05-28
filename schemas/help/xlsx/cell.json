@@ -14,7 +14,7 @@
     "stable":     ["/<sheetName>/<A1Ref>"],
     "positional": ["/Sheet1/A1", "/Sheet1/B2:C3"]
   },
-  "note": "Get returns canonical keys: numberformat (not `format`), alignment.{horizontal,vertical,wrapText}, font.{bold,italic,name,size,color}. Add/Set accept both font.* and short forms (bold, italic, font, size). The bare `color` key is rejected on cells (ambiguous with `fill`) — use `font.color`. Parent path controls placement: `/Sheet1` appends to the next empty cell; `/Sheet1/A2` targets a specific cell. Set auto-vivifies any in-bounds cell (A1:XFD1048576) — writing to a never-written cell creates it rather than throwing not_found, since OOXML xlsx stores only cells with content. Sheet-level and out-of-bounds writes still error.",
+  "note": "Get returns canonical keys: numberformat (not `format`), alignment.{horizontal,vertical,wrapText}, font.{bold,italic,name,size,color}. Add/Set accept both font.* and short forms (bold, italic, font, size). The bare `color` key is rejected on cells (ambiguous with `fill`) — use `font.color` for text color or `fill` for background. Cross-format note: pptx shape `color=` unambiguously means text color; xlsx must be explicit because a cell has both font color and fill color. Parent path controls placement: `/Sheet1` appends to the next empty cell; `/Sheet1/A2` targets a specific cell. Set auto-vivifies any in-bounds cell (A1:XFD1048576) — writing to a never-written cell creates it rather than throwing not_found, since OOXML xlsx stores only cells with content. Sheet-level and out-of-bounds writes still error.",
   "properties": {
     "value": {
       "type": "string",

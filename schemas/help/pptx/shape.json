@@ -17,7 +17,7 @@
       "/slide[N]/shape[N]"
     ]
   },
-  "note": "Positional /shape[N] enumerates ALL shapes on the slide including layout-inherited placeholders — new shapes typically land at the end, not at /shape[1]. `add` echoes the canonical /shape[@id=ID] path; prefer that for follow-up Set/Get. effective.* keys (direction, size, font, color, bold) are read-only inheritance-resolved values walked up the placeholder→layout→master→defaults chain; suppressed when the corresponding direct key is set. Each pairs with effective.*.src naming the writing layer.",
+  "note": "Positional /shape[N] enumerates ALL shapes on the slide including layout-inherited placeholders — new shapes typically land at the end, not at /shape[1]. `add` echoes the canonical /shape[@id=ID] path; prefer that for follow-up Set/Get. effective.* keys (direction, size, font, color, bold) are read-only inheritance-resolved values walked up the placeholder→layout→master→defaults chain; suppressed when the corresponding direct key is set. Each pairs with effective.*.src naming the writing layer. Cross-format note: `color=` on pptx shapes unambiguously sets text/run color. The same bare `color=` key is rejected on xlsx cells (ambiguous with fill) — use `font.color` for text or `fill` for background when working with xlsx cells.",
   "extends": "_shared/shape",
   "properties": {
     "size": {
