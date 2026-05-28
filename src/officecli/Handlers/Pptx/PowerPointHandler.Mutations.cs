@@ -169,6 +169,16 @@ public partial class PowerPointHandler
                 }
             }
 
+            // Update GraphicFrame container height to match remaining rows
+            // (mirrors the Cx update in the column-removal path below).
+            var trGraphicFrame = table.Ancestors<GraphicFrame>().FirstOrDefault();
+            if (trGraphicFrame?.Transform?.Extents != null)
+            {
+                long totalRowHeight = table.Elements<Drawing.TableRow>()
+                    .Sum(r => r.Height?.Value ?? 0L);
+                trGraphicFrame.Transform.Extents.Cy = totalRowHeight;
+            }
+
             return null;
         }
 
