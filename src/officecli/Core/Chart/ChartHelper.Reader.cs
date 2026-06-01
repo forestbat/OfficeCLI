@@ -323,6 +323,11 @@ internal static partial class ChartHelper
         if (gapWidthEl?.Val?.HasValue == true) node.Format["gapwidth"] = gapWidthEl.Val.Value.ToString();
         var overlapEl = barChart?.GetFirstChild<C.Overlap>();
         if (overlapEl?.Val?.HasValue == true) node.Format["overlap"] = overlapEl.Val.Value.ToString();
+        // <c:serLines> on a stacked bar/column. Setter accepts
+        // `serLines=true` via the "serlines"/"serieslines" case; without a
+        // readback the source's element silently dropped on dump→replay.
+        if (barChart?.GetFirstChild<C.SeriesLines>() != null)
+            node.Format["serLines"] = "true";
 
         // CONSISTENCY(bar3d-shape): emit barShape so Set/Add shape=cone|cylinder|...
         // round-trips through Get. Lives on <c:bar3DChart><c:shape>.
