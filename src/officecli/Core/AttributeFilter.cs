@@ -395,6 +395,17 @@ internal static class AttributeFilter
             return (!string.IsNullOrEmpty(node.Type), node.Type ?? "");
         }
 
+        // Excel cells expose their displayed value as node.Text, not
+        // Format["value"]. Map the user-facing `value` filter key onto Text so
+        // numeric/equality post-filters (e.g. cell[value>100]) resolve. Gated on
+        // the cell node type so a future `value` Format key on other node kinds
+        // is not shadowed.
+        if (string.Equals(key, "value", StringComparison.OrdinalIgnoreCase)
+            && string.Equals(node.Type, "cell", StringComparison.OrdinalIgnoreCase))
+        {
+            return (node.Text != null, node.Text ?? "");
+        }
+
         // BUG-BT-R6-01: "style" falls back to node.Style if not in Format.
         // Word/PPT handlers populate the top-level DocumentNode.Style property
         // (serialized as the top-level "style" key in JSON output) but do NOT
@@ -423,6 +434,15 @@ internal static class AttributeFilter
 
     private static bool DimensionEquals(string actual, string expected)
     {
+        // Fuzzy EMU equality (±500) is for unit-qualified dimensions so that
+        // e.g. "2cm" matches a stored "2.0cm". It must NOT fire for unitless
+        // numbers: EmuConverter parses a bare "50" as 50 EMU, so "50" and "150"
+        // fall within the ±500 tolerance and would be judged equal — wrong for
+        // cell values (cell[value!=150] then drops every cell). Require an
+        // explicit unit on at least one side; bare numbers compare exactly via
+        // StringEquals instead.
+        if (string.IsNullOrEmpty(ExtractUnit(actual)) && string.IsNullOrEmpty(ExtractUnit(expected)))
+            return false;
         if (EmuConverter.TryParseEmu(actual, out var a) && EmuConverter.TryParseEmu(expected, out var b))
             return Math.Abs(a - b) <= 500;
         return false;
