@@ -104,6 +104,22 @@ public static partial class PptxBatchEmitter
         // their text / char-prop bag.
         var fullShape = ppt.Get(shapeNode.Path, depth: 3);
         var shapeProps = FilterEmittableProps(fullShape.Format);
+        // CONSISTENCY(shape-link-source): NodeBuilder surfaces Format["link"]
+        // on the shape node from two sources: (a) cNvPr.hlinkClick on the
+        // shape itself, and (b) the FIRST run's rPr.hlinkClick (a single-run
+        // convenience for Get callers — so a fully hyperlinked textbox
+        // surfaces its href at the shape level without descending into
+        // /p[1]/r[1]). Dump→batch wants source (a) only: the per-run emit
+        // path (EmitParagraph / EmitFirstRunAsSet) already carries the
+        // run-level link via the run's own Format bag, so emitting it
+        // again at shape-level fabricates a cNvPr.hlinkClick the source
+        // never had. Probe the live XML to disambiguate; strip when only
+        // the run-derived shortcut path applies.
+        if (shapeProps.ContainsKey("link") && !ppt.ShapeHasCNvPrHyperlink(shapeNode.Path))
+        {
+            shapeProps.Remove("link");
+            shapeProps.Remove("tooltip");
+        }
         DeferSlideJumpLink(shapeProps, replayPath, ctx);
 
         // Shape image fill (blipFill) — NodeBuilder emits the marker

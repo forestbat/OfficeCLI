@@ -1703,6 +1703,41 @@ public partial class PowerPointHandler : IDocumentHandler
         catch { return null; }
     }
 
+    // Probe whether a shape's NonVisualDrawingProperties carries a
+    // hlinkClick child. Used by PptxBatchEmitter.EmitShape to disambiguate
+    // a Format["link"] surfaced by NodeBuilder's single-run shortcut
+    // (run-level hlinkClick promoted onto the shape Format bag for Get
+    // convenience) from a true shape-level hlinkClick. The dump path
+    // should emit shape-level link= on Add only when the link is truly on
+    // the cNvPr — otherwise the run-level emit duplicates and AddShape
+    // fabricates a shape-level hyperlink that the source never had.
+    internal bool ShapeHasCNvPrHyperlink(string shapePath)
+    {
+        var m = Regex.Match(shapePath,
+            @"^/slide\[(\d+)\]((?:/group\[\d+\])*)/(?:shape|textbox|title|equation|placeholder)\[(\d+)\]$");
+        if (!m.Success) return false;
+        var slideIdx = int.Parse(m.Groups[1].Value);
+        var grpChain = m.Groups[2].Value;
+        var shapeIdx = int.Parse(m.Groups[3].Value);
+        var parts = GetSlideParts().ToList();
+        if (slideIdx < 1 || slideIdx > parts.Count) return false;
+        var slidePart = parts[slideIdx - 1];
+        OpenXmlCompositeElement? scope = GetSlide(slidePart).CommonSlideData?.ShapeTree;
+        if (scope == null) return false;
+        foreach (Match gm in Regex.Matches(grpChain, @"/group\[(\d+)\]"))
+        {
+            var gIdx = int.Parse(gm.Groups[1].Value);
+            var groupsHere = scope.Elements<GroupShape>().ToList();
+            if (gIdx < 1 || gIdx > groupsHere.Count) return false;
+            scope = groupsHere[gIdx - 1];
+        }
+        var shapes = scope.Elements<Shape>().ToList();
+        if (shapeIdx < 1 || shapeIdx > shapes.Count) return false;
+        var shape = shapes[shapeIdx - 1];
+        var nvDp = shape.NonVisualShapeProperties?.NonVisualDrawingProperties;
+        return nvDp?.GetFirstChild<DocumentFormat.OpenXml.Drawing.HyperlinkOnClick>() != null;
+    }
+
     // Resolve a shape path's blipFill image bytes (image fill on a non-Picture
     // <p:sp>). Mirrors GetImageBinary but walks <p:sp> (Shape) instead of
     // <p:pic> (Picture). Accepts /slide[N]/shape[K] and /slide[N]/shape[@id=ID]
