@@ -2253,6 +2253,19 @@ public partial class PowerPointHandler
                         }
                     }
 
+                    // CONSISTENCY(border-edge-aliases): accept the OOXML SDK
+                    // property-name forms (borderTopLeftToBottomRight /
+                    // borderBottomLeftToTopRight) alongside the canonical
+                    // border.tl2br / border.tr2bl. The verbose forms match
+                    // the SDK's TopLeftToBottomRightBorderLineProperties /
+                    // BottomLeftToTopRightBorderLineProperties property
+                    // names — agents and tools that introspect via
+                    // reflection naturally produce them. Without these
+                    // aliases the key (border-prefixed, .color suffix)
+                    // matched the outer `border` case but no specific edge,
+                    // and fell through to the default `new[] { left, right,
+                    // top, bottom }` arm, silently writing the diagonal
+                    // border to all four straight edges instead.
                     var edges = k switch
                     {
                         "border.left" or "border.left.width" or "border.left.color" or "border.left.dash" => new[] { "left" },
@@ -2261,6 +2274,14 @@ public partial class PowerPointHandler
                         "border.bottom" or "border.bottom.width" or "border.bottom.color" or "border.bottom.dash" => new[] { "bottom" },
                         "border.tl2br" or "border.tl2br.width" or "border.tl2br.color" or "border.tl2br.dash" => new[] { "tl2br" },
                         "border.tr2bl" or "border.tr2bl.width" or "border.tr2bl.color" or "border.tr2bl.dash" => new[] { "tr2bl" },
+                        "bordertoplefttobottomright"
+                          or "bordertoplefttobottomright.width"
+                          or "bordertoplefttobottomright.color"
+                          or "bordertoplefttobottomright.dash" => new[] { "tl2br" },
+                        "borderbottomlefttotopright"
+                          or "borderbottomlefttotopright.width"
+                          or "borderbottomlefttotopright.color"
+                          or "borderbottomlefttotopright.dash" => new[] { "tr2bl" },
                         _ => new[] { "left", "right", "top", "bottom" }  // "border" or "border.all"
                     };
 
