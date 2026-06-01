@@ -68,11 +68,12 @@ public partial class ExcelHandler
                     : m.Groups[3].Value;
             if (key.StartsWith('@')) continue;               // force row property
             bool forcedColumn = Regex.IsMatch(key, @"^col(?:umn)?\.", RegexOptions.IgnoreCase);
-            if (!forcedColumn)
-            {
-                if (RowAttributeKeys.Contains(key)) { bareAttrKeys.Add(key); continue; }
-                if (int.TryParse(key, out _)) continue;      // row[2] index, not a predicate
-            }
+            if (!forcedColumn && RowAttributeKeys.Contains(key)) { bareAttrKeys.Add(key); continue; }
+            // A purely-numeric key reaching here is a digit-named COLUMN (e.g. a
+            // header literally "2"), NOT the positional `row[2]` index: this regex
+            // mandates an operator, so the bare index form (`row[2]`, no operator)
+            // never enters this loop — it is resolved by FilterSelectorPositionalIndex.
+            // Hence no int.TryParse skip; `row[2>40]` resolves the column named "2".
             conds.Add(new AttributeFilter.Condition(key, MapRowPredicateOp(m.Groups[4].Value), m.Groups[5].Value.Trim()));
         }
         return conds;
