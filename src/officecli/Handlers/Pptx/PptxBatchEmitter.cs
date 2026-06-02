@@ -902,11 +902,22 @@ public static partial class PptxBatchEmitter
                 // template-matched animClr emphasis effects round-trips via
                 // raw-set instead of the semantic add-animation row — slightly
                 // bigger batch, but byte-faithful.
+                // R53 tester-3: <p:set> emphasis-preset trees (presetID=27 et
+                // al., colorPulse / pulse / wave / fillColor) suffer the same
+                // template-rebuild rot as <p:animClr>: EmitAnimationsForShape
+                // expands the source <p:set> into a richer animClr / animEffect
+                // / animScale body using canned EffectTemplates, so dump→replay
+                // produces a body PowerPoint renders as a substantively
+                // different effect (multiple emphasis layers per the template
+                // instead of the source's single-shot <p:set>). Same passthrough
+                // tradeoff as animClr — route the whole <p:timing> slice
+                // through raw-set when any literal <p:set> appears.
                 if (slice.Contains("presetClass=\"path\"", StringComparison.Ordinal)
                     || slice.Contains("<p:animMotion", StringComparison.Ordinal)
                     || slice.Contains("<p:audio", StringComparison.Ordinal)
                     || slice.Contains("<p:video", StringComparison.Ordinal)
-                    || slice.Contains("<p:animClr", StringComparison.Ordinal))
+                    || slice.Contains("<p:animClr", StringComparison.Ordinal)
+                    || slice.Contains("<p:set", StringComparison.Ordinal))
                 {
                     timingExotic = true;
                     timingXml = slice;
