@@ -161,25 +161,56 @@ public partial class PowerPointHandler
                 );
                 if (cxnFlipH) cxnTransform.HorizontalFlip = true;
                 if (cxnFlipV) cxnTransform.VerticalFlip = true;
+                // R53 bt-3: "line" is a distinct prstGeom value used by tools
+                // that emit a connector as the bare-geometry primitive (no
+                // <a:ln>). Aliasing it to StraightConnector1 silently rewrote
+                // the prst attribute AND let the synthetic-outline branch
+                // below stamp a default black 1pt stroke that the source
+                // never had. Keep "line" as its own ShapeTypeValues.Line value
+                // and signal `bareLine` so the outline injection skips when
+                // no line.* props were supplied.
+                var rawShapeKey = (properties.GetValueOrDefault("shape")
+                                  ?? properties.GetValueOrDefault("preset", "straightConnector1"))
+                                  .ToLowerInvariant();
+                bool bareLine = rawShapeKey == "line";
                 connector.ShapeProperties = new ShapeProperties(
                     cxnTransform,
                     new Drawing.PresetGeometry(new Drawing.AdjustValueList())
                     {
                         // CONSISTENCY(canonical-key): canonical 'shape'; 'preset' legacy alias.
-                        Preset = (properties.GetValueOrDefault("shape")
-                                  ?? properties.GetValueOrDefault("preset", "straightConnector1")).ToLowerInvariant() switch
+                        Preset = rawShapeKey switch
                         {
-                            // Short canonical names + OOXML full names. "line" is a
-                            // historical schema alias for the straight preset; bent/curved
-                            // accept either the 2-segment or 3-segment OOXML variant
-                            // (PowerPoint maps both to the same drawing primitive set).
-                            "straight" or "straightconnector1" or "line" => Drawing.ShapeTypeValues.StraightConnector1,
+                            // Short canonical names + OOXML full names. "line" is the
+                            // bare primitive (preserves prst="line" verbatim) — distinct
+                            // from "straight"/"straightConnector1" which carries the
+                            // canonical connector adjust list. bent/curved accept either
+                            // the 2-segment or 3-segment OOXML variant (PowerPoint maps
+                            // both to the same drawing primitive set).
+                            "straight" or "straightconnector1" => Drawing.ShapeTypeValues.StraightConnector1,
+                            "line" => Drawing.ShapeTypeValues.Line,
                             "elbow" or "bentconnector3" or "bentconnector2" => Drawing.ShapeTypeValues.BentConnector3,
                             "curve" or "curvedconnector3" or "curvedconnector2" => Drawing.ShapeTypeValues.CurvedConnector3,
-                            _ => throw new ArgumentException($"Invalid connector shape: '{properties.GetValueOrDefault("shape") ?? properties.GetValueOrDefault("preset", "straightConnector1")}'. Valid values: straight, elbow, curve (or OOXML full names: straightConnector1, bentConnector3, curvedConnector3).")
+                            _ => throw new ArgumentException($"Invalid connector shape: '{properties.GetValueOrDefault("shape") ?? properties.GetValueOrDefault("preset", "straightConnector1")}'. Valid values: straight, elbow, curve, line (or OOXML full names: straightConnector1, bentConnector3, curvedConnector3).")
                         }
                     }
                 );
+
+                // R53 bt-3: when the source connector had no <a:ln> (the bare
+                // prst="line" form) and the Add call carries no line.* / color
+                // / arrow props, skip the synthetic outline so dump→replay
+                // doesn't inject a default black 1pt stroke the source never
+                // had. Any explicit line input still materializes <a:ln>.
+                bool hasAnyLineInput =
+                    properties.ContainsKey("line.gradient") || properties.ContainsKey("linegradient")
+                    || properties.ContainsKey("lineColor") || properties.ContainsKey("linecolor")
+                    || properties.ContainsKey("line") || properties.ContainsKey("color")
+                    || properties.ContainsKey("line.color")
+                    || properties.ContainsKey("linewidth") || properties.ContainsKey("lineWidth")
+                    || properties.ContainsKey("line.width")
+                    || properties.ContainsKey("lineDash") || properties.ContainsKey("linedash")
+                    || properties.ContainsKey("headEnd") || properties.ContainsKey("headend")
+                    || properties.ContainsKey("tailEnd") || properties.ContainsKey("tailend");
+                bool skipOutline = bareLine && !hasAnyLineInput;
 
                 // Line style
                 var cxnOutline = new Drawing.Outline { Width = 12700 }; // 1pt default
@@ -224,7 +255,8 @@ public partial class PowerPointHandler
                     connector.ShapeProperties.Transform2D!.Rotation =
                         (int)(ParseHelpers.SafeParseRotationDegrees(cxnRot, "rotation") * 60000);
                 }
-                connector.ShapeProperties.AppendChild(cxnOutline);
+                if (!skipOutline)
+                    connector.ShapeProperties.AppendChild(cxnOutline);
 
                 InsertAtPosition(cxnShapeTree, connector, index);
                 if (properties.TryGetValue("zorder", out var cxnZ)
