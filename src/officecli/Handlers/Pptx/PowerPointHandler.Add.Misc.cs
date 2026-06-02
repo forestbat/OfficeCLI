@@ -614,6 +614,17 @@ public partial class PowerPointHandler
                     )
                 );
 
+                // Mirror SetGroupByPath: dump emits `rotation=<deg>` for groups whose
+                // <a:xfrm rot="..."> was non-zero, so AddGroup must honor the same
+                // input key. Without this the apply path silently dropped rot on
+                // every dump→batch replay.
+                if (properties.TryGetValue("rotation", out var grpRot)
+                    || properties.TryGetValue("rotate", out grpRot))
+                {
+                    groupShape.GroupShapeProperties.TransformGroup!.Rotation =
+                        (int)(ParseHelpers.SafeParseRotationDegrees(grpRot, "rotation") * 60000);
+                }
+
                 // Move shapes into group
                 foreach (var s in toGroup)
                 {
@@ -703,6 +714,16 @@ public partial class PowerPointHandler
                 new Drawing.ChildExtents { Cx = emptyChCx, Cy = emptyChCy }
             )
         );
+
+        // Honor `rotation` for empty groups too. Dump emits `add group` with the
+        // group's rotation when its source <a:xfrm rot> was non-zero; replay
+        // formerly built the TransformGroup without a Rot attribute.
+        if (properties.TryGetValue("rotation", out var emptyRot)
+            || properties.TryGetValue("rotate", out emptyRot))
+        {
+            groupShape.GroupShapeProperties.TransformGroup!.Rotation =
+                (int)(ParseHelpers.SafeParseRotationDegrees(emptyRot, "rotation") * 60000);
+        }
 
         InsertAtPosition(grpShapeTree, groupShape, index);
 
