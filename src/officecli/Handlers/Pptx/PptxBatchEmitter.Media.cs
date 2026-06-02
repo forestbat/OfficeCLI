@@ -505,19 +505,45 @@ public static partial class PptxBatchEmitter
     }
 
     // Count <p:sp>/<p:pic>/<p:cxnSp>/<p:graphicFrame>/<p:grpSp>/
-    // <mc:AlternateContent> opening tags before <paramref name="beforeOffset"/>
-    // in the spTree region. Self-closing variants count too. Used by
-    // EmitGenericAlternateContentForSlide to pin a sibling index.
+    // <mc:AlternateContent> opening tags that are DIRECT children of <p:spTree>
+    // and occur before <paramref name="beforeOffset"/>. Tags nested inside an
+    // mc:AlternateContent / p:grpSp / p:sp / p:graphicFrame (e.g. the <p:sp>
+    // pair living under mc:Choice + mc:Fallback that wraps an OOMath equation
+    // shape) must NOT count — they are descendants, not siblings, of any
+    // spTree-level AlternateContent we are positioning. R65 fuzzer-1: a
+    // blank slide whose only direct-child renderable is one mc:AlternateContent
+    // produced precedingShapeCount=0 / followingShapeCount=2 (the two nested
+    // <p:sp>), routed through the insertbefore[1] branch — but the replay
+    // slide had no first-shape anchor, xpath matched nothing, fragment lost.
     private static int CountRenderableSiblingsBefore(string spTreeRegion, int beforeOffset)
     {
+        // Sweep every open/close/self-close of any container or renderable
+        // tag in source order, maintain a depth counter, and only count
+        // renderable opens that land at depth 0 (direct spTree children).
         var rx = new System.Text.RegularExpressions.Regex(
-            @"<(?:p:sp|p:pic|p:cxnSp|p:graphicFrame|p:grpSp|mc:AlternateContent)\b",
+            @"<(/?)(p:sp|p:pic|p:cxnSp|p:graphicFrame|p:grpSp|mc:AlternateContent|mc:Choice|mc:Fallback)\b([^>]*?)(/?)>",
             System.Text.RegularExpressions.RegexOptions.Compiled);
+        int depth = 0;
         int count = 0;
+        var renderable = new HashSet<string>(StringComparer.Ordinal)
+        {
+            "p:sp", "p:pic", "p:cxnSp", "p:graphicFrame", "p:grpSp", "mc:AlternateContent",
+        };
         foreach (System.Text.RegularExpressions.Match m in rx.Matches(spTreeRegion))
         {
             if (m.Index >= beforeOffset) break;
-            count++;
+            bool isClose = m.Groups[1].Value == "/";
+            string tag = m.Groups[2].Value;
+            bool isSelfClose = m.Groups[4].Value == "/";
+            if (isClose)
+            {
+                depth--;
+            }
+            else
+            {
+                if (depth == 0 && renderable.Contains(tag)) count++;
+                if (!isSelfClose) depth++;
+            }
         }
         return count;
     }
