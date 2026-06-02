@@ -710,31 +710,28 @@ public partial class PowerPointHandler
                         }
                         break;
                     }
+                    // R64 bt-2 / bt-4: explicit Set writes the attribute on
+                    // BOTH rtl and ltr instead of stripping for ltr. An explicit
+                    // shape-level Set is the caller's "override inheritance"
+                    // signal — a textbox inside a master/layout with rtl=1 /
+                    // rtlCol=1 silently inherits RTL when we strip the attribute
+                    // on ltr, so the Set looks Updated but the persisted XML
+                    // reads as a no-op (`<a:pPr/>` / `<a:bodyPr/>` with no rtl /
+                    // rtlCol attr). Writing "0" pins ltr regardless of inherited
+                    // cascade. (Add path keeps strip-on-ltr so a freshly built
+                    // ltr shape stays free of explicit-default noise.)
                     foreach (var para in shape.TextBody?.Elements<Drawing.Paragraph>() ?? Enumerable.Empty<Drawing.Paragraph>())
                     {
                         var pProps = para.ParagraphProperties ?? (para.ParagraphProperties = new Drawing.ParagraphProperties());
-                        // Clear semantics: direction=ltr removes the rtl attribute
-                        // entirely rather than writing rtl="0" (the schema default
-                        // is ltr; an explicit "0" pollutes every freshly-added
-                        // paragraph). Mirror Word direction=ltr clear behavior.
-                        if (rtl)
-                            pProps.RightToLeft = true;
-                        else
-                            pProps.RightToLeft = null;
+                        pProps.RightToLeft = rtl;
                     }
                     var dirBodyPr = shape.TextBody?.Elements<Drawing.BodyProperties>().FirstOrDefault();
                     // OpenXml SDK doesn't expose rtlCol as a typed property on
                     // BodyProperties — set the attribute directly. "1"/"0" is
                     // the only canonical xsd:boolean form Office tooling reads.
-                    // For ltr (the schema default), strip the attribute rather
-                    // than writing rtlCol="0" so a rtl→ltr toggle leaves no
-                    // stale explicit-default noise in the XML.
                     if (dirBodyPr != null)
                     {
-                        if (rtl)
-                            dirBodyPr.SetAttribute(new DocumentFormat.OpenXml.OpenXmlAttribute("", "rtlCol", "", "1"));
-                        else
-                            dirBodyPr.RemoveAttribute("rtlCol", "");
+                        dirBodyPr.SetAttribute(new DocumentFormat.OpenXml.OpenXmlAttribute("", "rtlCol", "", rtl ? "1" : "0"));
                     }
                     break;
                 }
