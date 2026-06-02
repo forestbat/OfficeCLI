@@ -81,6 +81,22 @@ public partial class PowerPointHandler
                 if (properties.TryGetValue("background", out var bgValue))
                     ApplySlideBackground(newSlidePart, bgValue);
 
+                // bt-3: theme-styled background via <p:bgRef idx="N">[<a:srgbClr/schemeClr>].
+                // NodeBuilder emits background.ref (1001..1004 / 1025..1028) and the
+                // optional background.refColor (schemeClr name or srgbClr hex). Without
+                // this branch the keys round-tripped only through the raw-set <p:bg>
+                // passthrough; AddSlide silently ignored them. Apply directly here so
+                // the typed Format keys round-trip and the raw-set becomes a no-op
+                // when the typed form covers the source.
+                if (properties.TryGetValue("background.ref", out var bgRefIdxStr)
+                    && uint.TryParse(bgRefIdxStr?.Trim(), System.Globalization.NumberStyles.Integer,
+                        System.Globalization.CultureInfo.InvariantCulture, out var bgRefIdx))
+                {
+                    ApplySlideBackgroundRef(newSlidePart, bgRefIdx,
+                        properties.GetValueOrDefault("background.refColor")
+                        ?? properties.GetValueOrDefault("background.refcolor"));
+                }
+
                 // Apply transition if provided
                 if (properties.TryGetValue("transition", out var transValue))
                 {

@@ -179,6 +179,48 @@ public partial class PowerPointHandler
     private static void ApplySlideBackground(SlidePart slidePart, string value)
         => ApplyBackground(slidePart, value);
 
+    /// <summary>
+    /// bt-3: theme-styled background via <p:bgRef idx="N">[child color override].
+    /// idx selects a style entry from the theme's bgFillStyleLst (1001..1004 = subtle
+    /// → intense fills, 1025..1028 = subtle → intense backgrounds). The optional
+    /// colorOverride child (<a:schemeClr val="accent2"/> or <a:srgbClr val="..."/>)
+    /// recolors the theme fill before rendering. AddSlide/SetSlide call this from
+    /// the typed background.ref / background.refColor branches so the dump→replay
+    /// keys round-trip without relying on the raw-set <p:bg> passthrough.
+    /// </summary>
+    internal static void ApplySlideBackgroundRef(OpenXmlPart part, uint idx, string? colorOverride)
+    {
+        var cSld = GetCommonSlideData(part)
+            ?? throw new InvalidOperationException($"{part.GetType().Name} has no CommonSlideData");
+
+        var bgRef = new BackgroundStyleReference { Index = idx };
+        if (!string.IsNullOrWhiteSpace(colorOverride))
+        {
+            // BuildColorElement handles scheme names (accent1, dark1, hyperlink…),
+            // hex (#RRGGBB / RRGGBB / shortHex / named CSS), and the +transform suffix.
+            bgRef.AppendChild(BuildColorElement(colorOverride));
+        }
+        var newBg = new Background();
+        newBg.AppendChild(bgRef);
+
+        // Tear down any pre-existing background (image parts + element).
+        DeleteBackgroundImageParts(cSld, part);
+        cSld.Background?.Remove();
+
+        var shapeTree = cSld.ShapeTree;
+        if (shapeTree == null)
+        {
+            shapeTree = new ShapeTree(
+                new NonVisualGroupShapeProperties(
+                    new NonVisualDrawingProperties { Id = 1, Name = "" },
+                    new NonVisualGroupShapeDrawingProperties(),
+                    new ApplicationNonVisualDrawingProperties()),
+                new GroupShapeProperties(new Drawing.TransformGroup()));
+            cSld.AppendChild(shapeTree);
+        }
+        cSld.InsertBefore(newBg, shapeTree);
+    }
+
     private static CommonSlideData? GetCommonSlideData(OpenXmlPart part) => part switch
     {
         SlidePart sp => sp.Slide?.CommonSlideData,
@@ -504,6 +546,14 @@ public partial class PowerPointHandler
                 node.Format["background"] = color != null ? $"ref:{color}" : "ref";
                 if (bgRef.Index?.HasValue == true)
                     node.Format["background.ref"] = (int)bgRef.Index.Value;
+                // bt-3: surface the <p:bgRef>'s child <a:schemeClr val="…"/> (or
+                // <a:srgbClr/>) override as background.refColor. PowerPoint
+                // resolves the theme entry indexed by bgRef.Index and then
+                // recolors it using this child element; without surfacing the
+                // override, dump→replay relied solely on the raw-set <p:bg>
+                // passthrough — agents reading Format[] saw only the index.
+                if (color != null)
+                    node.Format["background.refColor"] = color;
             }
             return;
         }
