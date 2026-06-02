@@ -70,6 +70,14 @@ public static partial class PptxBatchEmitter
         // intended `set …/run[1] textFill=` — drift on the surface form
         // and on the dump→replay path the agent reads.
         "textFill",
+        // bt-1: run-level <a:rPr><a:effectLst> children (shadow / glow /
+        // reflection / softEdge / innerShadow / blur) belong to the run.
+        // The collapse used to lift them onto the paragraph set, where the
+        // paragraph dispatcher then fan-out applied them to every run in
+        // the paragraph (via the NoFillShape heuristic) — double-emit for
+        // single-run paragraphs and over-broad emit for multi-run ones.
+        "shadow", "shadowRaw", "innerShadow", "glow",
+        "reflection", "reflectionRaw", "softEdge", "blur",
     };
 
     // Pull a `link=slide[N]` prop out of the bag and queue a deferred `set`

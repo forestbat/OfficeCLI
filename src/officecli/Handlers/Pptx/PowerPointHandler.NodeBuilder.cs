@@ -1248,23 +1248,16 @@ public partial class PowerPointHandler
             if (lineAlpha.HasValue) node.Format["lineOpacity"] = $"{lineAlpha.Value / 100000.0:0.##}";
         }
 
-        // Effects (shadow, glow, reflection) — check shape-level first, then text run-level
+        // Effects (shadow, glow, reflection) — shape level ONLY. The shape's
+        // <p:spPr><a:effectLst> is the only source for shape-level effect=
+        // keys; run-level <a:rPr><a:effectLst> rides through RunToNode below.
+        // bt-1: an earlier "fall back to first run's effectLst when shape has
+        // no fill" heuristic mis-promoted run-level shadow/glow onto the
+        // textbox shape AND (via single-run collapse) onto the paragraph,
+        // producing duplicate writes on replay. Each level reads its own
+        // effectLst now; CONSISTENCY(run-context-explicit) holds end-to-end.
         var effectList = shape.ShapeProperties?.GetFirstChild<Drawing.EffectList>();
-        // Fall back to first text run's effectLst ONLY when the shape itself has
-        // no fill — for filled shapes, run-level effects belong to the run, not
-        // the shape. CONSISTENCY(run-context-explicit): Set on run path writes
-        // to the run; Get on shape must not silently mirror the run's effects
-        // up to the shape when the shape was never the target.
-        var hasShapeFill = shape.ShapeProperties?.GetFirstChild<Drawing.SolidFill>() != null
-            || shape.ShapeProperties?.GetFirstChild<Drawing.GradientFill>() != null
-            || shape.ShapeProperties?.GetFirstChild<Drawing.BlipFill>() != null
-            || shape.ShapeProperties?.GetFirstChild<Drawing.PatternFill>() != null;
-        var textEffectList = (effectList == null || !effectList.HasChildren) && !hasShapeFill
-            ? shape.TextBody?.Descendants<Drawing.RunProperties>()
-                .Select(rp => rp.GetFirstChild<Drawing.EffectList>())
-                .FirstOrDefault(el => el != null)
-            : null;
-        var activeEffectList = effectList?.HasChildren == true ? effectList : textEffectList;
+        var activeEffectList = effectList?.HasChildren == true ? effectList : null;
         if (activeEffectList != null)
         {
             var outerShadow = activeEffectList.GetFirstChild<Drawing.OuterShadow>();
