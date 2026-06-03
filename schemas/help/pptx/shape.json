@@ -561,11 +561,11 @@
       ],
       "add": true,
       "set": true,
-      "get": false,
+      "get": true,
       "examples": [
         "--prop list=bullet"
       ],
-      "readback": "n/a",
+      "readback": "list style token of the first paragraph",
       "enforcement": "report"
     },
     "link": {
@@ -573,11 +573,11 @@
       "description": "hyperlink URL or anchor for shape click action.",
       "add": true,
       "set": true,
-      "get": false,
+      "get": true,
       "examples": [
         "--prop link=https://example.com"
       ],
-      "readback": "n/a",
+      "readback": "hyperlink URL / anchor",
       "enforcement": "report"
     },
     "tooltip": {
@@ -585,11 +585,11 @@
       "description": "tooltip / screen-tip text for hyperlink. Applied together with `link` in a single set/add call; standalone tooltip without link is not supported (no hyperlink relationship to attach to). Set-side may update an existing hyperlink's tooltip in-place without re-supplying link.",
       "add": true,
       "set": true,
-      "get": false,
+      "get": true,
       "examples": [
         "--prop link=https://example.com --prop tooltip=\"click here\""
       ],
-      "readback": "n/a",
+      "readback": "hyperlink screen-tip text",
       "enforcement": "report"
     },
     "animation": {
@@ -811,12 +811,38 @@
       "readback": "compound '#RRGGBBAA-radiusPt-opacityPct' (e.g. '#4472C4BF-8-75'). Color is CSS-form 8-digit hex with leading # (alpha last); radius in pt; opacity in percent.",
       "enforcement": "report"
     },
+    "flipH": {
+      "type": "bool",
+      "aliases": ["flipHorizontal"],
+      "description": "Flip horizontally (Office-API alias of flip=h).",
+      "add": true,
+      "set": true,
+      "get": true,
+      "examples": ["--prop flipH=true"],
+      "readback": "true when the shape carries a horizontal flip",
+      "enforcement": "report"
+    },
+    "flipV": {
+      "type": "bool",
+      "aliases": ["flipVertical"],
+      "description": "Flip vertically (Office-API alias of flip=v).",
+      "add": true,
+      "set": true,
+      "get": true,
+      "examples": ["--prop flipV=true"],
+      "readback": "true when the shape carries a vertical flip",
+      "enforcement": "report"
+    },
     "lineOpacity": {
       "type": "number",
-      "add": false,
-      "set": false,
+      "add": true,
+      "set": true,
       "get": true,
-      "description": "shape outline alpha as fraction (0..1). Surfaces when the outline carries an a:alpha child.",
+      "requires": ["line"],
+      "description": "shape outline alpha as fraction (0..1). Requires an outline (line/lineColor) to attach to. Surfaces when the outline carries an a:alpha child.",
+      "examples": [
+        "--prop line=FF0000:2:solid --prop lineOpacity=0.5"
+      ],
       "readback": "fraction 0..1",
       "enforcement": "report"
     },
