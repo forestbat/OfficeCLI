@@ -1,5 +1,5 @@
 #!/bin/bash
-# numbering-showcase.sh — exercise every supported `num` / `abstractNum` feature.
+# numbering.sh — exercise every supported `num` / `abstractNum` feature.
 #
 # Builds a single .docx that demonstrates:
 #   • abstractNum top-level props: name, styleLink, numStyleLink, multiLevelType
@@ -13,7 +13,7 @@
 #   • Set on /numbering/abstractNum[@id=N]/level[L] after creation
 set -e
 
-DOCX="$(dirname "$0")/numbering-showcase.docx"
+DOCX="$(dirname "$0")/numbering.docx"
 echo "Building $DOCX ..."
 rm -f "$DOCX"
 officecli create "$DOCX"

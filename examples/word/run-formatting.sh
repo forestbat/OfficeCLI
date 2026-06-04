@@ -1,5 +1,5 @@
 #!/bin/bash
-# run-showcase.sh — exercise the docx run (character) property surface.
+# run-formatting.sh — exercise the docx run (character) property surface.
 #
 # Each paragraph demonstrates one family of run-level formatting. Most lines set
 # the run formatting on the paragraph's implicit run via `add ... --type paragraph`;
@@ -11,7 +11,7 @@
 # shadow/vanish), character spacing/kerning/position, and language tagging.
 set -e
 
-DOCX="$(dirname "$0")/run-showcase.docx"
+DOCX="$(dirname "$0")/run-formatting.docx"
 echo "Building $DOCX ..."
 rm -f "$DOCX"
 officecli create "$DOCX"

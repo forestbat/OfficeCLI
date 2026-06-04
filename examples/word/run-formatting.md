@@ -2,16 +2,16 @@
 
 Exercises the docx **run** (character-level) property surface. Three files:
 
-- **run-showcase.sh** — builds the document with `officecli`.
-- **run-showcase.docx** — generated output.
-- **run-showcase.md** — this file.
+- **run-formatting.sh** — builds the document with `officecli`.
+- **run-formatting.docx** — generated output.
+- **run-formatting.md** — this file.
 
 ## Regenerate
 
 ```bash
 cd examples/word
-bash run-showcase.sh
-# → run-showcase.docx
+bash run-formatting.sh
+# → run-formatting.docx
 ```
 
 ## Families demonstrated

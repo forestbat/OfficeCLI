@@ -2,16 +2,16 @@
 
 Exercises the docx **paragraph** property surface. Three files:
 
-- **paragraph-showcase.sh** — builds the document with `officecli`.
-- **paragraph-showcase.docx** — generated output.
-- **paragraph-showcase.md** — this file.
+- **paragraph-formatting.sh** — builds the document with `officecli`.
+- **paragraph-formatting.docx** — generated output.
+- **paragraph-formatting.md** — this file.
 
 ## Regenerate
 
 ```bash
 cd examples/word
-bash paragraph-showcase.sh
-# → paragraph-showcase.docx
+bash paragraph-formatting.sh
+# → paragraph-formatting.docx
 ```
 
 ## Sections

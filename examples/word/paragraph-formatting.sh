@@ -1,5 +1,5 @@
 #!/bin/bash
-# paragraph-showcase.sh — exercise the docx paragraph property surface.
+# paragraph-formatting.sh — exercise the docx paragraph property surface.
 #
 # Sections: alignment, indentation, spacing, pagination flags, paragraph-level
 # run formatting (applied to every run), shading, the paragraph-mark run
@@ -10,7 +10,7 @@
 # distinct. Both are settable + gettable.
 set -e
 
-DOCX="$(dirname "$0")/paragraph-showcase.docx"
+DOCX="$(dirname "$0")/paragraph-formatting.docx"
 echo "Building $DOCX ..."
 rm -f "$DOCX"
 officecli create "$DOCX"

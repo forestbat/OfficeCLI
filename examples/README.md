@@ -11,9 +11,9 @@ examples/
 │   ├── formulas.sh / formulas.docx
 │   ├── tables.sh / tables.docx
 │   ├── textbox.sh
-│   ├── run-showcase.{sh,md,docx}      # run/character property surface
-│   ├── paragraph-showcase.{sh,md,docx}# paragraph property surface
-│   ├── numbering-showcase.sh / numbering-showcase.docx
+│   ├── run-formatting.{sh,md,docx}      # run/character property surface
+│   ├── paragraph-formatting.{sh,md,docx}# paragraph property surface
+│   ├── numbering.sh / numbering.docx
 │   └── revisions.{sh,md,docx}         # tracked-change (revision) API
 ├── excel/                             # 📊 Excel examples
 │   ├── cell-formatting.{md,py,xlsx}   # Full cell property surface (fonts/fills/borders/numFmt/data)
@@ -63,12 +63,12 @@ Each example follows the same trio: `<name>.md` (walkthrough), `<name>.sh`/`.py`
 **Word (.docx):**
 ```bash
 cd word
-bash run-showcase.sh         # Run/character formatting: bold/underline/strike/caps/super-sub/fonts/effects
-bash paragraph-showcase.sh   # Paragraph formatting: align/indent/spacing/pagination/shading/markRPr
+bash run-formatting.sh         # Run/character formatting: bold/underline/strike/caps/super-sub/fonts/effects
+bash paragraph-formatting.sh   # Paragraph formatting: align/indent/spacing/pagination/shading/markRPr
 bash formulas.sh             # LaTeX math formulas
 bash tables.sh               # Styled tables
 bash textbox.sh              # Formatted text boxes
-bash numbering-showcase.sh   # List/numbering styles
+bash numbering.sh   # List/numbering styles
 bash revisions.sh            # Tracked-change (revision) API — ins/del/format/move/cellChange
 ```
 
