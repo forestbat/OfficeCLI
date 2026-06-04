@@ -618,7 +618,7 @@ public partial class WordHandler
         var fnColor = ResolveStyleColor("FootnoteText");
         var fnColorCss = fnColor != null ? $";color:{fnColor}" : "";
         sb.AppendLine($"<div class=\"footnotes\" style=\"font-size:{fnSize}{fnColorCss}\">");
-        sb.AppendLine("<hr style=\"margin-top:0;margin-bottom:0.5em;border:none;border-top:1px solid #ccc;width:33%\">");
+        sb.AppendLine("<hr style=\"margin-top:0;margin-bottom:0.5em;border:none;border-top:1px solid #757575;width:33%\">");
 
         var fnFmt = GetFootnoteNumFmt();
         int num = 0;
@@ -718,7 +718,7 @@ public partial class WordHandler
 
         var enSize = ResolveStyleFontSize("EndnoteText") ?? "10pt";
         sb.AppendLine($"<div class=\"endnotes\" style=\"font-size:{enSize}\">");
-        sb.AppendLine("<hr style=\"margin-top:2em;margin-bottom:0.5em;border:none;border-top:1px solid #ccc;width:33%\">");
+        sb.AppendLine("<hr style=\"margin-top:2em;margin-bottom:0.5em;border:none;border-top:1px solid #757575;width:33%\">");
 
         var enFmt = GetEndnoteNumFmt();
         int num = 0;
