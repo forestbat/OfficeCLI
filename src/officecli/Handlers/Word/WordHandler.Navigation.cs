@@ -4025,7 +4025,19 @@ public partial class WordHandler
                 && typedAttrs[0].LocalName.Equals("val", System.StringComparison.OrdinalIgnoreCase))
             {
                 if (!node.Format.ContainsKey(name))
-                    node.Format[name] = typedAttrs[0].Value ?? "";
+                {
+                    var raw = typedAttrs[0].Value ?? "";
+                    // CT_OnOff toggles (kinsoku, snapToGrid, webHidden, suppressLineNumbers,
+                    // …) expose a typed Val of type OnOffValue. Emit a canonical bool so the
+                    // long-tail toggles match curated booleans (bold/keepNext → true/false)
+                    // instead of the raw "1"/"0" the XML carries. Enum/string children
+                    // (em, effect, textAlignment, …) keep their literal val.
+                    var valProp = child.GetType().GetProperty("Val");
+                    node.Format[name] =
+                        valProp?.PropertyType == typeof(DocumentFormat.OpenXml.OnOffValue)
+                            ? OfficeCli.Core.ParseHelpers.IsTruthySafe(raw)
+                            : raw;
+                }
                 continue;
             }
 

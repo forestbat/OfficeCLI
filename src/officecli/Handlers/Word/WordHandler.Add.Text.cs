@@ -550,22 +550,32 @@ public partial class WordHandler
             pmrp.RemoveAllChildren<RunStyle>();
             pmrp.PrependChild(new RunStyle { Val = addPRStyle });
         }
+        // CONSISTENCY(add-set-symmetry): Set accepts border.top/bottom/left/right/between/bar
+        // (and bare "border"/"border.all"); Add must accept the same vocabulary so the
+        // Add → Get → verify lifecycle works without a follow-up Set call.
+        // 3-segment keys (pbdr.top.sz / pbdr.top.color / pbdr.top.space)
+        // surface in Get readback but Set's TrySetParagraphProp switch
+        // doesn't model them either — calling ApplyParagraphBorders with a
+        // 3-segment key drives ParseBorderValue with the sub-attribute
+        // value (e.g. "4"), which throws "Invalid border style: '4'".
+        // Skip them here to keep Add/Set symmetry (BUG-R2-02 / BT-2).
+        var appliedBorderKeys = new List<string>();
         foreach (var (pk, pv) in properties)
         {
-            // CONSISTENCY(add-set-symmetry): Set accepts border.top/bottom/left/right/between/bar
-            // (and bare "border"/"border.all"); Add must accept the same vocabulary so the
-            // Add → Get → verify lifecycle works without a follow-up Set call.
-            // 3-segment keys (pbdr.top.sz / pbdr.top.color / pbdr.top.space)
-            // surface in Get readback but Set's TrySetParagraphProp switch
-            // doesn't model them either — calling ApplyParagraphBorders with a
-            // 3-segment key drives ParseBorderValue with the sub-attribute
-            // value (e.g. "4"), which throws "Invalid border style: '4'".
-            // Skip them here to keep Add/Set symmetry (BUG-R2-02 / BT-2).
             if ((pk.StartsWith("pbdr", StringComparison.OrdinalIgnoreCase)
                  || pk.StartsWith("border", StringComparison.OrdinalIgnoreCase))
                 && pk.Count(ch => ch == '.') < 2)
+            {
                 ApplyParagraphBorders(pProps, pk, pv);
+                appliedBorderKeys.Add(pk);
+            }
         }
+        // This loop reads border keys by iterating `properties` (static type
+        // Dictionary<string,string>), which bypasses the TrackingPropertyDictionary
+        // enumerator override — so per-side keys (border.top, pbdr.left, …) would
+        // be flagged unsupported_property even though they apply fine. Mark them
+        // consumed via the dictionary's sanctioned MarkAllConsumed API.
+        (properties as OfficeCli.Core.TrackingPropertyDictionary)?.MarkAllConsumed(appliedBorderKeys);
         if (properties.TryGetValue("liststyle", out var listStyle) || properties.TryGetValue("listStyle", out listStyle))
         {
             para.AppendChild(pProps);
@@ -1056,6 +1066,14 @@ public partial class WordHandler
                     break;
                 }
             }
+            // Paragraph border keys (border.* / pbdr.*, e.g. border.top) are
+            // applied up-front by the ApplyParagraphBorders pass above; skip the
+            // run/mark dotted fallback so they aren't re-flagged unsupported
+            // (they target pPr/pBdr, not a run rPr child).
+            if ((key.StartsWith("pbdr", StringComparison.OrdinalIgnoreCase)
+                 || key.StartsWith("border", StringComparison.OrdinalIgnoreCase))
+                && key.Count(ch => ch == '.') < 2)
+                continue;
             if (Core.TypedAttributeFallback.TrySet(pProps, key, value)) continue;
             if (rPropsForFallback != null
                 && Core.TypedAttributeFallback.TrySet(rPropsForFallback, key, value)) continue;
