@@ -240,6 +240,19 @@ public partial class ExcelHandler
 
     private List<(string Name, WorksheetPart Part)> GetWorksheets() => GetWorksheets(_doc);
 
+    /// <summary>
+    /// True when the workbook-level &lt;sheet&gt; element for the given name has
+    /// State Hidden or VeryHidden. Used by the HTML preview to omit hidden sheets
+    /// from the tab strip and content slider (matching real Excel).
+    /// </summary>
+    private bool IsSheetHidden(string sheetName)
+    {
+        var wbSheet = GetWorkbook().GetFirstChild<Sheets>()?.Elements<Sheet>()
+            .FirstOrDefault(s => s.Name?.Value?.Equals(sheetName, StringComparison.OrdinalIgnoreCase) == true);
+        return wbSheet?.State?.Value is { } st
+            && (st == SheetStateValues.Hidden || st == SheetStateValues.VeryHidden);
+    }
+
     private static List<(string Name, WorksheetPart Part)> GetWorksheets(SpreadsheetDocument doc)
     {
         var result = new List<(string, WorksheetPart)>();

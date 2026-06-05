@@ -105,6 +105,12 @@ public partial class ExcelHandler
         using var _cul = InvariantCultureScope.Enter();
         var sb = new StringBuilder();
         var sheets = GetWorksheets();
+        // Real Excel omits hidden / very-hidden sheets from the tab strip and the
+        // content slider. Filter them out up front so data-sheet indices and the
+        // active-sheet selection (first VISIBLE sheet) stay consistent across both
+        // loops below.
+        sheets = sheets.Where(s => !IsSheetHidden(s.Name)).ToList();
+        if (sheets.Count == 0) sheets = GetWorksheets();
         var wbStylesPart = _doc.WorkbookPart?.WorkbookStylesPart;
         var stylesheet = wbStylesPart?.Stylesheet;
 
@@ -1697,6 +1703,10 @@ public partial class ExcelHandler
             // Use actual cell fill if available; fallback to white for cells with no explicit fill
             if (isFrozenRow && !styles.Any(s => s.StartsWith("background")))
                 styles.Add("background:#fff");
+            // Default General alignment still applies when there is no stylesheet
+            // (freshly-created workbooks have no styles.xml): numbers and error
+            // values are right-aligned, text is left-aligned.
+            if (cell != null) AddDefaultGeneralAlign(cell, styles);
             return styles.Count > 0 ? $" style=\"{string.Join(";", styles)}\"" : "";
         }
 
@@ -1971,6 +1981,25 @@ public partial class ExcelHandler
         styles.Add($"border-{side}:{width} {cssStyle} {color}");
     }
 
+    /// <summary>
+    /// Apply Excel's General (default) horizontal alignment for a cell with no
+    /// explicit alignment: numbers and error values right-aligned, text left
+    /// (the CSS default, so nothing emitted). Error cells (t="e", e.g. #DIV/0!,
+    /// #NAME?) align like numbers. No-ops if a text-align is already present.
+    /// </summary>
+    private static void AddDefaultGeneralAlign(Cell cell, List<string> styles)
+    {
+        if (styles.Any(s => s.StartsWith("text-align:"))) return;
+        var dt = cell.DataType?.Value;
+        bool isText = dt == CellValues.SharedString || dt == CellValues.InlineString || dt == CellValues.String;
+        if (isText) return;
+        // Error cells right-align even if the value lives only in the formula's
+        // cached <v> (or is an error pattern), matching real Excel.
+        bool isError = dt == CellValues.Error;
+        if ((!isText && cell.CellValue != null) || isError)
+            styles.Add("text-align:right");
+    }
+
     private void BuildAlignmentCss(CellFormat xf, List<string> styles, Cell? cell = null)
     {
         var alignment = xf.Alignment;
@@ -1993,14 +2022,9 @@ public partial class ExcelHandler
             else hasExplicitHAlign = false;
         }
 
-        // Excel default: numbers right-aligned, text left-aligned (General alignment)
+        // Excel default: numbers and errors right-aligned, text left-aligned.
         if (!hasExplicitHAlign && cell != null)
-        {
-            var dt = cell.DataType?.Value;
-            bool isText = dt == CellValues.SharedString || dt == CellValues.InlineString || dt == CellValues.String;
-            if (!isText && cell.CellValue != null)
-                styles.Add("text-align:right");
-        }
+            AddDefaultGeneralAlign(cell, styles);
 
         if (alignment == null) return;
 
@@ -2152,6 +2176,18 @@ public partial class ExcelHandler
             // If evaluation fails (null), fall through to use cached value / raw display
         }
 
+        // The internal #OCLI_NOTEVAL! sentinel is an implementation detail and must
+        // never reach user-facing HTML. Prefer the cached <v> if it carries a real
+        // value; otherwise surface Excel's generic #NAME? error (unknown function /
+        // unevaluable formula) so the cell reads like real Excel.
+        if (rawValue == "#OCLI_NOTEVAL!")
+        {
+            var cached = cell.CellValue?.Text;
+            rawValue = !string.IsNullOrEmpty(cached) && cached != "#OCLI_NOTEVAL!"
+                ? cached
+                : "#NAME?";
+        }
+
         if (string.IsNullOrEmpty(rawValue)) return rawValue;
 
         // Boolean: convert 1/0 to TRUE/FALSE
@@ -2194,9 +2230,39 @@ public partial class ExcelHandler
 
         // Look up number format
         var fmtCode = ResolveCellFormatCode(cell, stylesheet);
-        if (fmtCode == null) return rawValue;
+        if (fmtCode == null) return FormatGeneralNumber(numVal, rawValue);
 
         return ApplyNumberFormat(numVal, fmtCode);
+    }
+
+    /// <summary>
+    /// Format a General-formatted numeric cell. Excel's General format falls back
+    /// to scientific notation when a number's magnitude needs more than ~11
+    /// significant digits to display (very large integers or very small
+    /// fractions). Normal-magnitude numbers pass through their plain text.
+    /// </summary>
+    private static string FormatGeneralNumber(double value, string rawValue)
+    {
+        if (value == 0 || double.IsNaN(value) || double.IsInfinity(value))
+            return rawValue;
+
+        double abs = Math.Abs(value);
+        int exp = (int)Math.Floor(Math.Log10(abs));
+
+        // Excel General switches to scientific when the plain decimal would need
+        // more than 11 significant digits / character columns: large magnitudes
+        // (exp >= 11) and very small magnitudes (exp <= -5 — values below 1e-4).
+        bool useScientific = exp >= 11 || exp <= -5;
+        if (!useScientific) return rawValue;
+
+        // Mantissa with up to 5 fractional digits (Excel General caps at ~6
+        // significant figures in scientific), trailing zeros trimmed.
+        var mantissa = value / Math.Pow(10, exp);
+        var mantStr = mantissa.ToString("0.#####", System.Globalization.CultureInfo.InvariantCulture);
+        var expStr = exp >= 0
+            ? $"+{exp.ToString("00", System.Globalization.CultureInfo.InvariantCulture)}"
+            : $"-{Math.Abs(exp).ToString("00", System.Globalization.CultureInfo.InvariantCulture)}";
+        return $"{mantStr}E{expStr}";
     }
 
     /// <summary>
@@ -2663,18 +2729,56 @@ public partial class ExcelHandler
         bool hasThousands = fmtCode.Contains(',') && (fmtCode.Contains('#') || fmtCode.Contains('0'));
         var numDecimals = CountDecimalPlaces(fmtCode);
 
+        // Leading-zero placeholders in the integer portion (e.g. "00000" → pad
+        // the integer part to 5 digits: 42 → "00042"). Excel zero-pads the
+        // integer part to the count of '0' placeholders before any decimal point.
+        int intZeroPad = CountIntegerZeroPlaceholders(fmtCode);
+
         if (hasThousands)
-            return value.ToString($"N{numDecimals}", System.Globalization.CultureInfo.InvariantCulture);
+            return PadIntegerPart(value.ToString($"N{numDecimals}", System.Globalization.CultureInfo.InvariantCulture), intZeroPad);
         if (numDecimals > 0)
-            return value.ToString($"F{numDecimals}");
+            return PadIntegerPart(value.ToString($"F{numDecimals}", System.Globalization.CultureInfo.InvariantCulture), intZeroPad);
 
         // @ = text format — return raw
         if (fmt == "@") return value.ToString();
 
-        // Integer format "0"
-        if (fmtCode.Trim() == "0") return ((long)Math.Round(value)).ToString();
+        // Integer placeholder format ("0", "00000", …)
+        if (intZeroPad > 0)
+            return PadIntegerPart(((long)Math.Round(value)).ToString(System.Globalization.CultureInfo.InvariantCulture), intZeroPad);
 
         return value.ToString();
+    }
+
+    /// <summary>
+    /// Count '0' digit placeholders in the integer portion (before the first
+    /// '.') of an Excel number-format code. Thousands-separator commas are not
+    /// counted as digits.
+    /// </summary>
+    private static int CountIntegerZeroPlaceholders(string fmtCode)
+    {
+        int dotIdx = fmtCode.IndexOf('.');
+        var intPart = dotIdx >= 0 ? fmtCode[..dotIdx] : fmtCode;
+        return intPart.Count(c => c == '0');
+    }
+
+    /// <summary>
+    /// Zero-pad the integer part of an already-formatted numeric string to at
+    /// least <paramref name="minDigits"/> digits, preserving any sign, thousands
+    /// separators in the original are left intact only when no padding is needed.
+    /// </summary>
+    private static string PadIntegerPart(string formatted, int minDigits)
+    {
+        if (minDigits <= 0) return formatted;
+        bool neg = formatted.StartsWith('-');
+        var body = neg ? formatted[1..] : formatted;
+        int dotIdx = body.IndexOf('.');
+        var intPart = dotIdx >= 0 ? body[..dotIdx] : body;
+        var rest = dotIdx >= 0 ? body[dotIdx..] : "";
+        // Count only digit characters when padding (ignore thousands separators).
+        int digitCount = intPart.Count(char.IsDigit);
+        if (digitCount < minDigits)
+            intPart = intPart.PadLeft(intPart.Length + (minDigits - digitCount), '0');
+        return (neg ? "-" : "") + intPart + rest;
     }
 
     private static int CountDecimalPlaces(string fmtCode)
