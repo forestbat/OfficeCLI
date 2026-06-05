@@ -1668,6 +1668,7 @@ public partial class WordHandler
         int currentListLevel = 0;
         var listStack = new Stack<string>(); // track nested list tags
         int? currentNumId = null; // track numId for cross-numId nesting
+        int prevOoxmlIlvl = 0; // previous list item's RAW (pre-offset) ilvl — nesting depth follows ilvl, not numId indent
         var numIdLevelOffset = new Dictionary<int, int>(); // numId → effective ilvl offset for cross-numId nesting
         var olCountPerLevel = new Dictionary<int, int>(); // ilvl → running <ol> item count for `start` attribute
         // Per-(abstractNumId, ilvl) running counter. Persists across numId
@@ -1895,7 +1896,16 @@ public partial class WordHandler
                         {
                             var curIndent = GetListLevelIndent(currentNumId.Value, currentListLevel);
                             var newIndent = GetListLevelIndent(numId, ilvl);
-                            if (newIndent > curIndent)
+                            // Nesting DEPTH must follow the paragraph's ilvl, not the
+                            // numbering-definition indent. A new-numId item only nests
+                            // DEEPER when its raw ilvl actually descends below the
+                            // previous item's ilvl; if the ilvl is the same or shallower
+                            // it is a return/un-nest, so fall through to CloseAllLists +
+                            // the regular ilvl-driven close loop regardless of indent.
+                            // (Without this guard, a returning L0 item on a different
+                            // numId whose lvl0 indent happens to exceed the previous
+                            // item's lvlN indent was pushed two levels too deep.)
+                            if (newIndent > curIndent && ilvl > prevOoxmlIlvl)
                             {
                                 numIdLevelOffset[numId] = currentListLevel + 1 - ilvl;
                             }
@@ -2073,6 +2083,7 @@ public partial class WordHandler
 
                     currentListType = listStyle;
                     currentListLevel = ilvl;
+                    prevOoxmlIlvl = ilvlOoxml;
                     currentNumId = numId;
                     sb.Append("<li");
                     sb.Append($" data-path=\"/body/p[{wParaCount}]\"");
