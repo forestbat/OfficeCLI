@@ -604,6 +604,29 @@ public partial class WordHandler
                     else InsertRunPropInSchemaOrder(props, new RunFonts { EastAsia = fv });
                 }
                 return true;
+            // <w:rFonts w:hint="eastAsia|cs|default"/> — selects which font slot
+            // renders ambiguous characters. Curated (not a font typeface slot)
+            // so it round-trips alongside font.ea/font.latin. Dropping it
+            // rewraps tight CJK lines (the renderer picks a different-width font).
+            case "font.hint":
+                {
+                    var rfHint = props.GetFirstChild<RunFonts>();
+                    var hv = (value ?? "").Trim().ToLowerInvariant();
+                    FontTypeHintValues? hint = hv switch
+                    {
+                        "eastasia" => FontTypeHintValues.EastAsia,
+                        "cs" or "complexscript" or "complex" => FontTypeHintValues.ComplexScript,
+                        "default" => FontTypeHintValues.Default,
+                        _ => (FontTypeHintValues?)null,
+                    };
+                    if (!hint.HasValue)
+                    {
+                        if (rfHint != null) { rfHint.Hint = null; if (RunFontsIsEmpty(rfHint)) rfHint.Remove(); }
+                    }
+                    else if (rfHint != null) rfHint.Hint = hint.Value;
+                    else InsertRunPropInSchemaOrder(props, new RunFonts { Hint = hint.Value });
+                }
+                return true;
             // CONSISTENCY(font-theme-slot): theme-font slots bind to a theme
             // major/minor face instead of a literal typeface. Mirrors the
             // text-run additions in AddRun/AddParagraph but routed through

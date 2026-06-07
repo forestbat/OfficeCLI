@@ -1611,6 +1611,12 @@ public partial class WordHandler
                 node.Format["font.eaTheme"] = rFonts.EastAsiaTheme.InnerText;
             if (rFonts.ComplexScriptTheme?.HasValue == true)
                 node.Format["font.csTheme"] = rFonts.ComplexScriptTheme.InnerText;
+            // <w:rFonts w:hint="eastAsia|cs|default"/> selects which font slot
+            // renders ambiguous characters (CJK digits/punctuation). Dropping it
+            // changes glyph widths on round-trip — a tight CJK line can rewrap.
+            // Round-trips via the font.hint key (ApplyRunFormatting writes it).
+            if (rFonts.Hint?.HasValue == true)
+                node.Format["font.hint"] = rFonts.Hint.InnerText;
         }
         // <w:lang/> three slots: val (latin) / eastAsia / bidi (cs).
         // CONSISTENCY(canonical-keys): mirror font.latin/font.ea/font.cs vocabulary.
@@ -3129,6 +3135,14 @@ public partial class WordHandler
                 node.Format["markRPr.font.ea"] = rf.EastAsia.Value;
             if (rf?.ComplexScript?.Value != null)
                 node.Format["markRPr.font.cs"] = rf.ComplexScript.Value;
+            // ¶-mark font hint + character spacing (mirror the run-level
+            // font.hint / charSpacing readback so the paragraph mark's glyph
+            // properties round-trip too — see RunToNode).
+            if (rf?.Hint?.HasValue == true)
+                node.Format["markRPr.font.hint"] = rf.Hint.InnerText;
+            var pmSpacing = pmrpForDump.GetFirstChild<Spacing>();
+            if (pmSpacing?.Val?.HasValue == true)
+                node.Format["markRPr.charSpacing"] = $"{pmSpacing.Val.Value / 20.0:0.##}pt";
             var hl = pmrpForDump.GetFirstChild<Highlight>();
             if (hl?.Val?.HasValue == true) node.Format["markRPr.highlight"] = hl.Val.InnerText;
             // schemas/help/docx/paragraph.json declares rStyle add+set+get;
