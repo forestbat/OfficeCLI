@@ -162,7 +162,7 @@ public static partial class WordBatchEmitter
             .Where(c => c.Type == "sdt")
             .ToList();
 
-        bool collapseSingleRun = ShouldCollapseSingleRun(runs, breaks.Count, bookmarks.Count, inlineSdts.Count);
+        bool collapseSingleRun = ShouldCollapseSingleRun(word, runs, breaks.Count, bookmarks.Count, inlineSdts.Count);
         pNode.Format.TryGetValue("tabs", out var pTabs);
 
         if (collapseSingleRun)
@@ -532,7 +532,7 @@ public static partial class WordBatchEmitter
         return true;
     }
 
-    private static bool ShouldCollapseSingleRun(List<DocumentNode> runs, int breaksCount, int bookmarksCount, int inlineSdtsCount)
+    private static bool ShouldCollapseSingleRun(WordHandler word, List<DocumentNode> runs, int breaksCount, int bookmarksCount, int inlineSdtsCount)
     {
         // Single-run / no-run paragraph: collapse run formatting into the
         // paragraph's prop bag (the schema-reflection layer accepts run-level
@@ -543,6 +543,16 @@ public static partial class WordBatchEmitter
         var r = runs[0];
         // Picture / ptab runs need their own typed `add` rows.
         if (r.Type == "picture" || r.Type == "ptab") return false;
+        // A single run carrying a drawing/shape payload (textbox, connector
+        // line, autoshape — surfaced as a plain "run" when AlternateContent-
+        // wrapped) must NOT collapse into `add p`: collapsing flattens the
+        // paragraph and silently drops the shape. Keep it on the explicit-run
+        // path so TryEmitPictureRun preserves it (typed textbox or raw-set).
+        if ((r.Type == "run" || r.Type == "r"))
+        {
+            var probe = word.GetElementXml(r.Path);
+            if (!string.IsNullOrEmpty(probe) && IsDrawingBearingRun(probe)) return false;
+        }
         // R14-bug1+2: legacy form field synth — needs its own typed
         // `add formfield` row; collapsing into `add p` flattens the
         // ffData wrapper into paragraph props that AddParagraph ignores.
@@ -941,11 +951,17 @@ public static partial class WordBatchEmitter
             if (run.Type != "run" && run.Type != "r") return false;
             var probeXml = word.GetElementXml(run.Path);
             if (string.IsNullOrEmpty(probeXml)) return false;
-            if (!IsTextboxDrawing(probeXml)) return false;
-            if (TryEmitTextbox(word, run, probeXml, parentPath, items, ctx, sharedAttachPara))
+            bool isTextbox = IsTextboxDrawing(probeXml);
+            // A genuine text/hyperlink run (no drawing payload at all) belongs
+            // to the plain-run path — short-circuit out so EmitPlainOrHyperlink
+            // run handles it. Only drawing-bearing runs continue here.
+            if (!isTextbox && !IsDrawingBearingRun(probeXml)) return false;
+            if (isTextbox && TryEmitTextbox(word, run, probeXml, parentPath, items, ctx, sharedAttachPara))
                 return true;
-            // AlternateContent-wrapped non-textbox shapes (rare) fall back to
-            // a raw-set append, mirroring the original drawing-fallback path.
+            // AlternateContent-wrapped non-textbox shapes — connector lines
+            // (<wps:cNvCnPr>, e.g. a letterhead separator), autoshapes, groups
+            // — and textboxes whose typed emit failed fall back to a raw-set
+            // append so the shape survives round-trip instead of vanishing.
             if (parentPath == "/body" && !probeXml.Contains("r:embed") && !probeXml.Contains("r:id"))
             {
                 items.Add(new BatchItem
@@ -956,7 +972,14 @@ public static partial class WordBatchEmitter
                     Action = "append",
                     Xml = probeXml
                 });
+                return true;
             }
+            // Drawing-bearing but not safely raw-set-able inline (lives in a
+            // header/footer/cell, or carries an external relationship we can't
+            // re-anchor). Flag the loss rather than silently dropping it.
+            ctx?.Warnings.Add(new DocxUnsupportedWarning(
+                "drawing", run.Path,
+                "non-textbox drawing/shape could not be serialized for round-trip; it will be missing from the replayed document"));
             return true;
         }
         var binary = word.GetImageBinary(run.Path);
@@ -1035,6 +1058,22 @@ public static partial class WordBatchEmitter
         return rawXml.Contains("txBox=\"1\"")
             || rawXml.Contains("<wps:txbx")
             || rawXml.Contains("txbxContent");
+    }
+
+    /// <summary>
+    /// True when a run carries any drawing/shape payload (image, chart,
+    /// textbox, connector line, autoshape, group) — i.e. a
+    /// <c>&lt;w:drawing&gt;</c>, legacy VML <c>&lt;w:pict&gt;</c>, or an
+    /// <c>&lt;mc:AlternateContent&gt;</c>/<c>&lt;wps:&gt;</c> wrapper around one.
+    /// Used to decide whether a non-textbox run still needs preserving via a
+    /// raw-set append rather than being treated as a plain text run.
+    /// </summary>
+    private static bool IsDrawingBearingRun(string rawXml)
+    {
+        return rawXml.Contains("<w:drawing")
+            || rawXml.Contains("<w:pict")
+            || rawXml.Contains("<mc:AlternateContent")
+            || rawXml.Contains("<wps:");
     }
 
     /// <summary>
