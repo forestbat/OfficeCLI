@@ -1645,6 +1645,16 @@ internal static partial class ChartHelper
             "dk2" or "dark2" => Drawing.SchemeColorValues.Dark2,
             "lt1" or "light1" => Drawing.SchemeColorValues.Light1,
             "lt2" or "light2" => Drawing.SchemeColorValues.Light2,
+            // The remaining ST_SchemeColorVal members. The reader emits these
+            // verbatim (e.g. <a:schemeClr val="bg1"> → chartFill=bg1), so the
+            // setter must accept them or the chart fill fails to round-trip.
+            "bg1" or "background1" => Drawing.SchemeColorValues.Background1,
+            "bg2" or "background2" => Drawing.SchemeColorValues.Background2,
+            "tx1" or "text1" => Drawing.SchemeColorValues.Text1,
+            "tx2" or "text2" => Drawing.SchemeColorValues.Text2,
+            "phclr" => Drawing.SchemeColorValues.PhColor,
+            "hlink" or "hyperlink" => Drawing.SchemeColorValues.Hyperlink,
+            "folhlink" or "followedhyperlink" => Drawing.SchemeColorValues.FollowedHyperlink,
             _ => (Drawing.SchemeColorValues?)null
         };
         if (schemeColor.HasValue)
