@@ -45,8 +45,12 @@ internal static class FormulaParser
     // stack with an UNCATCHABLE StackOverflowException, crashing the process
     // (and, in resident mode, the server holding the open document). Real
     // formulas never approach this; exceeding it throws a normal catchable
-    // FormulaParseException instead. Mirrors the depth guards in FormulaEvaluator.
-    private const int MaxGroupDepth = 256;
+    // FormulaParseException instead.
+    // CONSISTENCY(dos-hardening): the depth threshold is single-sourced from
+    // DocumentLimits.MaxRecursionDepth — the same cap the document-tree walkers
+    // and HTML/SVG renderers use — rather than a duplicate local constant. Only
+    // the thrown exception type differs (FormulaParseException carries a KaTeX
+    // hint; the tree walkers throw CliException).
     [ThreadStatic] private static int _groupDepth;
 
     public static OpenXmlElement Parse(string latex)
@@ -739,11 +743,11 @@ internal static class FormulaParser
 
     private static List<OpenXmlElement> ParseGroup(List<Token> tokens, ref int pos, bool insideBraces)
     {
-        if (++_groupDepth > MaxGroupDepth)
+        if (++_groupDepth > DocumentLimits.MaxRecursionDepth)
         {
             _groupDepth--;
             throw new FormulaParseException(
-                $"Formula nesting exceeds the maximum supported depth ({MaxGroupDepth}).", null!);
+                $"Formula nesting exceeds the maximum supported depth ({DocumentLimits.MaxRecursionDepth}). {KatexDocsHint}");
         }
         try
         {
@@ -2156,6 +2160,9 @@ internal static class FormulaParser
 /// </summary>
 internal class FormulaParseException : Exception
 {
+    public FormulaParseException(string message)
+        : base(message) { }
+
     public FormulaParseException(string message, Exception innerException)
         : base(message, innerException) { }
 }
