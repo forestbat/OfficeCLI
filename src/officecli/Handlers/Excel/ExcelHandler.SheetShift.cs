@@ -323,6 +323,35 @@ public partial class ExcelHandler
             }
         }
 
+        // 6g. sheetView selection (cosmetic: the saved active cell + selected
+        // ranges). Shift so the cursor lands on the same logical cells; entries
+        // collapsing onto the deleted line are left as-is (Excel re-derives).
+        var sheetViews = ws.GetFirstChild<SheetViews>();
+        if (sheetViews != null)
+        {
+            foreach (var sv in sheetViews.Elements<SheetView>())
+            {
+                foreach (var sel in sv.Elements<Selection>())
+                {
+                    if (sel.ActiveCell?.Value != null)
+                    {
+                        var ac = refMapper(sel.ActiveCell.Value);
+                        if (ac != null && !string.Equals(ac, sel.ActiveCell.Value, StringComparison.Ordinal))
+                            sel.ActiveCell = ac;
+                    }
+                    if (sel.SequenceOfReferences?.HasValue == true)
+                    {
+                        var newRefs = sel.SequenceOfReferences.Items
+                            .Where(r => r.Value != null)
+                            .Select(r => refMapper(r.Value!))
+                            .OfType<string>().ToList();
+                        if (newRefs.Count > 0)
+                            sel.SequenceOfReferences = new ListValue<StringValue>(newRefs.Select(r => new StringValue(r)));
+                    }
+                }
+            }
+        }
+
         // 7. cell formulas (text + shared/array ref attribute)
         var sheetData = ws.GetFirstChild<SheetData>();
         if (sheetData != null)
