@@ -3554,6 +3554,20 @@ public partial class WordHandler
                 node.Format["markRPr.charSpacing"] = $"{pmSpacing.Val.Value / 20.0:0.##}pt";
             var hl = pmrpForDump.GetFirstChild<Highlight>();
             if (hl?.Val?.HasValue == true) node.Format["markRPr.highlight"] = hl.Val.InnerText;
+            // BUG-DUMP-MARKRPR-LANG: the ¶-mark's <w:lang> slots (val=latin /
+            // eastAsia / bidi=cs) were never emitted under markRPr.*, so
+            // dump→batch silently dropped them on every text-bearing paragraph.
+            // Run-level lang already round-trips as lang.latin/lang.ea/lang.cs
+            // (see RunToNode); mirror that here. ApplyRunFormatting consumes
+            // markRPr.lang.latin / .ea / .cs on replay (Add.Text.cs markRPr.*
+            // dispatch → ApplyRunFormatting handles lang.* multi-slot).
+            var pmLang = pmrpForDump.GetFirstChild<Languages>();
+            if (pmLang != null)
+            {
+                if (pmLang.Val?.Value != null) node.Format["markRPr.lang.latin"] = pmLang.Val.Value;
+                if (pmLang.EastAsia?.Value != null) node.Format["markRPr.lang.ea"] = pmLang.EastAsia.Value;
+                if (pmLang.Bidi?.Value != null) node.Format["markRPr.lang.cs"] = pmLang.Bidi.Value;
+            }
             // schemas/help/docx/paragraph.json declares rStyle add+set+get;
             // Add.Text.cs:437 writes <w:rStyle> into ParagraphMarkRunProperties,
             // but Get used to drop it. Emit at the paragraph-level canonical
@@ -3695,6 +3709,25 @@ public partial class WordHandler
                 var spEmpty = markRp.GetFirstChild<Spacing>();
                 if (spEmpty?.Val?.HasValue == true)
                     node.Format["markRPr.charSpacing"] = $"{spEmpty.Val.Value / 20.0:0.##}pt";
+            }
+            // BUG-DUMP-MARKRPR-LANG: empty-paragraph ¶-mark <w:lang> slots.
+            // Text-bearing paragraphs route the mark's lang through
+            // markRPr.lang.* (see pmrpForDump block above); the empty-paragraph
+            // fallback emits the bare lang.latin/lang.ea/lang.cs keys, which
+            // AddParagraph applies back to the ¶ mark rPr on replay (no text
+            // run ⇒ the lang switch targets ParagraphMarkRunProperties).
+            if (markRp != null)
+            {
+                var langEmpty = markRp.GetFirstChild<Languages>();
+                if (langEmpty != null)
+                {
+                    if (langEmpty.Val?.Value != null && !node.Format.ContainsKey("lang.latin"))
+                        node.Format["lang.latin"] = langEmpty.Val.Value;
+                    if (langEmpty.EastAsia?.Value != null && !node.Format.ContainsKey("lang.ea"))
+                        node.Format["lang.ea"] = langEmpty.EastAsia.Value;
+                    if (langEmpty.Bidi?.Value != null && !node.Format.ContainsKey("lang.cs"))
+                        node.Format["lang.cs"] = langEmpty.Bidi.Value;
+                }
             }
         }
 

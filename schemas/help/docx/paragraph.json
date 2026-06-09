@@ -1266,6 +1266,33 @@
       "readback": "font name",
       "enforcement": "report"
     },
+    "markRPr.lang.latin": {
+      "type": "string",
+      "description": "paragraph-mark run Latin language tag (w:pPr/w:rPr/w:lang @val, BCP-47 e.g. en-US). Tags the ¶ glyph's language for proofing; mirrors run-level lang.latin.",
+      "add": false,
+      "set": true,
+      "get": true,
+      "readback": "BCP-47 tag",
+      "enforcement": "report"
+    },
+    "markRPr.lang.ea": {
+      "type": "string",
+      "description": "paragraph-mark run East-Asian language tag (w:pPr/w:rPr/w:lang @eastAsia, BCP-47 e.g. ja-JP). Mirrors run-level lang.ea.",
+      "add": false,
+      "set": true,
+      "get": true,
+      "readback": "BCP-47 tag",
+      "enforcement": "report"
+    },
+    "markRPr.lang.cs": {
+      "type": "string",
+      "description": "paragraph-mark run complex-script language tag (w:pPr/w:rPr/w:lang @bidi, BCP-47 e.g. ar-SA). Mirrors run-level lang.cs.",
+      "add": false,
+      "set": true,
+      "get": true,
+      "readback": "BCP-47 tag",
+      "enforcement": "report"
+    },
     "kern": {
       "type": "integer",
       "description": "kerning threshold on an empty paragraph's ¶-mark run (w:pPr/w:rPr/w:kern @val, half-points). Below this font size Word disables kerning. Get-side readback only — the value is applied via the generic run-formatting path (ApplyRunFormatting), not a dedicated paragraph Set case; text-bearing paragraphs surface the ¶-mark kern under markRPr.kern instead.",
