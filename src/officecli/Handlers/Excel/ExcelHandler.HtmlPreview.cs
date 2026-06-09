@@ -1692,8 +1692,10 @@ public partial class ExcelHandler
         {
             // Color cells whose value appears more than once (duplicateValues)
             // or exactly once (uniqueValues) within the rule's range. Compare
-            // on the raw cell text so non-numeric values are handled too.
-            var thisText = cell?.CellValue?.Text;
+            // on the cell's display text (via GetCellDisplayValue) so inline
+            // strings (<is><t>) and shared strings resolve too — not just the
+            // <v> form; otherwise inlineStr cells read empty and never match.
+            var thisText = cell != null ? GetCellDisplayValue(cell) : null;
             if (string.IsNullOrEmpty(thisText)) return false;
             var counts = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
             foreach (var t in CollectCfRangeTexts(rule, sheetData))
@@ -1726,7 +1728,9 @@ public partial class ExcelHandler
         var result = new List<string>();
         foreach (var c in CollectCfRangeCells(rule, sheetData))
         {
-            var t = c.CellValue?.Text;
+            // Use the display text (resolves inlineStr / shared strings), matching
+            // the per-cell read in EvaluateCfRule so the two stay consistent.
+            var t = GetCellDisplayValue(c);
             if (!string.IsNullOrEmpty(t)) result.Add(t);
         }
         return result;
