@@ -475,6 +475,22 @@ public partial class PowerPointHandler
             if (color != null)
                 styles.Add($"color:{color}");
 
+            // Text highlight (a:highlight). Authored only in real PowerPoint /
+            // via raw-set (no officecli prop), but `view` renders arbitrary
+            // files so honor it. The highlight's color child has the same shape
+            // as a solidFill's (srgbClr / schemeClr), so wrap it in a throwaway
+            // SolidFill to reuse ResolveFillColor (theme + transforms).
+            var highlight = rp.GetFirstChild<Drawing.Highlight>();
+            var hlColorChild = highlight?.GetFirstChild<Drawing.RgbColorModelHex>()
+                ?? (OpenXmlElement?)highlight?.GetFirstChild<Drawing.SchemeColor>();
+            if (hlColorChild != null)
+            {
+                var hlFill = new Drawing.SolidFill(hlColorChild.CloneNode(true));
+                var hlColor = ResolveFillColor(hlFill, themeColors);
+                if (hlColor != null)
+                    styles.Add($"background-color:{hlColor}");
+            }
+
             // Gradient text fill
             var gradFill = rp.GetFirstChild<Drawing.GradientFill>();
             if (gradFill != null)
