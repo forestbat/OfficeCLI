@@ -1144,22 +1144,44 @@ public static partial class WordBatchEmitter
         // of empty paragraphs), so neither the children list nor a Get-until-
         // throw loop is a safe bound. The raw XML <w:p…> open-tag count is.
         string sourceNotePath = $"/{kind}[@{kind}Id={sourceNoteId}]";
-        int paraCount = 0;
         var noteXml = word.GetElementXml(sourceNotePath);
-        if (!string.IsNullOrEmpty(noteXml))
-            paraCount = System.Text.RegularExpressions.Regex.Matches(noteXml, "<w:p[ >]").Count;
+        // BUG-DUMP-R27-5: enumerate the note's DIRECT block children (w:p AND
+        // w:tbl) in document order. The old code regex-counted EVERY <w:p> open
+        // (which includes paragraphs nested inside table cells) and walked
+        // /<kind>[N]/p[K] positionally — so a note containing a <w:tbl>
+        // double-counted the cell paragraphs as if they were top-level note
+        // paragraphs, addressed out-of-range /<kind>[N]/p[K] slots (clamping to
+        // empty), and never emitted the table at all. Walk the direct children
+        // with a depth-tracked scan (mirrors ComputeParagraphChildDocOrder) so
+        // tables route through EmitTable against the note host below.
+        var directChildren = EnumerateNoteDirectChildren(noteXml);
 
-        // Enumerate exactly that many paragraphs WITH their run children.
-        // Get(path, depth:2) per paragraph so each node carries populated run
-        // Children (the per-paragraph Get is the only way to reach the runs).
+        // Resolve each direct-paragraph child to its positional /<kind>[N]/p[K]
+        // path (K is the 1-based index AMONG DIRECT paragraphs, which is exactly
+        // how the handler indexes /<kind>[N]/p[K]). Tables keep their direct
+        // 1-based tbl ordinal for the EmitTable source path.
         var bodyParas = new List<DocumentNode>();
-        for (int pIdx = 1; pIdx <= paraCount; pIdx++)
+        // Block-order list parallel to directChildren: each entry is either a
+        // resolved paragraph node (kind "p") or a 1-based table ordinal.
+        var blockOrder = new List<(string Kind, DocumentNode? Para, int TblOrdinal)>();
+        int directParaIdx = 0;
+        int directTblIdx = 0;
+        foreach (var ck in directChildren)
         {
-            DocumentNode? para;
-            try { para = word.Get($"{sourceNotePath}/p[{pIdx}]", depth: 2); }
-            catch { break; }
-            if (para == null) break;
-            bodyParas.Add(para);
+            if (ck == "p")
+            {
+                directParaIdx++;
+                DocumentNode? para = null;
+                try { para = word.Get($"{sourceNotePath}/p[{directParaIdx}]", depth: 2); }
+                catch { /* leave null */ }
+                if (para != null) bodyParas.Add(para);
+                blockOrder.Add(("p", para, 0));
+            }
+            else if (ck == "tbl")
+            {
+                directTblIdx++;
+                blockOrder.Add(("tbl", null, directTblIdx));
+            }
         }
 
         var firstParaRuns = bodyParas.Count > 0
@@ -1188,9 +1210,26 @@ public static partial class WordBatchEmitter
         }
         else
         {
+            // BUG-DUMP-R27-5: a note whose FIRST direct child is a <w:tbl> (no
+            // leading paragraph) has NO authored leading text. OOXML still
+            // requires the <w:*Ref/> mark to live in the note's first
+            // paragraph, so `add <kind>` always fabricates one — but its text
+            // must be EMPTY (just the refmark), never the note's concatenated
+            // descendant text. The old fallback pulled `Get(note).Text`, which
+            // walks Descendants<Text> and so vacuumed every TABLE CELL's text
+            // into a phantom leading run (e.g. " t1at1bt2at2b"), duplicating
+            // the cell content that EmitTable re-emits below. Only fall back to
+            // the note's own text when the note actually leads with a paragraph
+            // (degenerate/empty-run paragraph) — for a table-leading note the
+            // refmark paragraph stays text-less and the table round-trips
+            // through the blockOrder EmitTable pass.
+            bool leadsWithTable = directChildren.Count > 0 && directChildren[0] == "tbl";
             string fallback = "";
-            try { fallback = word.Get(sourceNotePath).Text ?? ""; }
-            catch { /* leave empty */ }
+            if (!leadsWithTable)
+            {
+                try { fallback = word.Get(sourceNotePath).Text ?? ""; }
+                catch { /* leave empty */ }
+            }
             noteProps["text"] = fallback;
         }
 
@@ -1215,21 +1254,76 @@ public static partial class WordBatchEmitter
         EmitContainerBodyRuns(firstParaRuns.Skip(1).ToList(),
             $"{targetNotePath}/p[1]", items);
 
-        for (int pi = 1; pi < bodyParas.Count; pi++)
+        // BUG-DUMP-R27-5: walk the remaining DIRECT block children in document
+        // order. The first paragraph (note p[1], the ref-mark carrier) was
+        // emitted by the `add <kind>` above, so skip the first "p" entry.
+        // Target-side paragraph indices count only emitted paragraphs (`add
+        // paragraph` builds /<kind>[N]/p[last()]); tables interleave via
+        // EmitTable against the note host.
+        bool firstParaSkipped = false;
+        int targetParaOrdinal = 1; // p[1] already exists
+        foreach (var (blockKind, paraNode, tblOrdinal) in blockOrder)
         {
-            var para = bodyParas[pi];
-            var paraProps = FilterEmittableProps(para.Format);
-            paraProps.Remove("text"); // text carried by per-run emits below
-            items.Add(new BatchItem
+            if (blockKind == "p")
             {
-                Command = "add",
-                Parent = targetNotePath,
-                Type = "paragraph",
-                Props = paraProps.Count > 0 ? paraProps : null
-            });
-            var runs = para.Children.Where(c => IsRoundTrippableNoteRun(word, c)).ToList();
-            EmitContainerBodyRuns(runs, $"{targetNotePath}/p[{pi + 1}]", items);
+                if (!firstParaSkipped) { firstParaSkipped = true; continue; }
+                if (paraNode == null) continue;
+                var paraProps = FilterEmittableProps(paraNode.Format);
+                paraProps.Remove("text"); // text carried by per-run emits below
+                items.Add(new BatchItem
+                {
+                    Command = "add",
+                    Parent = targetNotePath,
+                    Type = "paragraph",
+                    Props = paraProps.Count > 0 ? paraProps : null
+                });
+                targetParaOrdinal++;
+                var runs = paraNode.Children.Where(c => IsRoundTrippableNoteRun(word, c)).ToList();
+                EmitContainerBodyRuns(runs, $"{targetNotePath}/p[{targetParaOrdinal}]", items);
+            }
+            else // "tbl" — reuse the body table emitter against the note host.
+            {
+                // ctx is null here: EmitNoteReference has no BodyEmitContext,
+                // and the ctx-driven paths in EmitTable (global //w:tbl ordinal
+                // for cell-SDT raw-sets) only fire for containerPath=="/body".
+                // A note-hosted table routes every cell through the typed emit.
+                EmitTable(word, $"{sourceNotePath}/tbl[{tblOrdinal}]", tblOrdinal,
+                    items, ctx: null, parentTablePath: null, containerPath: targetNotePath);
+            }
         }
+    }
+
+    // BUG-DUMP-R27-5: enumerate a footnote/endnote's DIRECT block-level children
+    // (top-level <w:p> and <w:tbl>) in document order from its raw XML. A
+    // depth-tracked scan keeps paragraphs nested inside table cells (or nested
+    // tables) from being counted as note-level blocks — the bug that flattened
+    // a footnote table into out-of-range positional paragraph emits. The first
+    // element open encountered is the <w:footnote>/<w:endnote> wrapper itself
+    // (depth 0); its direct children are at depth 1.
+    private static List<string> EnumerateNoteDirectChildren(string? noteXml)
+    {
+        var result = new List<string>();
+        if (string.IsNullOrEmpty(noteXml)) return result;
+        int depth = -1; // becomes 0 when the note wrapper opens
+        bool seenWrapper = false;
+        foreach (System.Text.RegularExpressions.Match m in
+                 System.Text.RegularExpressions.Regex.Matches(
+                     noteXml, @"<(/?)w:([A-Za-z]+)\b[^>]*?(/?)>"))
+        {
+            var closing = m.Groups[1].Value == "/";
+            var name = m.Groups[2].Value;
+            var selfClose = m.Groups[3].Value == "/";
+            if (!seenWrapper)
+            {
+                if (!closing) { seenWrapper = true; depth = 0; }
+                continue;
+            }
+            if (closing) { depth--; continue; }
+            if (depth == 0 && (name == "p" || name == "tbl"))
+                result.Add(name);
+            if (!selfClose) depth++;
+        }
+        return result;
     }
 
     // BUG-DUMP-ENDNOTE-ID: map a 1-based document-order user-note ordinal to the
