@@ -274,7 +274,19 @@ public partial class PowerPointHandler
                     cellStyles.Add($"text-align:{align}");
                 }
 
-                var cellText = cell.TextBody?.InnerText ?? "";
+                // Render the cell's paragraphs through the same path shape text
+                // bodies use (RenderTextBody → one <div class="para"> per
+                // paragraph), so a multi-paragraph cell shows each paragraph on
+                // its own line instead of being flattened to InnerText (which
+                // concatenated "Line 1Line 2Line 3"). Per-paragraph alignment /
+                // spacing / bullets carry over for free. The <td>-level font /
+                // color / align styles above still apply and are inherited by
+                // the para divs, so a single-paragraph cell is visually
+                // unchanged. Empty text body falls back to "" (renders nothing).
+                var cellBody = new StringBuilder();
+                if (cell.TextBody != null)
+                    RenderTextBody(cellBody, cell.TextBody, themeColors);
+                var cellHtml = cellBody.ToString();
                 var styleStr = cellStyles.Count > 0 ? $" style=\"{string.Join(";", cellStyles)}\"" : "";
 
                 // Column/row span (GridSpan and RowSpan are on the TableCell, not TableCellProperties)
@@ -327,7 +339,7 @@ public partial class PowerPointHandler
                     diagOverlay = $"<svg class=\"cell-diag\" width=\"100%\" height=\"100%\" style=\"position:absolute;inset:0;pointer-events:none;overflow:visible\" preserveAspectRatio=\"none\">{diagLines}</svg>";
                 }
 
-                sb.AppendLine($"          <td{spanAttrs}{styleStr}>{diagOverlay}{HtmlEncode(cellText)}</td>");
+                sb.AppendLine($"          <td{spanAttrs}{styleStr}>{diagOverlay}{cellHtml}</td>");
                 colIndex += Math.Max((int)(gridSpan ?? 1), 1);
             }
             sb.AppendLine("        </tr>");
