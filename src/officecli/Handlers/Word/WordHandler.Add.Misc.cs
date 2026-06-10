@@ -113,6 +113,30 @@ public partial class WordHandler
         var commentBody = string.IsNullOrEmpty(commentText)
             ? new Paragraph()
             : new Paragraph(new Run(new Text(commentText) { Space = SpaceProcessingModeValues.Preserve }));
+        // BUG-DUMP-R40-2: a Word-authored comment body opens with the comment
+        // reference mark run — <w:r><w:rPr><w:rStyle w:val="CommentReference"/>
+        // </w:rPr><w:annotationRef/></w:r>. The dump emitter rides this run on
+        // `add comment` (annotationRef=true + rStyle). Prepend it so the rebuilt
+        // comment keeps its clickable reference glyph and the comment-pane
+        // styling. The rStyle rides on THIS run only (consumed here so
+        // ApplyCommentFormatKeys does not re-stamp it onto the text run, which
+        // the source leaves un-styled).
+        if (IsTruthy(properties.GetValueOrDefault("annotationRef", "")))
+        {
+            var annRefRPr = new RunProperties();
+            if ((properties.TryGetValue("rStyle", out var annRStyle)
+                 || properties.TryGetValue("rstyle", out annRStyle))
+                && !string.IsNullOrEmpty(annRStyle))
+                annRefRPr.RunStyle = new RunStyle { Val = annRStyle };
+            var annRefRun = new Run(annRefRPr, new AnnotationReferenceMark());
+            commentBody.PrependChild(annRefRun);
+            // Don't let ApplyCommentFormatKeys re-apply rStyle to every content
+            // run (it would wrongly style the trailing text run too).
+            properties.Remove("rStyle");
+            properties.Remove("rstyle");
+            properties.Remove("annotationRef");
+            properties.Remove("annotationref");
+        }
         // BUG-DUMP-R26-4: preserve the source comment's first-paragraph
         // w14:paraId so commentsExtended.xml reply threading (keyed by paraId)
         // round-trips. EnsureAllParaIds only assigns when paraId is empty, so a

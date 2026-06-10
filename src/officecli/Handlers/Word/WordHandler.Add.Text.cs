@@ -1974,7 +1974,17 @@ public partial class WordHandler
         // the visual output (cached glyph in body font + the <w:sym/>); dropping
         // the remaining text entirely (the old behaviour) silently lost a run
         // that mixed <w:sym/> + <w:t>WORLD</w:t> into a sym-only run.
-        if (properties.TryGetValue("sym", out var symRaw) && !string.IsNullOrEmpty(symRaw))
+        // BUG-DUMP-R40-2: a run carrying annotationRef=true is the comment
+        // reference mark (<w:r><w:rPr><w:rStyle w:val="CommentReference"/></w:rPr>
+        // <w:annotationRef/></w:r>) that opens every Word-authored comment body.
+        // The rPr (rStyle) is already built above; append the <w:annotationRef/>
+        // mark and emit NO <w:t> (the source run carries no literal text — only
+        // the mark). Dropping it lost the clickable comment-reference glyph.
+        if (properties.TryGetValue("annotationRef", out var annRefRaw) && IsTruthy(annRefRaw))
+        {
+            newRun.AppendChild(new AnnotationReferenceMark());
+        }
+        else if (properties.TryGetValue("sym", out var symRaw) && !string.IsNullOrEmpty(symRaw))
         {
             var colon = symRaw.LastIndexOf(':');
             string symFont = colon > 0 ? symRaw[..colon] : "";
@@ -2028,6 +2038,7 @@ public partial class WordHandler
             "boldcs", "italiccs", "sizecs",
             "shd", "shading",
             "rstyle", "rStyle",
+            "annotationRef", "annotationref",
             "textoutline", "textfill", "w14shadow", "w14glow", "w14reflection",
             "field", "formula", "ref", "id",
             // BUG-DUMP5-10: consumed up-front for the w:ins/w:del wrapper

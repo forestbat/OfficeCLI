@@ -946,6 +946,19 @@ public static partial class WordBatchEmitter
                 props["commentParaId"] = cpid.ToString()!;
             }
 
+            // BUG-DUMP-R40-2: carry the comment's first-paragraph pStyle (Word
+            // authors comments under the "CommentText" paragraph style). The old
+            // emit took props only from the comment-node Format (no pStyle), so
+            // AddComment built a default-styled paragraph and the comment lost
+            // its comment-pane styling. ApplyCommentFormatKeys -> ApplyParagraph
+            // LevelProperty consumes `style` and stamps the pStyle.
+            if (bodyParas.Count > 0
+                && bodyParas[0].Format.TryGetValue("style", out var cStyle)
+                && cStyle != null && !string.IsNullOrEmpty(cStyle.ToString()))
+            {
+                props["style"] = cStyle.ToString()!;
+            }
+
             // BUG-R6B(BUG1): always emit `text`, even when empty. An empty
             // comment (no inline text, or only an empty table) is valid OOXML;
             // omitting `text` produced a dump op that AddComment refused to

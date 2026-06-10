@@ -1803,6 +1803,14 @@ public partial class WordHandler
         // to <w:br/>) rides along inside the same verbatim run XML.
         if (run.GetFirstChild<PageNumber>() != null)
             node.Format["_hasPgNum"] = true;
+        // BUG-DUMP-R40-2: surface <w:annotationRef/> (the comment-reference mark
+        // that opens every Word-authored comment body). GetRunText emits no
+        // glyph for it, so the run looked empty and the typed `add comment`/`add
+        // r` path dropped the mark — the rebuilt comment lost its clickable
+        // reference mark and the run's rStyle="CommentReference". Stamp a flag so
+        // EmitComments rebuilds the annotationRef run verbatim (with its rStyle).
+        if (run.GetFirstChild<AnnotationReferenceMark>() != null)
+            node.Format["annotationRef"] = true;
         // BUG-DUMP-DATEFIELD: a run containing a Word date-component placeholder
         // element — <w:dayLong/> / <w:dayShort/> / <w:monthLong/> / <w:monthShort/>
         // / <w:yearLong/> / <w:yearShort/> (Word substitutes the current date at
