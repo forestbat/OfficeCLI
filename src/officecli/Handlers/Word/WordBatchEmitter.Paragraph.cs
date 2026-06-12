@@ -2139,6 +2139,19 @@ public static partial class WordBatchEmitter
                 var spEffectLst = CapturePicSpPrEffectLst(picXml);
                 if (!string.IsNullOrEmpty(spEffectLst))
                     picProps["spEffects"] = spEffectLst!;
+                // The fixed spPr rebuild also drops xfrm flip flags
+                // (<a:xfrm flipH="1"> — mirrored logos), a content extent
+                // (<a:ext>) that legitimately differs from the frame's
+                // wp:extent, bwMode, and explicit <a:noFill/>/<a:ln> blocks.
+                // Capture the whole <pic:spPr> verbatim; AddPicture swaps its
+                // rebuilt spPr for this block (and then skips the narrower
+                // spEffects injection — the effectLst already rides inside).
+                var spPrWhole = System.Text.RegularExpressions.Regex.Match(
+                    picXml,
+                    @"<pic:spPr[^>]*?>.*?</pic:spPr>|<pic:spPr[^>]*?/>",
+                    System.Text.RegularExpressions.RegexOptions.Singleline);
+                if (spPrWhole.Success)
+                    picProps["spPrXml"] = spPrWhole.Value;
             }
             items.Add(new BatchItem
             {

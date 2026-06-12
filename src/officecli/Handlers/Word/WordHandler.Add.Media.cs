@@ -462,7 +462,15 @@ public partial class WordHandler
         {
             ApplyBlipEffects(imgRun, blipEffectsXml);
         }
-        if (properties.TryGetValue("spEffects", out var spEffectsXml)
+        // Whole-spPr verbatim (xfrm flip flags, a content <a:ext> that differs
+        // from the frame's wp:extent, bwMode, explicit noFill/ln, effectLst) —
+        // supersedes the narrower spEffects injection when present.
+        if (properties.TryGetValue("spPrXml", out var spPrXmlVal)
+            && !string.IsNullOrWhiteSpace(spPrXmlVal))
+        {
+            ApplySpPrVerbatim(imgRun, spPrXmlVal);
+        }
+        else if (properties.TryGetValue("spEffects", out var spEffectsXml)
             && !string.IsNullOrWhiteSpace(spEffectsXml))
         {
             ApplySpPrEffects(imgRun, spEffectsXml);

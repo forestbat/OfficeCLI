@@ -523,6 +523,37 @@ public partial class WordHandler
     // so insert it AFTER the last of xfrm/custGeom/prstGeom/fill/ln that exists
     // (in practice immediately after <a:prstGeom>). No-op if the run has no
     // ShapeProperties (defensive).
+    // Whole-<pic:spPr> verbatim replacement: the fixed rebuild loses xfrm
+    // flip flags (mirrored logos), a content extent that legitimately differs
+    // from the frame's wp:extent, bwMode, and explicit <a:noFill/>/<a:ln>
+    // blocks. Swap the rebuilt spPr for the captured source block; the
+    // r:embed lives on <a:blip> inside blipFill, untouched here.
+    // Whole-<pic:spPr> verbatim replacement: the fixed rebuild loses xfrm
+    // flip flags (mirrored logos), a content extent that legitimately differs
+    // from the frame's wp:extent, bwMode, and explicit <a:noFill/>/<a:ln>
+    // blocks. Swap the rebuilt spPr for the captured source block; the
+    // r:embed lives on <a:blip> inside blipFill, untouched here. The captured
+    // fragment has no xmlns declarations (it was cut out of document.xml), so
+    // stamp the standard prefixes onto the root tag before parsing; an exotic
+    // undeclared prefix makes the parse throw and we keep the rebuilt spPr.
+    private static void ApplySpPrVerbatim(Run imgRun, string spPrXml)
+    {
+        var spPr = imgRun.Descendants<PIC.ShapeProperties>().FirstOrDefault();
+        if (spPr?.Parent == null) return;
+        const string NsDecls =
+            " xmlns:pic=\"http://schemas.openxmlformats.org/drawingml/2006/picture\"" +
+            " xmlns:a=\"http://schemas.openxmlformats.org/drawingml/2006/main\"" +
+            " xmlns:r=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships\"" +
+            " xmlns:a14=\"http://schemas.microsoft.com/office/drawing/2010/main\"";
+        var withNs = new System.Text.RegularExpressions.Regex("<pic:spPr")
+            .Replace(spPrXml, "<pic:spPr" + NsDecls, 1);
+        PIC.ShapeProperties fresh;
+        try { fresh = new PIC.ShapeProperties(withNs); }
+        catch { return; }
+        spPr.InsertAfterSelf(fresh);
+        spPr.Remove();
+    }
+
     private static void ApplySpPrEffects(Run imgRun, string effectLstXml)
     {
         var spPr = imgRun.Descendants<PIC.ShapeProperties>().FirstOrDefault();
