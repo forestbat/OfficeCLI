@@ -4131,6 +4131,13 @@ public partial class WordHandler
             var pmPos = pmrpForDump.GetFirstChild<Position>();
             if (pmPos?.Val?.Value is string pmPosVal && !string.IsNullOrEmpty(pmPosVal))
                 node.Format["markRPr.position"] = pmPosVal;
+            // ¶-mark <w:rtl/> (mark-only RTL, no pPr <w:bidi/>) — see the
+            // empty-paragraph fallback for the rationale; same dotted key so
+            // ApplyRunFormatting's rtl case restores it without touching the
+            // paragraph direction cascade.
+            var pmRtl = pmrpForDump.GetFirstChild<RightToLeftText>();
+            if (pmRtl != null)
+                node.Format["markRPr.rtl"] = TryReadOnOff(pmRtl.Val) != false;
             var hl = pmrpForDump.GetFirstChild<Highlight>();
             if (hl?.Val?.HasValue == true) node.Format["markRPr.highlight"] = hl.Val.InnerText;
             // BUG-DUMP-R27-1: ¶-mark character shading (<w:pPr><w:rPr><w:shd/>).
@@ -4397,6 +4404,16 @@ public partial class WordHandler
                     if (langEmpty.Bidi?.Value != null && !node.Format.ContainsKey("lang.cs"))
                         node.Format["lang.cs"] = langEmpty.Bidi.Value;
                 }
+                // ¶-mark <w:rtl/> on a run-less paragraph (Arabic forms carry
+                // it on empty spacer paragraphs WITHOUT pPr <w:bidi/>). The
+                // markRPr whitelist never surfaced the slot, so dozens of marks
+                // lost their RTL on dump→batch and the form reflowed. Dotted
+                // key — the bare `rtl` key would route through the paragraph
+                // direction cascade and fabricate a <w:bidi/> the source
+                // doesn't have.
+                var rtlEmpty = markRp.GetFirstChild<RightToLeftText>();
+                if (rtlEmpty != null && !node.Format.ContainsKey("markRPr.rtl"))
+                    node.Format["markRPr.rtl"] = TryReadOnOff(rtlEmpty.Val) != false;
             }
         }
 
