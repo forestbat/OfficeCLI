@@ -350,20 +350,28 @@ public partial class WordHandler
 
         bool spanOpen = IsTruthy(properties.GetValueOrDefault("open", ""));
 
-        if (bkName.Any(c => c == '/' || c == '[' || c == ']'))
-            throw new ArgumentException(
-                $"Bookmark name '{bkName}' contains path-special characters " +
-                "('/', '[', ']'). These characters prevent later addressing via " +
-                "selectors. Use only letters, digits, '.', '_', '-' in bookmark names.");
         // BUG-R3 (dump emits a name its own batch rejects): OOXML's w:name
-        // permits whitespace and quote/@ characters (LibreOffice exports e.g.
-        // a bookmark literally named "Fast_math"_optimization). The old hard
-        // reject broke dump→batch round-trip — the dumped `add bookmark
-        // name="…"` couldn't replay. Only '/', '[', ']' truly break path
-        // addressing (rejected above); whitespace/quote/@ merely make BARE
-        // attribute selectors ambiguous. Preserve the source name and warn,
-        // mirroring the duplicate-bookmark-name allow+warn handling below.
-        if (bkName.Any(char.IsWhiteSpace) || bkName[0] == '@' || bkName[0] == '\'' || bkName.Contains('"'))
+        // permits characters the CLI path/selector grammar treats specially —
+        // whitespace, quote/@, AND '/', '[', ']'. Real documents carry such
+        // names: legal-doc and HTML-export generators auto-name TOC-anchor
+        // bookmarks after heading text, e.g. "Review/Analysis" or
+        // "Revenues/Receivables/Unearned_Revenues". A hard reject broke
+        // dump→batch round-trip — the dumped `add bookmark name="…"` failed on
+        // replay, dropping the bookmark and breaking every REF/TOC field (which
+        // reference it by name, not by CLI selector) and PAGEREF page numbers.
+        // Preserve the source name verbatim and warn instead, mirroring the
+        // duplicate-bookmark-name allow+warn handling below. The only cost is
+        // that such a bookmark can't be addressed by a CLI path selector later
+        // (REF/TOC resolution in Word is unaffected).
+        if (bkName.Any(c => c == '/' || c == '[' || c == ']'))
+        {
+            LastAddWarnings.Add(
+                $"bookmark name '{bkName}' contains path-special characters " +
+                "('/', '[', ']') — kept (OOXML allows it, and REF/TOC fields " +
+                "reference it by name), but it cannot be addressed via a CLI " +
+                "path selector.");
+        }
+        else if (bkName.Any(char.IsWhiteSpace) || bkName[0] == '@' || bkName[0] == '\'' || bkName.Contains('"'))
         {
             LastAddWarnings.Add(
                 $"bookmark name '{bkName}' contains whitespace or quote/@ chars — " +
