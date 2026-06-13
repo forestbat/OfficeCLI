@@ -2562,6 +2562,10 @@ public static partial class WordBatchEmitter
         // freshly-added <w:style> for the source's verbatim copy, so no
         // double-apply and no scalar/raw drift. Mirrors EmitDocDefaultsRaw.
         var rawStyleByMatchAttr = BuildRawTableStyleMap(word);
+        // BUG-R18C: styleId → verbatim XML of the LAST occurrence, for ids that
+        // appear more than once. Word renders a duplicate styleId via its last
+        // definition; raw-set-replace the first-occurrence scalar emit with it.
+        var lastDuplicateStyleXml = BuildLastDuplicateStyleMap(word);
         // Blank-baseline cleanup: BlankDocCreator always stamps a Normal
         // style (for Word render parity — Calibri 11pt, 1.08x
         // line). When the source has no entry for styleId="Normal",
@@ -2645,8 +2649,17 @@ public static partial class WordBatchEmitter
             // id the `add` actually used (emitId) so an id collision/suffix on
             // the target still lands on the right element. The raw XML's
             // w:styleId is normalized to emitId by BuildRawTableStyleMap.
+            // BUG-R18C: a duplicate styleId resolves (in Word) to its LAST
+            // occurrence; prefer that verbatim definition over the table-style
+            // map (first) and over the scalar emit (which read the first).
+            string? rawStyleReplace = null;
             if (!string.IsNullOrEmpty(emitId)
+                && lastDuplicateStyleXml.TryGetValue(emitId, out var dupXml))
+                rawStyleReplace = dupXml;
+            else if (!string.IsNullOrEmpty(emitId)
                 && rawStyleByMatchAttr.TryGetValue(emitId, out var rawStyleXml))
+                rawStyleReplace = rawStyleXml;
+            if (rawStyleReplace != null)
             {
                 items.Add(new BatchItem
                 {
@@ -2654,7 +2667,7 @@ public static partial class WordBatchEmitter
                     Part = "/styles",
                     Xpath = $"/w:styles/w:style[@w:styleId='{emitId}']",
                     Action = "replace",
-                    Xml = rawStyleXml
+                    Xml = rawStyleReplace
                 });
             }
         }
@@ -2695,6 +2708,50 @@ public static partial class WordBatchEmitter
         }
         catch { return new Dictionary<string, string>(StringComparer.Ordinal); }
         return map;
+    }
+
+    // BUG-R18C: a styles.xml with a DUPLICATE styleId (two <w:style> elements
+    // sharing one id — common when a template merge leaves a built-in stub
+    // ahead of the customized definition) does not render via the FIRST
+    // occurrence. Word resolves a duplicate styleId to the LAST definition (the
+    // customization wins), but EmitStyles' scalar emit reads the style via
+    // Get-by-id, which Navigation resolves to the FIRST element — so a
+    // customized Heading1 (border, before/after spacing, bold, theme colour)
+    // sitting in the second occurrence was emitted as the plain first stub.
+    // Headings then lost their spacing on rebuild and every page's body
+    // reflowed upward.
+    //
+    // Return styleId → verbatim XML of the LAST occurrence, ONLY for styleIds
+    // that appear more than once. EmitStyles raw-set-replaces the just-added
+    // (first-occurrence) style with this last-occurrence definition, so the
+    // rebuilt style matches what Word actually renders. Single-occurrence
+    // styles are left to the scalar emit (unchanged).
+    private static Dictionary<string, string> BuildLastDuplicateStyleMap(WordHandler word)
+    {
+        var empty = new Dictionary<string, string>(StringComparer.Ordinal);
+        string stylesXml;
+        try { stylesXml = word.Raw("/styles"); }
+        catch { return empty; }
+        if (string.IsNullOrEmpty(stylesXml) || !stylesXml.StartsWith("<")) return empty;
+        try
+        {
+            var doc = System.Xml.Linq.XDocument.Parse(stylesXml);
+            var wNs = (System.Xml.Linq.XNamespace)"http://schemas.openxmlformats.org/wordprocessingml/2006/main";
+            var counts = new Dictionary<string, int>(StringComparer.Ordinal);
+            var lastXml = new Dictionary<string, string>(StringComparer.Ordinal);
+            foreach (var styleEl in doc.Root?.Elements(wNs + "style") ?? Enumerable.Empty<System.Xml.Linq.XElement>())
+            {
+                var styleId = styleEl.Attribute(wNs + "styleId")?.Value;
+                if (string.IsNullOrEmpty(styleId)) continue;
+                counts[styleId] = counts.GetValueOrDefault(styleId) + 1;
+                lastXml[styleId] = styleEl.ToString(System.Xml.Linq.SaveOptions.DisableFormatting);
+            }
+            var dups = new Dictionary<string, string>(StringComparer.Ordinal);
+            foreach (var kv in counts)
+                if (kv.Value > 1) dups[kv.Key] = lastXml[kv.Key];
+            return dups;
+        }
+        catch { return empty; }
     }
 
     private sealed class NoteCursor { public int Index; }
