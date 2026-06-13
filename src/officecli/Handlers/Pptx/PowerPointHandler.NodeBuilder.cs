@@ -13,6 +13,24 @@ namespace OfficeCli.Handlers;
 
 public partial class PowerPointHandler
 {
+    // Map a paragraph <a:pPr algn=…> to the canonical friendly token. The four
+    // core values get friendly names (left/center/right/justify); the OOXML-only
+    // values (justLow / dist / thaiDist) pass through as their raw token so they
+    // round-trip through ParseTextAlignment instead of folding to "left".
+    private static string MapTextAlignToFriendly(EnumValue<Drawing.TextAlignmentTypeValues>? algn)
+    {
+        var inner = algn?.InnerText;
+        return inner switch
+        {
+            "l" => "left",
+            "ctr" => "center",
+            "r" => "right",
+            "just" => "justify",
+            null or "" => "left",
+            _ => inner,   // justLow / dist / thaiDist — preserve verbatim
+        };
+    }
+
     // CONSISTENCY(effect-color-8digit): shadow/glow readback contract is
     // CSS-form 8-digit hex '#RRGGBBAA' (schema/help/pptx/shape.json
     // shadow.readback / glow.readback). FormatHexWithAlpha falls back to
@@ -1798,15 +1816,7 @@ public partial class PowerPointHandler
         var firstPara = shape.TextBody?.Elements<Drawing.Paragraph>().FirstOrDefault();
         if (firstPara?.ParagraphProperties?.Alignment?.HasValue == true)
         {
-            var alInner = firstPara.ParagraphProperties.Alignment.InnerText;
-            node.Format["align"] = alInner switch
-            {
-                "l" => "left",
-                "ctr" => "center",
-                "r" => "right",
-                "just" => "justify",
-                _ => alInner
-            };
+            node.Format["align"] = MapTextAlignToFriendly(firstPara.ParagraphProperties.Alignment);
         }
 
         // Paragraph spacing and indent (from first paragraph)
@@ -1876,11 +1886,7 @@ public partial class PowerPointHandler
                     var paraPProps = para.ParagraphProperties;
                     if (paraPProps?.Alignment?.HasValue == true)
                     {
-                        var paraAlignVal = paraPProps.Alignment.Value;
-                        paraNode.Format["align"] = paraAlignVal == Drawing.TextAlignmentTypeValues.Center ? "center"
-                            : paraAlignVal == Drawing.TextAlignmentTypeValues.Right ? "right"
-                            : paraAlignVal == Drawing.TextAlignmentTypeValues.Justified ? "justify"
-                            : "left";
+                        paraNode.Format["align"] = MapTextAlignToFriendly(paraPProps.Alignment);
                     }
                     if (paraPProps?.Level?.HasValue == true) paraNode.Format["level"] = paraPProps.Level.Value.ToString(System.Globalization.CultureInfo.InvariantCulture);
                     if (paraPProps?.Indent?.HasValue == true) paraNode.Format["indent"] = FormatPptIndentPoints(paraPProps.Indent.Value);
@@ -3001,11 +3007,7 @@ public partial class PowerPointHandler
                     var paraPProps = para.ParagraphProperties;
                     if (paraPProps?.Alignment?.HasValue == true)
                     {
-                        var av = paraPProps.Alignment.Value;
-                        paraNode.Format["align"] = av == Drawing.TextAlignmentTypeValues.Center ? "center"
-                            : av == Drawing.TextAlignmentTypeValues.Right ? "right"
-                            : av == Drawing.TextAlignmentTypeValues.Justified ? "justify"
-                            : "left";
+                        paraNode.Format["align"] = MapTextAlignToFriendly(paraPProps.Alignment);
                     }
                     if (depth > 1)
                     {

@@ -502,10 +502,17 @@ public partial class PowerPointHandler
         value.ToLowerInvariant() switch
         {
             "left" or "l" => Drawing.TextAlignmentTypeValues.Left,
-            "center" or "c" => Drawing.TextAlignmentTypeValues.Center,
+            "center" or "c" or "ctr" => Drawing.TextAlignmentTypeValues.Center,
             "right" or "r" => Drawing.TextAlignmentTypeValues.Right,
-            "justify" or "j" => Drawing.TextAlignmentTypeValues.Justified,
-            _ => throw new ArgumentException($"Invalid align: {value}. Use: left, center, right, justify")
+            "justify" or "j" or "just" => Drawing.TextAlignmentTypeValues.Justified,
+            // OOXML ST_TextAlignType also defines justLow (low-justify),
+            // dist (distributed) and thaiDist (Thai distributed). Get emits the
+            // raw token for these (the shape-level readback passes them through),
+            // so accept both the token and a friendly alias to keep round-trip.
+            "justlow" => Drawing.TextAlignmentTypeValues.JustifiedLow,
+            "dist" or "distributed" => Drawing.TextAlignmentTypeValues.Distributed,
+            "thdist" or "thaidist" or "thaidistributed" => Drawing.TextAlignmentTypeValues.ThaiDistributed,
+            _ => throw new ArgumentException($"Invalid align: {value}. Use: left, center, right, justify, justLow, dist, thDist")
         };
 
     /// <summary>
