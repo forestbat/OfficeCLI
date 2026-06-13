@@ -605,7 +605,10 @@ internal static partial class ChartHelper
         // injected post-build by SetChartProperties at the schema-correct
         // position inside CT_ValAx / CT_CatAx / CT_PlotArea. (plotarea.sppr
         // also matches the "plotarea." deferred prefix; listed for symmetry.)
-        "valax.sppr", "catax.sppr", "plotarea.sppr",
+        "valax.sppr", "catax.sppr", "plotarea.sppr", "chartarea.sppr",
+        // verbatim gridline outline spPr (tx1+lumMod tint, cap/cmpd/join) that
+        // the granular gridlineColor/Width/Dash keys cannot represent.
+        "gridline.sppr", "minorgridline.sppr",
         // BUG-DUMP-R35-1: verbatim per-axis text properties + title paragraph
         // properties, injected post-build at the schema-correct position inside
         // CT_CatAx / CT_ValAx (txPr after spPr, before crossAx) and the title's
@@ -681,6 +684,9 @@ internal static partial class ChartHelper
         "title.", "plotarea.", "legend.", "datalabel",
         "datatable.", "displayunitslabel.", "trendlinelabel.",
         "labelfont.",
+        // axisTitle.pPr / catTitle.pPr — restore the source axis-title paragraph
+        // styling post-build (the axis title element must exist first).
+        "axistitle.", "cattitle.",
     ];
 
     /// <summary>

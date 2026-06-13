@@ -48,6 +48,26 @@ public static partial class WordBatchEmitter
                 .Where(k => k.StartsWith("catAxisLine", StringComparison.OrdinalIgnoreCase))
                 .ToList())
                 props.Remove(k);
+        // gridline.spPr / minorGridline.spPr carry the gridline outline verbatim
+        // (tx1+lumMod tint, cap/cmpd/join) — drop the lossy granular
+        // gridlineColor/Width/Dash they supersede so replay doesn't re-derive a
+        // solid black line on top of the verbatim XML.
+        if (props.ContainsKey("gridline.spPr"))
+            foreach (var k in new[] { "gridlineColor", "gridlineWidth", "gridlineDash" })
+                props.Remove(k);
+        if (props.ContainsKey("minorGridline.spPr"))
+            foreach (var k in new[] { "minorGridlineColor", "minorGridlineWidth", "minorGridlineDash" })
+                props.Remove(k);
+        // chartArea.spPr carries the chart frame fill + border verbatim (tx1+lumMod
+        // tint) -> drop the lossy chartFill + chartArea.border[.*] it supersedes.
+        if (props.ContainsKey("chartArea.spPr"))
+        {
+            props.Remove("chartFill");
+            foreach (var k in props.Keys
+                .Where(k => k.StartsWith("chartArea.border", StringComparison.OrdinalIgnoreCase))
+                .ToList())
+                props.Remove(k);
+        }
 
         // BUG-DUMP-R35-1: the verbatim per-axis text fragments (catAx.txPr /
         // valAx.txPr) supersede the single `axisFont` key, which read only the

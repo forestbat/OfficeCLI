@@ -343,6 +343,13 @@ internal static partial class ChartHelper
         {
             node.Format["gridlines"] = "true";
             ReadGridlineDetail(majorGL, node, "gridline");
+            // BUG-DUMP: the granular gridlineColor reads only the solidFill's
+            // base scheme/rgb value and drops a:lumMod/a:lumOff (a tx1 gridline
+            // tinted to 85% light gray rebuilt as solid black) plus the line's
+            // cap/cmpd/algn/join. Capture the gridline <c:spPr> verbatim — same
+            // approach as valAx.spPr — so the tint and line geometry round-trip.
+            var majorGLSpPr = GetSpPrChildXml(majorGL);
+            if (majorGLSpPr != null) node.Format["gridline.spPr"] = majorGLSpPr;
         }
         else if (valAxisForGrid != null)
         {
@@ -353,6 +360,8 @@ internal static partial class ChartHelper
         {
             node.Format["minorGridlines"] = "true";
             ReadGridlineDetail(minorGL, node, "minorGridline");
+            var minorGLSpPr = GetSpPrChildXml(minorGL);
+            if (minorGLSpPr != null) node.Format["minorGridline.spPr"] = minorGLSpPr;
         }
 
         // GapWidth / Overlap from bar/column chart
@@ -502,14 +511,30 @@ internal static partial class ChartHelper
             node.Format["yaxis.labelRotation"] = deg.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture);
         }
 
-        // Axis titles
+        // Axis titles. Capture the title paragraph's <a:pPr> verbatim alongside
+        // the text: like the chart title, the axis-title builder (BuildChartTitle)
+        // hard-codes the run to 14pt bold, so a source axis title sized only on
+        // its defRPr (e.g. sz=800 b=0) rebuilt oversized and bold. The .pPr key
+        // carries the source styling so the replay restores it.
         var valAxis = plotArea.GetFirstChild<C.ValueAxis>();
-        var valAxisTitle = valAxis?.GetFirstChild<C.Title>()?.Descendants<Drawing.Text>().FirstOrDefault()?.Text;
-        if (valAxisTitle != null) node.Format["axisTitle"] = valAxisTitle;
+        var valAxisTitleEl = valAxis?.GetFirstChild<C.Title>();
+        var valAxisTitle = valAxisTitleEl?.Descendants<Drawing.Text>().FirstOrDefault()?.Text;
+        if (valAxisTitle != null)
+        {
+            node.Format["axisTitle"] = valAxisTitle;
+            var vPPr = valAxisTitleEl!.Descendants<Drawing.ParagraphProperties>().FirstOrDefault();
+            if (vPPr != null && AxisTitlePPrMeaningful(vPPr)) node.Format["axisTitle.pPr"] = vPPr.OuterXml;
+        }
 
         var catAxis = plotArea.GetFirstChild<C.CategoryAxis>();
-        var catAxisTitle = catAxis?.GetFirstChild<C.Title>()?.Descendants<Drawing.Text>().FirstOrDefault()?.Text;
-        if (catAxisTitle != null) node.Format["catTitle"] = catAxisTitle;
+        var catAxisTitleEl = catAxis?.GetFirstChild<C.Title>();
+        var catAxisTitle = catAxisTitleEl?.Descendants<Drawing.Text>().FirstOrDefault()?.Text;
+        if (catAxisTitle != null)
+        {
+            node.Format["catTitle"] = catAxisTitle;
+            var cPPr = catAxisTitleEl!.Descendants<Drawing.ParagraphProperties>().FirstOrDefault();
+            if (cPPr != null && AxisTitlePPrMeaningful(cPPr)) node.Format["catTitle.pPr"] = cPPr.OuterXml;
+        }
 
         // CONSISTENCY(cat-axis-type): emit the category-axis kind so Add/Set
         // can round-trip `catAxisType=date|category`. Default omitted when
@@ -707,6 +732,12 @@ internal static partial class ChartHelper
                 csOutline = csCSpPr?.GetFirstChild<Drawing.Outline>();
             }
             if (csOutline != null) ReadOutlineDetail(csOutline, node, "chartArea.border");
+            // Verbatim chartSpace <c:spPr> — like plotArea.spPr, the granular
+            // chartArea.border.color reads only the base scheme value and drops
+            // a:lumMod/a:lumOff (a tx1 frame tinted light gray rebuilt black).
+            // Capture the frame fill + border verbatim so the tint round-trips.
+            var chartAreaSpPr = chart.Parent != null ? GetSpPrChildXml(chart.Parent) : null;
+            if (chartAreaSpPr != null) node.Format["chartArea.spPr"] = chartAreaSpPr;
         }
 
         // Chart-type-specific
@@ -2060,6 +2091,28 @@ internal static partial class ChartHelper
     /// <summary>
     /// Read font spec from TextProperties: returns "SIZE:COLOR:FONTNAME" format or null.
     /// </summary>
+    // An axis title's <a:pPr> is worth round-tripping when its defRPr carries
+    // explicit font/size/weight/style/color — i.e. anything that differs from
+    // the builder's hard-coded 14pt-bold default — or the paragraph itself sets
+    // alignment. Unlike the chart-title check, size (sz) and weight (b) count:
+    // axis titles are typically smaller and non-bold, and that is exactly the
+    // styling the builder loses.
+    private static bool AxisTitlePPrMeaningful(Drawing.ParagraphProperties pPr)
+    {
+        var defRp = pPr.GetFirstChild<Drawing.DefaultRunProperties>();
+        if (defRp != null)
+        {
+            if (defRp.FontSize?.HasValue == true || defRp.Bold?.HasValue == true
+                || defRp.Italic?.HasValue == true)
+                return true;
+            if (defRp.ChildElements.Any(c => c.LocalName is "solidFill" or "latin" or "ea" or "cs"))
+                return true;
+            if (defRp.GetAttributes().Any(a => a.LocalName is "u" or "strike"))
+                return true;
+        }
+        return pPr.GetAttributes().Any(a => a.LocalName == "algn");
+    }
+
     private static string? ReadFontSpec(C.TextProperties textProperties)
     {
         var defRp = textProperties.Descendants<Drawing.DefaultRunProperties>().FirstOrDefault();

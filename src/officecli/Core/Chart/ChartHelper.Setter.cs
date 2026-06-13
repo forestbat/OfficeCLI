@@ -139,6 +139,9 @@ internal static partial class ChartHelper
             // combotypes left every series on the primary axis).
             if (lower is "combotypes" or "combo.types") return 0;
             if (lower is "title" or "legend" or "datalabels" or "labels") return 1;
+            // axis-title TEXT must build the <c:title> element before axistitle.pPr
+            // (order 2) replaces its paragraph properties.
+            if (lower is "axistitle" or "vtitle" or "cattitle" or "htitle") return 1;
             return 2;
         }
         var ordered = properties.OrderBy(kv => PropOrder(kv.Key));
@@ -2717,6 +2720,34 @@ internal static partial class ChartHelper
                     SetPlotAreaSpPr(plotArea2, new C.ShapeProperties(value));
                     break;
                 }
+                case "chartarea.sppr":
+                {
+                    if (string.IsNullOrWhiteSpace(value)) break;
+                    var csParent = chart.Parent;
+                    if (csParent == null) { unsupported.Add(key); break; }
+                    csParent.RemoveAllChildren<C.ShapeProperties>();
+                    csParent.RemoveAllChildren<C.ChartShapeProperties>();
+                    // CT_ChartSpace: spPr sits directly after c:chart.
+                    var newSp = new C.ShapeProperties(value);
+                    var afterChart = csParent.GetFirstChild<C.Chart>();
+                    if (afterChart != null) csParent.InsertAfter(newSp, afterChart);
+                    else csParent.AppendChild(newSp);
+                    break;
+                }
+                case "gridline.sppr" or "minorgridline.sppr":
+                {
+                    if (string.IsNullOrWhiteSpace(value)) break;
+                    var valAxG = chart.GetFirstChild<C.PlotArea>()?.GetFirstChild<C.ValueAxis>();
+                    OpenXmlCompositeElement? gl = key.ToLowerInvariant() == "gridline.sppr"
+                        ? valAxG?.GetFirstChild<C.MajorGridlines>()
+                        : valAxG?.GetFirstChild<C.MinorGridlines>();
+                    if (gl == null) { unsupported.Add(key); break; }
+                    // c:spPr is the gridlines element's only child — replace it
+                    // wholesale with the captured verbatim fragment.
+                    gl.RemoveAllChildren<C.ChartShapeProperties>();
+                    gl.AppendChild(new C.ChartShapeProperties(value));
+                    break;
+                }
 
                 // BUG-DUMP-R35-1: inject the Reader's verbatim per-axis <c:txPr>
                 // and title <a:pPr> fragments. value is the captured OuterXml;
@@ -2748,48 +2779,36 @@ internal static partial class ChartHelper
                     if (string.IsNullOrWhiteSpace(value)) break;
                     // The title font lives in c:title/c:tx/c:rich/a:p/a:pPr.
                     // Replace the builder's default pPr with the captured one so
-                    // the source's defRPr colour / typeface / paragraph
-                    // alignment are restored. The run-level a:rPr (which renders
-                    // and is patched by the title.* fan-out) is left untouched.
+                    // the source's defRPr colour / typeface / paragraph alignment
+                    // are restored, and sync the rendering run rPr to it (see
+                    // ApplyTitlePPr). An explicit title.size/title.bold (source DID
+                    // carry a run rPr) is applied by the title.* fan-out and must
+                    // win, so it is skipped here.
                     var ctitle = chart.GetFirstChild<C.Title>();
-                    var richPara = ctitle?.GetFirstChild<C.ChartText>()
-                        ?.GetFirstChild<C.RichText>()
-                        ?.GetFirstChild<Drawing.Paragraph>();
-                    if (richPara == null) { unsupported.Add(key); break; }
-                    var newPPr = new Drawing.ParagraphProperties(value);
-                    var oldPPr = richPara.GetFirstChild<Drawing.ParagraphProperties>();
-                    // CT_TextParagraph: pPr is always the first child (before
-                    // a:r / a:endParaRPr), so replace-in-place / prepend.
-                    if (oldPPr != null) oldPPr.InsertAfterSelf(newPPr);
-                    else richPara.PrependChild(newPPr);
-                    oldPPr?.Remove();
-                    // BuildChartTitle hard-codes the rendering run-level rPr to
-                    // 14pt bold. When the source carried its title size/bold ONLY
-                    // on the paragraph defRPr (no explicit run rPr — so the Reader
-                    // emits title.pPr but no title.size/title.bold), that hard-coded
-                    // run overrides the captured defRPr and the title rebuilds 14pt
-                    // bold instead of the source's size. Sync the run's FontSize/
-                    // Bold to the captured defRPr so the defRPr governs again. An
-                    // explicit title.size/title.bold (source DID carry a run rPr)
-                    // is applied by the title.* fan-out and is unaffected.
-                    var newDefRp = newPPr.GetFirstChild<Drawing.DefaultRunProperties>();
-                    var titleRunRp = richPara.GetFirstChild<Drawing.Run>()?.RunProperties;
-                    if (newDefRp != null && titleRunRp != null
-                        && !properties.ContainsKey("title.size") && !properties.ContainsKey("titlesize"))
-                    {
-                        if (newDefRp.FontSize?.HasValue == true)
-                            titleRunRp.FontSize = newDefRp.FontSize.Value;
-                        else
-                            titleRunRp.FontSize = null;
-                    }
-                    if (newDefRp != null && titleRunRp != null
-                        && !properties.ContainsKey("title.bold") && !properties.ContainsKey("titlebold"))
-                    {
-                        if (newDefRp.Bold?.HasValue == true)
-                            titleRunRp.Bold = newDefRp.Bold.Value;
-                        else
-                            titleRunRp.Bold = null;
-                    }
+                    if (!ApplyTitlePPr(ctitle, value,
+                            skipSize: properties.ContainsKey("title.size") || properties.ContainsKey("titlesize"),
+                            skipBold: properties.ContainsKey("title.bold") || properties.ContainsKey("titlebold")))
+                        unsupported.Add(key);
+                    break;
+                }
+
+                case "axistitle.ppr":
+                {
+                    if (string.IsNullOrWhiteSpace(value)) break;
+                    var vAxisTitle = chart.GetFirstChild<C.PlotArea>()
+                        ?.GetFirstChild<C.ValueAxis>()?.GetFirstChild<C.Title>();
+                    if (!ApplyTitlePPr(vAxisTitle, value, skipSize: false, skipBold: false))
+                        unsupported.Add(key);
+                    break;
+                }
+
+                case "cattitle.ppr":
+                {
+                    if (string.IsNullOrWhiteSpace(value)) break;
+                    var cAxisTitle = chart.GetFirstChild<C.PlotArea>()
+                        ?.GetFirstChild<C.CategoryAxis>()?.GetFirstChild<C.Title>();
+                    if (!ApplyTitlePPr(cAxisTitle, value, skipSize: false, skipBold: false))
+                        unsupported.Add(key);
                     break;
                 }
 
@@ -3255,6 +3274,43 @@ internal static partial class ChartHelper
                 defRp.AppendChild(new Drawing.EastAsianFont { Typeface = value });
                 break;
         }
+    }
+
+    /// <summary>
+    /// Replace a chart/axis title's paragraph properties (c:title/c:tx/c:rich/a:p/
+    /// a:pPr) with the captured <paramref name="pPrXml"/>, then sync the rendering
+    /// run-level rPr's FontSize/Bold to the new defRPr. BuildChartTitle hard-codes
+    /// the run to 14pt bold; when the source styled the title only on its defRPr,
+    /// that hard-coded run would override the restored defRPr — so the run is
+    /// reconciled to the defRPr (cleared when the defRPr is silent so it governs).
+    /// <paramref name="skipSize"/> / <paramref name="skipBold"/> leave the run's
+    /// size / weight to an explicit title.size / title.bold fan-out. Returns false
+    /// when the title has no rich paragraph to patch.
+    /// </summary>
+    private static bool ApplyTitlePPr(C.Title? titleEl, string pPrXml, bool skipSize, bool skipBold)
+    {
+        var richPara = titleEl?.GetFirstChild<C.ChartText>()
+            ?.GetFirstChild<C.RichText>()
+            ?.GetFirstChild<Drawing.Paragraph>();
+        if (richPara == null) return false;
+
+        var newPPr = new Drawing.ParagraphProperties(pPrXml);
+        var oldPPr = richPara.GetFirstChild<Drawing.ParagraphProperties>();
+        // CT_TextParagraph: pPr is always the first child (before a:r / a:endParaRPr).
+        if (oldPPr != null) oldPPr.InsertAfterSelf(newPPr);
+        else richPara.PrependChild(newPPr);
+        oldPPr?.Remove();
+
+        var newDefRp = newPPr.GetFirstChild<Drawing.DefaultRunProperties>();
+        var runRp = richPara.GetFirstChild<Drawing.Run>()?.RunProperties;
+        if (newDefRp != null && runRp != null)
+        {
+            if (!skipSize)
+                runRp.FontSize = newDefRp.FontSize?.HasValue == true ? newDefRp.FontSize.Value : null;
+            if (!skipBold)
+                runRp.Bold = newDefRp.Bold?.HasValue == true ? newDefRp.Bold.Value : (DocumentFormat.OpenXml.BooleanValue?)null;
+        }
+        return true;
     }
 
     private static C.TextProperties BuildLabelTextProperties(string spec)
