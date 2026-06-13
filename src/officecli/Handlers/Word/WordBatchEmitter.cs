@@ -495,7 +495,15 @@ public static partial class WordBatchEmitter
         // identifies content it cannot round-trip through the existing
         // handler vocabulary (OLE runs without a carrier for the embedded
         // payload, etc). Mirrors pptx's <see cref="PptxBatchEmitter.SlideEmitContext.Unsupported"/>.
-        List<DocxUnsupportedWarning> Warnings);
+        List<DocxUnsupportedWarning> Warnings)
+    {
+        // R14-bug1+2 (cross-paragraph form): names of legacy form fields whose
+        // embedded BookmarkStart/End AddFormField recreates internally. The
+        // matching BookmarkEnd can sit in a LATER paragraph than the field
+        // (the same-paragraph name filter can't see it), so any bookmark row
+        // carrying one of these names is skipped document-wide.
+        public HashSet<string> FormFieldBookmarkNames { get; } = new(StringComparer.Ordinal);
+    }
 
     private static void EmitBody(WordHandler word, List<BatchItem> items,
                                  List<DocxUnsupportedWarning> warnings,

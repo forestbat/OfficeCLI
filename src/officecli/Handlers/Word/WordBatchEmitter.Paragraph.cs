@@ -137,8 +137,10 @@ public static partial class WordBatchEmitter
             .ToHashSet(StringComparer.Ordinal);
         if (formFieldNames.Count > 0)
         {
+            if (ctx != null)
+                foreach (var ffn in formFieldNames) ctx.FormFieldBookmarkNames.Add(ffn);
             fieldEntries = fieldEntries
-                .Where(e => !(e.Type == "bookmark"
+                .Where(e => !((e.Type == "bookmark" || e.Type == "bookmarkEnd")
                     && e.Format.TryGetValue("name", out var bn)
                     && bn != null
                     && formFieldNames.Contains(bn.ToString() ?? "")))
@@ -1003,6 +1005,12 @@ public static partial class WordBatchEmitter
                 endProps["name"] = ens;
             else
                 return true; // unnamed end marker — start emit recreates pair
+            // A legacy form field's embedded bookmark closes in a LATER
+            // paragraph than the field run; AddFormField already recreated
+            // the whole pair, so this stray end would fail with "no matching
+            // open bookmarkStart" on replay.
+            if (ctx != null && ctx.FormFieldBookmarkNames.Contains(endProps["name"]))
+                return true;
             endProps["end"] = "true";
             items.Add(new BatchItem
             {
