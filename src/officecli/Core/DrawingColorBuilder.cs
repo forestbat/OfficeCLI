@@ -119,17 +119,28 @@ internal static class DrawingColorBuilder
             if (!int.TryParse(numText, out var raw))
                 throw new ArgumentException(
                     $"Invalid color transform '{token}': value must be a non-negative integer.");
+            // OOXML splits the transforms into two schema types:
+            //   shade / tint / alpha  → ST_PositiveFixedPercentage (0..100%)
+            //   lumMod / lumOff / satMod / satOff / hueMod / hueOff
+            //                         → ST_Percentage (may exceed 100%; e.g.
+            //                           satMod200% to over-saturate)
+            // Capping the Mod/Off family at 100% wrongly rejected the
+            // round-trip form Get emits for these (satMod=200000 → "satMod200"),
+            // surfacing as "percentage 200 out of range 0-100" and aborting
+            // the replay. Only the fixed-percentage family stays clamped 0..100.
+            bool fixedPct = name.ToLowerInvariant() is "shade" or "tint" or "alpha";
+            int maxPct = fixedPct ? 100 : 1000;       // 1000% headroom for ST_Percentage
+            int maxRaw = fixedPct ? 100000 : 1000000;
             int pct;
             if (eqForm)
             {
-                if (raw < 0 || raw > 100000)
+                if (raw < 0 || raw > maxRaw)
                     throw new ArgumentException(
-                        $"Invalid color transform '{token}': raw value {raw} out of range 0-100000 (OOXML ST_PositivePercentage).");
+                        $"Invalid color transform '{token}': raw value {raw} out of range 0-{maxRaw}.");
                 // OOXML raw units are 1/1000 of a percent. Integer division
                 // truncates values 1..999 to 0 (lumMod=75 raw → 0 instead of
                 // 7.5%). Reject sub-1000 raw values so callers can't silently
-                // get a no-op; the percentage form (lumModN, N=0..100) covers
-                // that range with full precision.
+                // get a no-op; the percentage form (lumModN) covers that range.
                 if (raw > 0 && raw < 1000)
                     throw new ArgumentException(
                         $"Invalid color transform '{token}': raw value {raw} below 1000 truncates to 0%; use percentage form '{name}{raw / 1000}' or raw value >= 1000.");
@@ -137,9 +148,9 @@ internal static class DrawingColorBuilder
             }
             else
             {
-                if (raw < 0 || raw > 100)
+                if (raw < 0 || raw > maxPct)
                     throw new ArgumentException(
-                        $"Invalid color transform '{token}': percentage {raw} out of range 0-100.");
+                        $"Invalid color transform '{token}': percentage {raw} out of range 0-{maxPct}.");
                 pct = raw;
             }
             // Canonicalize: lumMod → lumMod (lowercase first letter? OOXML uses
