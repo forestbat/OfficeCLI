@@ -617,6 +617,10 @@ public static partial class WordBatchEmitter
                 {
                     // BUG-DUMP7-11: include inline w:sdt carrier children.
                     if (c.Type == "sdt") return true;
+                    // Spanning bookmarks anchored on the section paragraph:
+                    // dropping the start leaves the matching end dangling
+                    // (replay fails with "no matching open bookmarkStart").
+                    if (c.Type == "bookmark" || c.Type == "bookmarkEnd") return true;
                     // Anchored cover art surfaces as type="picture" when the
                     // drawing carries an image blip — include it for the
                     // drawing-carrier branch below.
@@ -646,6 +650,11 @@ public static partial class WordBatchEmitter
                 var carrierPath = $"/body/p[last()]";
                 foreach (var run in carrierRuns)
                 {
+                    if (run.Type == "bookmark" || run.Type == "bookmarkEnd")
+                    {
+                        TryEmitBookmarkRun(run, carrierPath, items, ctx);
+                        continue;
+                    }
                     // BUG-DUMP7-11: inline SDT carrier — same prop whitelist
                     // as the body-paragraph inline-SDT branch.
                     if (run.Type == "sdt")
@@ -1123,15 +1132,19 @@ public static partial class WordBatchEmitter
                 return true;
             }
         }
+        var brkProps = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["type"] = string.IsNullOrEmpty(breakType) ? "line" : breakType!
+        };
+        if (run.Format.TryGetValue("breakClear", out var brkClear)
+            && brkClear?.ToString() is { Length: > 0 } brkClearS)
+            brkProps["breakClear"] = brkClearS;
         items.Add(new BatchItem
         {
             Command = "add",
             Parent = paraTargetPath,
             Type = "pagebreak",
-            Props = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
-            {
-                ["type"] = string.IsNullOrEmpty(breakType) ? "line" : breakType!
-            }
+            Props = brkProps
         });
         return true;
     }

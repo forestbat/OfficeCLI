@@ -246,6 +246,31 @@ public static partial class WordBatchEmitter
         // so the loss is visible (mirrors EmitAuxiliaryPartsScan's philosophy:
         // a noisy warning beats silent data loss).
         WarnOrphanNotes(word, items, warnings);
+        // Dangling bookmark closes: a spanning bookmark whose START sits in a
+        // position the emitter has no placement for (a direct table child
+        // between rows, a dropped wrapper) leaves its `end=true` row behind,
+        // and AddBookmark fails the whole step ("no matching open
+        // bookmarkStart"). Strip such closes and surface the loss — a
+        // one-sided range is unrepresentable anyway.
+        var openedBookmarks = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var it in items)
+        {
+            if (it.Command != "add" || it.Type != "bookmark" || it.Props == null) continue;
+            if (!it.Props.TryGetValue("name", out var bmn) || string.IsNullOrEmpty(bmn)) continue;
+            if (!it.Props.ContainsKey("end")) openedBookmarks.Add(bmn);
+        }
+        items.RemoveAll(it =>
+        {
+            if (it.Command != "add" || it.Type != "bookmark" || it.Props == null) return false;
+            if (!it.Props.ContainsKey("end")) return false;
+            if (!it.Props.TryGetValue("name", out var bmn) || string.IsNullOrEmpty(bmn)) return false;
+            if (openedBookmarks.Contains(bmn)) return false;
+            warnings.Add(new DocxUnsupportedWarning(
+                Element: "bookmark.end",
+                Path: it.Parent ?? "/body",
+                Reason: $"bookmark end '{bmn}' has no emitted start (start sits at an unplaceable position, e.g. between table rows); the range marker pair is dropped"));
+            return true;
+        });
         return (items, warnings);
     }
 
