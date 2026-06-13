@@ -1613,6 +1613,13 @@ public static partial class WordBatchEmitter
                     || k is "lineSpacing" or "lineRule" or "spaceBefore" or "spaceAfter"
                           or "spaceBeforeLines" or "spaceAfterLines" or "alignment" or "align"
                           or "direction" or "leftIndent" or "rightIndent" or "firstLine"
+                          // canonical paragraph indent keys (the names the
+                          // paragraph readback actually emits — the legacy
+                          // aliases above never matched, so a footnote whose
+                          // first paragraph overrides the style indent with
+                          // <w:ind w:left="0" w:firstLine="0"/> re-wrapped on
+                          // replay and shifted the page bottom):
+                          or "indent" or "firstLineIndent" or "hangingIndent"
                           or "hanging" or "contextualSpacing" or "spaceBeforeAuto" or "spaceAfterAuto";
                 if (isParaKey && !noteProps.ContainsKey(k))
                     noteProps[k] = v.ToString()!;
