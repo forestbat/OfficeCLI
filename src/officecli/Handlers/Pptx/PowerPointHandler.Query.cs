@@ -974,6 +974,23 @@ public partial class PowerPointHandler
                 if (ngXfrm?.Extents?.Cy != null) ngGrpNode.Format["height"] = FormatEmu(ngXfrm.Extents.Cy.Value);
                 if (ngXfrm?.Rotation != null && ngXfrm.Rotation.Value != 0)
                     ngGrpNode.Format["rotation"] = $"{ngXfrm.Rotation.Value / 60000.0:0.##}";
+                // R53 bt-4: surface <a:chOff>/<a:chExt> when they diverge from the
+                // outer rect — mirrors BuildGroupNode (NodeBuilder) and the
+                // top-level group branch below. This inline nested-group builder
+                // formerly omitted it, so dump→replay of a group nested inside
+                // another group defaulted its child coord system to the outer rect
+                // and every inner shape silently moved/scaled (timelines collapsed,
+                // matrices scattered). Only top-level groups round-tripped right.
+                var ngChOff = ngXfrm?.ChildOffset;
+                var ngChExt = ngXfrm?.ChildExtents;
+                if (ngChOff != null
+                    && ((ngChOff.X?.Value ?? 0) != (ngXfrm!.Offset?.X?.Value ?? 0)
+                        || (ngChOff.Y?.Value ?? 0) != (ngXfrm.Offset?.Y?.Value ?? 0)))
+                    ngGrpNode.Format["childOffset"] = $"{ngChOff.X?.Value ?? 0},{ngChOff.Y?.Value ?? 0}";
+                if (ngChExt != null
+                    && ((ngChExt.Cx?.Value ?? 0) != (ngXfrm!.Extents?.Cx?.Value ?? 0)
+                        || (ngChExt.Cy?.Value ?? 0) != (ngXfrm.Extents?.Cy?.Value ?? 0)))
+                    ngGrpNode.Format["childExtent"] = $"{ngChExt.Cx?.Value ?? 0},{ngChExt.Cy?.Value ?? 0}";
                 if (depth > 0)
                     BuildChildNodesIntoContainer(
                         ngGrpNode.Children, ngCurrent, ngSlidePart, ngSlideIdx, depth - 1,
