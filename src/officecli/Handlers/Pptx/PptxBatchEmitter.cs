@@ -1311,6 +1311,32 @@ public static partial class PptxBatchEmitter
         catch { return sliceXml; }
     }
 
+    // Prefix -> URI table used to repair a slice substring whose prefixes were
+    // declared on the SOURCE slide root (and so are absent when the slice is
+    // lifted out as standalone text). The ambient four (p/a/r/mc) plus the
+    // well-known Office extension namespaces that appear inside slide extLst /
+    // mc:AlternateContent fragments. Without the extension entries, an
+    // `append`-action fragment carrying e.g. <p14:creationId> with no
+    // xmlns:p14 failed XDocument.Parse in NormalizeSlideRawSlice (unbound
+    // prefix) — the normalize bailed and emitted the undeclared fragment, which
+    // then broke batch replay. The whole-part `replace` raw-sets were unaffected
+    // because the SDK serializes the full part with the decl on its root.
+    private static readonly (string Prefix, string Uri)[] SliceXmlnsBindings =
+    {
+        ("p",  "http://schemas.openxmlformats.org/presentationml/2006/main"),
+        ("a",  "http://schemas.openxmlformats.org/drawingml/2006/main"),
+        ("r",  "http://schemas.openxmlformats.org/officeDocument/2006/relationships"),
+        ("mc", "http://schemas.openxmlformats.org/markup-compatibility/2006"),
+        ("p14",  "http://schemas.microsoft.com/office/powerpoint/2010/main"),
+        ("p15",  "http://schemas.microsoft.com/office/powerpoint/2012/main"),
+        ("p16",  "http://schemas.microsoft.com/office/powerpoint/2015/main"),
+        ("p159", "http://schemas.microsoft.com/office/powerpoint/2015/09/main"),
+        ("p188", "http://schemas.microsoft.com/office/powerpoint/2018/8/main"),
+        ("a14",  "http://schemas.microsoft.com/office/drawing/2010/main"),
+        ("a16",  "http://schemas.microsoft.com/office/drawing/2014/main"),
+        ("am3d", "http://schemas.microsoft.com/office/drawing/2017/model3d"),
+    };
+
     private static string EnsureAmbientXmlnsOnRootTag(string xml)
     {
         if (string.IsNullOrEmpty(xml) || xml[0] != '<') return xml;
@@ -1322,14 +1348,7 @@ public static partial class PptxBatchEmitter
         // is NOT already declared on the root tag, inject the canonical
         // xmlns:<prefix>="<uri>" pair. Pattern match keeps the helper text-
         // only so we don't need a parse for the parse precondition.
-        var ambientUris = new (string Prefix, string Uri)[]
-        {
-            ("p",  "http://schemas.openxmlformats.org/presentationml/2006/main"),
-            ("a",  "http://schemas.openxmlformats.org/drawingml/2006/main"),
-            ("r",  "http://schemas.openxmlformats.org/officeDocument/2006/relationships"),
-            ("mc", "http://schemas.openxmlformats.org/markup-compatibility/2006"),
-        };
-        foreach (var (prefix, uri) in ambientUris)
+        foreach (var (prefix, uri) in SliceXmlnsBindings)
         {
             // Already declared somewhere in the head? Look for xmlns:<prefix>=.
             if (head.Contains($"xmlns:{prefix}=\"", StringComparison.Ordinal)) continue;
