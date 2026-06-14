@@ -1093,7 +1093,19 @@ public partial class WordHandler
                   // so a CJK run lost its eastAsia hint (different font
                   // metrics, re-wrapped table rows) while the mark gained a
                   // phantom one. charspacing/charscale are rPr-bound too.
-                  or "font.hint" or "charspacing" or "charscale" or "w":
+                  or "font.hint" or "charspacing" or "charscale" or "w"
+                  // BUG-DUMP-R46-SCAPS: run on/off typography toggles. The
+                  // single-run-collapse dump folds these into `set <paragraph>`,
+                  // but they were absent from this run-key case and fell through
+                  // to the dotted-pPr fallback (applied to the ¶ mark only, never
+                  // the visible runs) — so a small-caps / caps / vanish table
+                  // header lost its effect on round-trip. ApplyRunFormatting
+                  // handles each; route them to the runs like bold/italic. (rtl /
+                  // shading omitted — those carry paragraph-level meaning and are
+                  // handled by ApplyParagraphLevelProperty / the direction cascade.)
+                  or "caps" or "smallcaps" or "vanish" or "dstrike"
+                  or "outline" or "shadow" or "emboss" or "imprint"
+                  or "noproof" or "superscript" or "subscript":
                     // Apply run-level formatting to all runs in the paragraph.
                     var allParaRuns = para.Descendants<Run>().ToList();
                     // Paragraph-mark run properties (<w:rPr> inside <w:pPr>)
