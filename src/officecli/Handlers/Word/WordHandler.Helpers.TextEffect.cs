@@ -168,7 +168,38 @@ public partial class WordHandler
         { ApplyW14TextEffect(run, "glow", wgVal, BuildW14Glow); any = true; }
         if (properties.TryGetValue("w14reflection", out var wrVal))
         { ApplyW14TextEffect(run, "reflection", wrVal, BuildW14Reflection); any = true; }
+        // OpenType typographic toggles (ligatures / numForm / numSpacing). Unlike
+        // the effect family above, "none" is a real ST_ enum value — see
+        // ApplyW14ValEffect — so these go through a dedicated apply that never
+        // strips the element.
+        if (properties.TryGetValue("ligatures", out var ligVal))
+        { ApplyW14ValEffect(run, "ligatures", ligVal); any = true; }
+        if (properties.TryGetValue("numForm", out var nfVal) || properties.TryGetValue("numform", out nfVal))
+        { ApplyW14ValEffect(run, "numForm", nfVal); any = true; }
+        if (properties.TryGetValue("numSpacing", out var nsVal) || properties.TryGetValue("numspacing", out nsVal))
+        { ApplyW14ValEffect(run, "numSpacing", nsVal); any = true; }
         return any;
+    }
+
+    // Apply an OpenType typographic w14 toggle (ligatures / numForm / numSpacing)
+    // by writing <w14:NAME w14:val="VALUE"/> verbatim. These carry an ST_ enum
+    // where "none" means "explicitly disable" (overriding an inherited
+    // docDefaults value) — NOT the strip-the-element sentinel ApplyW14TextEffect
+    // uses for the effect family. Reusing that path would drop a run's
+    // ligatures="none" and let it inherit docDefaults, the very regression this
+    // round-trips.
+    internal static void ApplyW14ValEffect(Run run, string effectName, string value)
+    {
+        var rPr = EnsureRunProperties(run);
+        RemoveW14Element(rPr, effectName);
+        var element = new OpenXmlUnknownElement("w14", "tmp", W14Ns);
+        element.InnerXml = $@"<w14:{effectName} xmlns:w14=""{W14Ns}"" w14:val=""{System.Security.SecurityElement.Escape(value)}""/>";
+        var child = element.FirstChild;
+        if (child != null)
+        {
+            child.Remove();
+            InsertW14ChildInSchemaOrder(rPr, child);
+        }
     }
 
     internal static void ApplyW14TextEffect(Run run, string effectName, string value, Func<string, string> builder)
@@ -330,6 +361,23 @@ public partial class WordHandler
                         <= 90000 => "half",
                         _ => "full"
                     };
+                    break;
+                }
+                // OpenType typographic toggles carrying an ST_ enum val. "none"
+                // is a REAL value here (the run explicitly disables the feature to
+                // override an inherited docDefaults setting), so it must round-trip
+                // verbatim — surfacing the key keeps the run on the explicit raw
+                // emit path (BUG-W14-EFFECTS check in WordBatchEmitter.Paragraph.cs)
+                // and AddRun re-applies it via ApplyW14ValEffect. Dropping a
+                // run's ligatures="none" let it inherit docDefaults
+                // "standardContextual", shifting glyph metrics enough to reflow a
+                // paragraph and cascade a whole-page pagination drift.
+                case "ligatures":
+                case "numForm":
+                case "numSpacing":
+                {
+                    var valAttr = child.GetAttributes().FirstOrDefault(a => a.LocalName == "val");
+                    node.Format[child.LocalName] = valAttr.Value ?? "none";
                     break;
                 }
             }

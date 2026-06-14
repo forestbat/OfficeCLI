@@ -2029,6 +2029,14 @@ public partial class WordHandler
         }
 
         newRun.AppendChild(newRProps);
+        // Run-level w14 effects + OpenType typographic toggles (textOutline/
+        // textFill/w14shadow/w14glow/w14reflection/ligatures/numForm/numSpacing).
+        // AddParagraph routes these through ApplyW14Effects for its implicit run;
+        // the explicit `add r` path must do the same or a multi-run paragraph
+        // (whose runs each emit as `add r`) drops them. These keys are listed in
+        // addRunCuratedBare below so the bare-key fallback doesn't also flag them
+        // UNSUPPORTED after ApplyW14Effects consumes them.
+        ApplyW14Effects(newRun, properties);
         // BUG-DUMP7-01: a run carrying `sym=font:hex` carries a <w:sym/> glyph.
         // The dump surfaces the resolved Unicode codepoint of that glyph as the
         // LEADING character of `text` (GetRunText walks children in order: the
@@ -2128,6 +2136,8 @@ public partial class WordHandler
             "rstyle", "rStyle",
             "annotationRef", "annotationref",
             "textoutline", "textfill", "w14shadow", "w14glow", "w14reflection",
+            // OpenType typographic toggles applied via ApplyW14Effects above.
+            "ligatures", "numform", "numspacing",
             "field", "formula", "ref", "id",
             // BUG-DUMP5-10: consumed up-front for the w:ins/w:del wrapper
             // emit at the bottom of this method. Bare `revision` is no
