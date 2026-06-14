@@ -2799,6 +2799,43 @@ public partial class PowerPointHandler
                         cell.Append(tcPr);
                     }
 
+                    // Verbatim border-line re-injection (border.<edge>.raw). The
+                    // dump readback captures each lnL/lnR/lnT/lnB/lnTlToBr/lnBlToTr
+                    // OuterXml; the granular color/width/dash path can't represent
+                    // an invisible <a:noFill/> border (it skips it) nor cap/algn/
+                    // prstDash/round/head-tail-end. Splice the parsed element in
+                    // verbatim, replacing whatever the granular path may have built.
+                    // tcPr enforces CT_TableCellProperties child order internally
+                    // when the typed property setter is used.
+                    if (k.EndsWith(".raw", StringComparison.Ordinal)
+                        && !string.IsNullOrWhiteSpace(value))
+                    {
+                        switch (k)
+                        {
+                            case "border.left.raw":
+                                tcPr.LeftBorderLineProperties = new Drawing.LeftBorderLineProperties(value);
+                                break;
+                            case "border.right.raw":
+                                tcPr.RightBorderLineProperties = new Drawing.RightBorderLineProperties(value);
+                                break;
+                            case "border.top.raw":
+                                tcPr.TopBorderLineProperties = new Drawing.TopBorderLineProperties(value);
+                                break;
+                            case "border.bottom.raw":
+                                tcPr.BottomBorderLineProperties = new Drawing.BottomBorderLineProperties(value);
+                                break;
+                            case "border.tl2br.raw":
+                                tcPr.TopLeftToBottomRightBorderLineProperties = new Drawing.TopLeftToBottomRightBorderLineProperties(value);
+                                break;
+                            case "border.tr2bl.raw":
+                                tcPr.BottomLeftToTopRightBorderLineProperties = new Drawing.BottomLeftToTopRightBorderLineProperties(value);
+                                break;
+                            default:
+                                throw new ArgumentException($"Unknown border raw key: '{k}'.");
+                        }
+                        break;
+                    }
+
                     // Handle "none" — remove border by adding NoFill
                     bool isNone = value.Equals("none", StringComparison.OrdinalIgnoreCase)
                         || value.Equals("false", StringComparison.OrdinalIgnoreCase);

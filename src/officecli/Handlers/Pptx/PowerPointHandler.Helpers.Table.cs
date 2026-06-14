@@ -26,6 +26,22 @@ public partial class PowerPointHandler
         ReadBorderLine(tcPr.BottomBorderLineProperties, "border.bottom", node);
         ReadBorderLine(tcPr.TopLeftToBottomRightBorderLineProperties, "border.tl2br", node);
         ReadBorderLine(tcPr.BottomLeftToTopRightBorderLineProperties, "border.tr2bl", node);
+
+        // Verbatim border-line passthrough. The granular border.<edge>.* keys
+        // model only color/width/dash/compound and SKIP a line entirely when it
+        // carries <a:noFill/> (invisible border) — so an intentional invisible
+        // border was dropped on rebuild and PowerPoint fell back to DEFAULT
+        // VISIBLE borders. The granular path also drops cap/algn attrs and the
+        // prstDash/custDash/round/headEnd/tailEnd children. Capture each present
+        // border line's OuterXml so the Add/Set border.<edge>.raw key can
+        // re-inject it verbatim (attrs + children + the noFill/solidFill choice).
+        // CONSISTENCY(border-line-raw-passthrough): mirrors lstStyleRaw / effectsRaw.
+        ReadBorderLineRaw(tcPr.LeftBorderLineProperties, "border.left.raw", node);
+        ReadBorderLineRaw(tcPr.RightBorderLineProperties, "border.right.raw", node);
+        ReadBorderLineRaw(tcPr.TopBorderLineProperties, "border.top.raw", node);
+        ReadBorderLineRaw(tcPr.BottomBorderLineProperties, "border.bottom.raw", node);
+        ReadBorderLineRaw(tcPr.TopLeftToBottomRightBorderLineProperties, "border.tl2br.raw", node);
+        ReadBorderLineRaw(tcPr.BottomLeftToTopRightBorderLineProperties, "border.tr2bl.raw", node);
         // border.all summary when all four edges are uniform — schema declares
         // it as a gettable convenience alongside the per-edge keys.
         if (node.Format.TryGetValue("border.top", out var bt)
@@ -99,6 +115,18 @@ public partial class PowerPointHandler
         else parts.Add("solid");
         if (color is not null) parts.Add(color);
         node.Format[prefix] = string.Join(" ", parts);
+    }
+
+    /// <summary>
+    /// Capture a border line element's full OuterXml verbatim (attrs + children)
+    /// into the given Format key, so the Add/Set border.&lt;edge&gt;.raw path can
+    /// re-inject it without the granular reducer dropping noFill / cap / algn /
+    /// prstDash / round / head-tail-end. Emits only when the element is present.
+    /// </summary>
+    private static void ReadBorderLineRaw(OpenXmlCompositeElement? lineProps, string key, DocumentNode node)
+    {
+        if (lineProps == null) return;
+        node.Format[key] = lineProps.OuterXml;
     }
 
     // BUG-R6-C: strict GUID format check for direct passthrough.
