@@ -2463,10 +2463,22 @@ public static partial class WordBatchEmitter
         // match the source byte-for-byte. Only keys already in `props` are
         // overwritten — the blank-baseline skip above and the pageSize=none /
         // pageMargin=none sentinels below stay in force.
+        // BUG-DUMP-R29-PGSZ: emit each PRESENT geometry key's exact twips even when
+        // the cm-based blank-baseline skip above dropped it. Get's canonical cm
+        // string collapses near-equal widths to the same value (A4 source 11907
+        // twips and the blank template's 11906 twips both render "21cm"), so the
+        // skip wrongly treated the source as "same as blank" and emitted NO
+        // pageWidth — the rebuild kept the blank's 11906. That 1-twip narrower
+        // page is enough to flip a borderline line wrap, adding a line that
+        // cascades into whole-document pagination drift. Sourcing straight from
+        // the sectPr twips (bare numbers parse back as exact twips) guarantees the
+        // rebuilt pgSz/pgMar match the source byte-for-byte. rawTwips only holds
+        // keys whose sectPr child is present, so a source that OMITS pgSz/pgMar
+        // still falls through to the pageSize=none / pageMargin=none sentinels.
         var rawTwips = word.BodySectionPageGeometryTwips();
         foreach (var (gk, gv) in rawTwips)
         {
-            if (props.ContainsKey(gk)) props[gk] = gv;
+            props[gk] = gv;
         }
         // pgBorders fold: Get emits pgBorders.<side> + pgBorders.<side>.sz/
         // .color/.space as separate keys (mirrors pbdr.* / border.*). Set's
