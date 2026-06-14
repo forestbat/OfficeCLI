@@ -80,6 +80,17 @@ internal static class ParseHelpers
     };
 
     /// <summary>
+    /// Resolve a named color (CSS keyword / OOXML a:prstClr preset that overlaps
+    /// the CSS set, e.g. <c>black</c>/<c>white</c>/<c>red</c>) to its 6-digit hex,
+    /// or <c>null</c> when the name is unknown. Used by pptx a:prstClr readback so
+    /// preset-color fills round-trip as concrete hex instead of being dropped.
+    /// </summary>
+    internal static string? TryGetNamedColorHex(string? name)
+        => !string.IsNullOrWhiteSpace(name) && NamedColors.TryGetValue(name.Trim(), out var hex)
+            ? hex
+            : null;
+
+    /// <summary>
     /// Try to resolve a named color, <c>rgb()</c>, <c>rgba()</c>, <c>hsl()</c>,
     /// or <c>hsla()</c> notation to a 6-digit hex RGB plus an optional alpha
     /// byte. Returns <c>null</c> if the input is none of the above (callers

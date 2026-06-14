@@ -89,8 +89,56 @@ public partial class PowerPointHandler
                 return AppendColorTransforms(name, schemeEl);
             }
         }
+        return ReadSysOrPresetColor(solidFill);
+    }
+
+    /// <summary>
+    /// Read an a:sysClr (system color) or a:prstClr (preset color) child from a
+    /// color parent, returning a canonical hex (with any +lumMod/+shade/… transform
+    /// suffix) or null when neither is present. sysClr resolves to its lastClr —
+    /// the concrete RGB the host app last rendered, which is exactly what we want
+    /// the round-trip to reproduce; prstClr resolves to its named-color hex when
+    /// known, else the raw preset name (Add/Set resolves both forms).
+    ///
+    /// Before this, both element types fell through to a bare `return null`, so a
+    /// shape filled with `sysClr "window"` (white) or `prstClr "black"` lost its
+    /// fill entirely on Get → dump → rebuild and rendered as an INHERIT/no-fill
+    /// transparent box.
+    /// </summary>
+    internal static string? ReadSysOrPresetColor(OpenXmlElement? parent)
+    {
+        if (parent == null) return null;
+        var sysEl = parent.GetFirstChild<Drawing.SystemColor>();
+        if (sysEl != null)
+        {
+            var last = sysEl.LastColor?.Value;
+            string? hex = !string.IsNullOrEmpty(last)
+                ? last
+                : MapSystemColorFallback(sysEl.Val?.InnerText ?? sysEl.GetAttribute("val", "").Value);
+            if (!string.IsNullOrEmpty(hex))
+                return AppendColorTransforms(hex!.ToUpperInvariant(), sysEl);
+        }
+        var prstEl = parent.GetFirstChild<Drawing.PresetColor>();
+        if (prstEl != null)
+        {
+            var name = prstEl.Val?.InnerText;
+            if (string.IsNullOrEmpty(name)) name = prstEl.GetAttribute("val", "").Value;
+            if (!string.IsNullOrEmpty(name))
+                return AppendColorTransforms(ParseHelpers.TryGetNamedColorHex(name) ?? name, prstEl);
+        }
         return null;
     }
+
+    // sysClr without a lastClr attribute is rare (PowerPoint always writes one),
+    // but fall back to the two system colors that actually appear in documents so
+    // the fill never silently vanishes. Other ST_SystemColorVal values are
+    // chrome-only and don't occur as shape fills.
+    private static string? MapSystemColorFallback(string? val) => val switch
+    {
+        "window" => "FFFFFF",
+        "windowText" => "000000",
+        _ => null,
+    };
 
     /// <summary>
     /// Read a color value from an a:highlight element, returning either hex RGB
@@ -173,7 +221,7 @@ public partial class PowerPointHandler
                 return AppendColorTransforms(name, schemeEl);
             }
         }
-        return null;
+        return ReadSysOrPresetColor(parent);
     }
 
     /// <summary>
