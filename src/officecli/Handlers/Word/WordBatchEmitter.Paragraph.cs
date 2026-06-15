@@ -643,6 +643,15 @@ public static partial class WordBatchEmitter
                     // dropping the start leaves the matching end dangling
                     // (replay fails with "no matching open bookmarkStart").
                     if (c.Type == "bookmark" || c.Type == "bookmarkEnd") return true;
+                    // BUG-DUMP-SECTBR: a pure page/column/line break run surfaces
+                    // as type "break" with empty Text (the main run loop routes it
+                    // through TryEmitBreakRun). The "page break, then a new section"
+                    // idiom — <w:p><w:pPr><w:sectPr/></w:pPr><w:r><w:br
+                    // w:type="page"/></w:r></w:p> — puts that break on the
+                    // section-carrier paragraph, where the run/r/picture gate below
+                    // dropped it, collapsing the forced page break and reflowing the
+                    // section boundary. Keep it for the TryEmitBreakRun call below.
+                    if (c.Type == "break") return true;
                     // Anchored cover art surfaces as type="picture" when the
                     // drawing carries an image blip — include it for the
                     // drawing-carrier branch below.
@@ -682,6 +691,11 @@ public static partial class WordBatchEmitter
                     // tab survives on the section-carrier paragraph.
                     if (TryEmitTabRun(run, carrierPath, items)) continue;
                     if (TryEmitPtabRun(run, carrierPath, items)) continue;
+                    // BUG-DUMP-SECTBR: a pure page/column/line break run on the
+                    // section-carrier paragraph round-trips through the same helper
+                    // the main run loop uses, so a forced page break that precedes
+                    // a section boundary survives.
+                    if (TryEmitBreakRun(word, run, parentPath, carrierPath, items, ctx)) continue;
                     // BUG-DUMP7-11: inline SDT carrier — same prop whitelist
                     // as the body-paragraph inline-SDT branch.
                     if (run.Type == "sdt")
