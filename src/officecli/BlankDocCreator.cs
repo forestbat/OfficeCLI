@@ -85,6 +85,16 @@ public static class BlankDocCreator
         );
         workbookPart.Workbook.Save();
 
+        // theme1.xml — every real Excel workbook ships a theme part, and so do
+        // officecli's docx and pptx blanks. xlsx alone omitted it, which made
+        // workbook `theme.*` edits silently no-op (ThemeHandler had no part to
+        // write into) and left theme-colour lookups empty — a cross-format
+        // parity gap. Stamp the same shared default theme here so theme.* set/get
+        // works on a freshly created workbook like it does for Word/PowerPoint.
+        var themePart = workbookPart.AddNewPart<DocumentFormat.OpenXml.Packaging.ThemePart>();
+        themePart.Theme = BuildDefaultTheme(null, null);
+        themePart.Theme.Save();
+
         OfficeCliMetadata.StampOnCreate(doc);
     }
 
