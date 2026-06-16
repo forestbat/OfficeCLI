@@ -1056,6 +1056,12 @@ public partial class WordHandler
                      "caps", "smallCaps", "strike", "dstrike",
                      "outline", "shadow", "emboss", "imprint",
                      "highlight", "vertAlign", "position", "kern",
+                     // BUG-DUMP-HLINK-SNAPGRID: snapToGrid on a hyperlink run —
+                     // on a docGrid doc, snapToGrid="0" keeps the link line off
+                     // the grid (sets its height). Missing from the pass-through
+                     // list, so it was dropped and the line re-snapped → reflow.
+                     // ApplyRunFormatting gained a snapToGrid case (BUG-15).
+                     "snapToGrid",
                  })
         {
             if (properties.TryGetValue(hlPassKey, out var hlPassVal))
