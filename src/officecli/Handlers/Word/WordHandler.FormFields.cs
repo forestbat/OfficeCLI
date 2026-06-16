@@ -112,12 +112,20 @@ public partial class WordHandler
             if (resultIdx != null) node.Format["result"] = (int)resultIdx;
             var ddDefaultIdx = dropDown.GetFirstChild<DefaultDropDownListItemIndex>()?.Val?.Value;
             if (ddDefaultIdx != null) node.Format["default"] = (int)ddDefaultIdx;
-            // Current display text follows the selection (w:result), else default.
-            var selIdx = resultIdx ?? ddDefaultIdx ?? 0;
-            var resultText = string.Join("", ff.Field.ResultRuns.SelectMany(r => r.Elements<Text>()).Select(t => t.Text));
-            node.Text = resultText;
-            if (string.IsNullOrEmpty(resultText) && selIdx < items.Count)
-                node.Text = items[(int)selIdx];
+            // BUG-DUMP-FORMDROPDOWN-RESULT: node.Text is the field's CACHED
+            // display text, read ONLY from a real result run (the runs between
+            // fldChar(separate) and fldChar(end)). A FORMDROPDOWN often has NO
+            // result run at all — the source defers the display, Word renders the
+            // selected <w:result> entry on open. The old fallback SYNTHESIZED
+            // node.Text from items[selIdx] in that case; the dump then forwarded
+            // it as text=<entry> and AddFormField fabricated a separate+result
+            // run, injecting visible text the source never had (e.g. a dropdown
+            // came back showing "（征求意见稿）" baked into the document body).
+            // Read only the genuine cache; the selection itself round-trips via
+            // Format["result"]. An absent result run leaves node.Text empty, so
+            // the emitter pins text="" and AddFormField suppresses the fabricated
+            // run — mirroring the deferred-display `evaluated` protocol.
+            node.Text = string.Join("", ff.Field.ResultRuns.SelectMany(r => r.Elements<Text>()).Select(t => t.Text));
         }
 
         // Editable status based on protection
@@ -477,7 +485,15 @@ public partial class WordHandler
                 ffData.AppendChild(ddl);
                 // Initial display text: the selected entry when a result index
                 // was given, otherwise the first item (legacy default).
-                if (string.IsNullOrEmpty(text))
+                // BUG-DUMP-FORMDROPDOWN-RESULT: honor the explicit empty pin. The
+                // dump emits text="" for a FORMDROPDOWN whose SOURCE has no cached
+                // result run (Word defers the display, rendering <w:result> on
+                // open). Re-synthesizing the selected entry here would fabricate a
+                // separate+result run the source never had — baking the dropdown
+                // value into the body as static visible text. When text is pinned
+                // empty, leave it empty so the separate/result run is suppressed
+                // below; the selection still round-trips via <w:result>.
+                if (string.IsNullOrEmpty(text) && !textPinnedEmpty)
                 {
                     if (resultIdx is int ri && ri >= 0 && ri < entries.Count)
                         text = entries[ri];
@@ -542,11 +558,19 @@ public partial class WordHandler
         var instrRun = new Run(new FieldCode(instrText) { Space = SpaceProcessingModeValues.Preserve });
         para.AppendChild(instrRun);
 
-        // Separate run
+        // Separate run. Kept unconditionally so a field created empty
+        // (text="") stays FILLABLE via a later Set (SetFormFieldResultText
+        // needs the separate boundary to insert the result run). The separate
+        // marker renders nothing on its own, so it is visually inert.
         var separateRun = new Run(new FieldChar { FieldCharType = FieldCharValues.Separate });
         para.AppendChild(separateRun);
 
-        // Result run
+        // Result run. BUG-DUMP-FORMDROPDOWN-RESULT: when the source had no
+        // cached result run (text pinned empty), emit NO result text \u2014 do NOT
+        // fabricate the selected dropdown entry (that baked the value into the
+        // body as visible text). The selection still round-trips via <w:result>;
+        // the AddFormField dropdown branch above already declines to synthesize
+        // `text` from the result index when textPinnedEmpty.
         Run? resultRun = null;
         if (!string.IsNullOrEmpty(text))
         {
