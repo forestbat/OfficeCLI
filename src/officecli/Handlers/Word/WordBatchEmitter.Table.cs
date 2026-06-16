@@ -168,6 +168,17 @@ public static partial class WordBatchEmitter
             tableProps.Remove("bandedRows");
             tableProps.Remove("bandedCols");
         }
+        else
+        {
+            // BUG-DUMP-TBLLOOK-INJECT: source <w:tblPr> had no <w:tblLook>.
+            // AddTable's style-case seeds a default 04A0 (firstRow+firstColumn)
+            // so interactive `add table style=…` applies built-in banding — but
+            // on replay that injects first-row/first-column conditional
+            // formatting onto a table whose source never had a tblLook, shifting
+            // every styled table's first row/column. Signal AddTable to leave
+            // tblLook absent. Mirrors the gridCols=0 / skipTblW opt-out flags.
+            tableProps["skipTblLook"] = "true";
+        }
         tableProps["rows"] = rows.Count.ToString();
         tableProps["cols"] = cols.ToString();
         // Source had no <w:tblGrid> or an empty one — cells (if any) carry

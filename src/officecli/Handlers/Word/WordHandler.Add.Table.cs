@@ -325,7 +325,7 @@ public partial class WordHandler
             // `data` (inline cell content), like rows/cols/colwidths, is fully
             // consumed earlier (TryGetValue("data") above) — skip it here so the
             // tblPr switch default doesn't falsely flag it as unsupported_property.
-            if (tkl is "rows" or "cols" or "columns" or "colwidths" or "gridcols" or "skiptblw" or "skipdefaultborders" or "data" || tkl.StartsWith("border")) continue;
+            if (tkl is "rows" or "cols" or "columns" or "colwidths" or "gridcols" or "skiptblw" or "skiptbllook" or "skipdefaultborders" or "data" || tkl.StartsWith("border")) continue;
             // ACCOUNTING(handler-as-truth): see AddStyle. ContainsKey only
             // when the switch will consume this key — otherwise typos would
             // leak past UnusedKeys detection.
@@ -473,7 +473,14 @@ public partial class WordHandler
                     // (it runs after this case regardless of prop order, so the
                     // seed it builds would be the authoritative hex anyway — but
                     // suppressing the default keeps a no-tblLook source clean).
-                    if (!TableHasExplicitTblLook(properties))
+                    // BUG-DUMP-TBLLOOK-INJECT: skipTblLook=true (dump-replay of a
+                    // source whose <w:tblPr> had no <w:tblLook>) also suppresses
+                    // the default seed — otherwise 04A0 leaks the style's
+                    // first-row/first-column conditional formatting onto every
+                    // styled table. Mirrors skipTblW.
+                    if (!TableHasExplicitTblLook(properties)
+                        && !((properties.TryGetValue("skiptbllook", out var stl)
+                              || properties.TryGetValue("skipTblLook", out stl)) && IsTruthy(stl)))
                     {
                         tblProps.RemoveAllChildren<TableLook>();
                         InsertTblPrChildInOrder(tblProps, new TableLook { Val = "04A0" });
