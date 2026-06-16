@@ -889,11 +889,27 @@ public partial class WordHandler
             {
                 // CONSISTENCY(hyperlink-scheme-allowlist): gate absolute URIs only.
                 Core.HyperlinkUriValidator.RequireSafeScheme(hlUrl!, "url");
-                // OPC requires RFC 3986 encoded URIs in .rels. Percent-encode
-                // any non-ASCII chars (and other reserved bytes) before
-                // handing to the SDK — leaving raw IRI chars in the rel
-                // target makes some consumers reject the file.
-                hlUri = new Uri(PercentEncodeUri(hlUrl!), UriKind.Absolute);
+                // BUG-DUMP-FILEURI-BACKSLASH: a Windows local-path target
+                // (file:///C:\Users\…\file.docx) is a valid Word hyperlink — Word
+                // writes the rel Target verbatim with backslashes. System.Uri's
+                // file-scheme parser, however, rejects a backslash DOS path
+                // ("A Dos path must be rooted, for example, 'c:\'") when re-parsed
+                // through `new Uri(...)`, which THREW and — because the throw
+                // aborted the `add hyperlink` op — dropped the hyperlink's anchor
+                // text from its paragraph (silent content loss). Normalize
+                // backslashes to forward slashes for file: URIs before
+                // percent-encoding (Word/OPC accept file:///C:/Users/…), so the
+                // target round-trips and the op succeeds.
+                var encoded = PercentEncodeUri(hlUrl!);
+                if (hlUri.IsFile && encoded.Contains('\\'))
+                    encoded = encoded.Replace('\\', '/');
+                // Defensive: never let a single malformed absolute URI throw and
+                // drop the run. If it still won't parse, fall back to the
+                // already-parsed hlUri from TryCreate above (a valid Uri), so the
+                // hyperlink survives rather than aborting the op.
+                if (!Uri.TryCreate(encoded, UriKind.Absolute, out var reparsed))
+                    reparsed = hlUri;
+                hlUri = reparsed;
             }
             else if (Uri.TryCreate(hlUrl, UriKind.Relative, out hlUri))
             {
