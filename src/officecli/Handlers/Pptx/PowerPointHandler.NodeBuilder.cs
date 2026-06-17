@@ -74,10 +74,16 @@ public partial class PowerPointHandler
             // trailing 'FF' alpha byte are present.
             return $"#{hex.ToUpperInvariant()}FF{tail}";
         }
-        if (hex.Length == 8 && hex.All(Uri.IsHexDigit) && !hadHash)
+        if (hex.Length == 8 && hex.All(Uri.IsHexDigit))
         {
-            // Already 8-digit but lacking '#' — add the leading hash.
-            return $"#{hex.ToUpperInvariant()}{tail}";
+            // 8-digit (#RRGGBBAA from FormatHexWithAlpha when the color element
+            // carries an a:alpha child). For shadow/glow the alpha is ALSO
+            // emitted as the dedicated trailing opacity field of the composite
+            // string, so leaving a non-FF alpha byte here double-encodes the
+            // same a:alpha element (contradictory "#RRGGBB80-…-50" output that
+            // re-applies alpha twice on replay). Normalise the alpha byte to FF
+            // so the trailing opacity field is the single source of truth.
+            return $"#{hex[..6].ToUpperInvariant()}FF{tail}";
         }
         return color;
     }
