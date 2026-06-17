@@ -68,23 +68,18 @@ public partial class PowerPointHandler
         var tail = plusIdx >= 0 ? color[plusIdx..] : "";
         var hadHash = head.StartsWith('#');
         var hex = hadHash ? head[1..] : head;
+        // All callers are shadow / innerShadow / glow composite strings of the
+        // form "#RRGGBB-blur-angle-dist-opacity": the alpha is carried by the
+        // dedicated trailing OPACITY field. So the color token must stay 6-digit
+        // (no alpha byte). Emitting an 8-digit "#RRGGBBAA" here double-encodes
+        // the same a:alpha element — opaque "#RRGGBBFF" alongside a non-100
+        // opacity (R1-B4 / R4-6), and re-applies alpha twice on replay. Strip
+        // any alpha byte FormatHexWithAlpha baked in, leaving opacity as the
+        // single source of truth.
         if (hex.Length == 6 && hex.All(Uri.IsHexDigit))
-        {
-            // Schema readback contract: '#RRGGBBAA'. Ensure both '#' and the
-            // trailing 'FF' alpha byte are present.
-            return $"#{hex.ToUpperInvariant()}FF{tail}";
-        }
+            return $"#{hex.ToUpperInvariant()}{tail}";
         if (hex.Length == 8 && hex.All(Uri.IsHexDigit))
-        {
-            // 8-digit (#RRGGBBAA from FormatHexWithAlpha when the color element
-            // carries an a:alpha child). For shadow/glow the alpha is ALSO
-            // emitted as the dedicated trailing opacity field of the composite
-            // string, so leaving a non-FF alpha byte here double-encodes the
-            // same a:alpha element (contradictory "#RRGGBB80-…-50" output that
-            // re-applies alpha twice on replay). Normalise the alpha byte to FF
-            // so the trailing opacity field is the single source of truth.
-            return $"#{hex[..6].ToUpperInvariant()}FF{tail}";
-        }
+            return $"#{hex[..6].ToUpperInvariant()}{tail}";
         return color;
     }
 
