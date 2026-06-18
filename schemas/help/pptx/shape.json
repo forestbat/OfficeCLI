@@ -60,7 +60,7 @@
     },
     "geometry": {
       "type": "string",
-      "description": "Preset shape geometry (default: rect).",
+      "description": "Preset shape geometry (default: rect). The values list below is illustrative, not exhaustive — many more OOXML presets are accepted (handler-as-truth): pie, arc, chord, the directional arrows (leftArrow, upArrow, downArrow), star4/star6/star8/star10, hexagon/heptagon/octagon/decagon/dodecagon, cloud, plus the callout* family, etc. Any preset the handler recognizes round-trips.",
       "aliases": [
         "preset",
         "shape"
@@ -84,6 +84,36 @@
       ],
       "readback": "preset name (e.g. \"ellipse\", \"roundRect\")",
       "enforcement": "strict"
+    },
+    "adj": {
+      "type": "string",
+      "description": "Preset adjust handles (a:prstGeom/a:avLst/a:gd). Controls the parametric proportions of a preset (arrow tail/head size, roundRect corner radius, star inner ratio, etc.). Format is \"name:formula\" where formula is an OOXML guide formula such as \"val 6000\". Multiple handles are comma-separated.",
+      "aliases": [],
+      "add": true,
+      "set": true,
+      "get": true,
+      "examples": [
+        "--prop geometry=leftArrow --prop adj=adj1:val 80000",
+        "--prop geometry=roundRect --prop adj=adj:val 16667",
+        "--prop adj=\"adj1:val 6000,adj2:val 12000\""
+      ],
+      "readback": "comma-separated name:formula handles (e.g. \"adj1:val 80000\")",
+      "enforcement": "lenient"
+    },
+    "textFill": {
+      "type": "string",
+      "description": "Fill applied to the text glyphs (a:rPr fill). Accepts a color (solid glyph fill) or round-trips a gradient. The legacy alias 'textGradient' canonicalizes to 'textFill' on readback.",
+      "aliases": [
+        "textGradient"
+      ],
+      "add": true,
+      "set": true,
+      "get": true,
+      "examples": [
+        "--prop textFill=FF0000"
+      ],
+      "readback": "canonical textFill value",
+      "enforcement": "lenient"
     },
     "textWarp": {
       "type": "string",
