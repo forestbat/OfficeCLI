@@ -64,6 +64,17 @@ public partial class PowerPointHandler
                     "custom" => "custom",
                     var other => other
                 };
+                else if (sldSz.Cx?.HasValue == true && sldSz.Cy?.HasValue == true)
+                {
+                    // No explicit @type (common on freshly-created decks) — derive the
+                    // preset from the aspect ratio so `get /` always surfaces a slideSize.
+                    var ratio = (double)sldSz.Cx.Value / sldSz.Cy.Value;
+                    node.Format["slideSize"] =
+                        System.Math.Abs(ratio - 16.0 / 9.0) < 0.02 ? "widescreen"
+                        : System.Math.Abs(ratio - 4.0 / 3.0) < 0.02 ? "standard"
+                        : System.Math.Abs(ratio - 16.0 / 10.0) < 0.02 ? "16:10"
+                        : "custom";
+                }
             }
 
             // Default font from theme
