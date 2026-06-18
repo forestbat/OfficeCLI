@@ -1808,6 +1808,15 @@ public static partial class WordBatchEmitter
         // Always emit `formula` (even when empty); ToLatex may legitimately
         // return "" for minimal m:oMath.
         eqProps["formula"] = run.Text ?? "";
+        // BUG-DUMP-EQVERBATIM: also carry the verbatim <m:oMath> so AddEquation
+        // can restore the math EXACTLY — the LaTeX formula string drops every
+        // math-run <w:rPr> (rFonts="Cambria Math" / sz) and simplifies some
+        // structures, so a formatted equation rebuilt from the string alone
+        // renders at the wrong font/size. AddEquation falls back to `formula`
+        // when this is absent or unparseable, so the interactive path is unchanged.
+        var eqXml = run.Format.TryGetValue("_omathXml", out var exv) ? exv?.ToString() : null;
+        if (!string.IsNullOrEmpty(eqXml) && eqXml.Contains("oMath", StringComparison.Ordinal))
+            eqProps["xml"] = eqXml;
         var eqParent = paraTargetPath;
         if (!string.IsNullOrEmpty(run.Path))
         {

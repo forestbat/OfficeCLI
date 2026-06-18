@@ -1691,14 +1691,44 @@ public partial class WordHandler
 
         var mode = properties.GetValueOrDefault("mode", "display");
 
+        // BUG-DUMP-EQVERBATIM: prefer the verbatim <m:oMath> the dump captured
+        // (xml prop) over the LaTeX `formula` string. The formula string is lossy
+        // — it drops the per-run <w:rPr> on every <m:r> (most consequentially
+        // rFonts="Cambria Math", so a rebuilt equation renders in the body font at
+        // the wrong size) and simplifies some structures. Fall back to
+        // FormulaParser for the interactive `add equation formula=` path (no xml).
+        M.OfficeMath BuildSourceOMath()
+        {
+            if ((properties.TryGetValue("xml", out var omml) || properties.TryGetValue("omml", out omml))
+                && !string.IsNullOrEmpty(omml) && omml.Contains("oMath", StringComparison.Ordinal))
+            {
+                try
+                {
+                    // Root is <m:oMath> → construct directly; root is <m:oMathPara>
+                    // (display capture) → lift its inner <m:oMath>.
+                    var frag = new M.OfficeMath(omml);
+                    return frag;
+                }
+                catch
+                {
+                    try
+                    {
+                        var wrapped = new M.Paragraph(omml).GetFirstChild<M.OfficeMath>()
+                            ?? new DocumentFormat.OpenXml.OpenXmlUnknownElement(omml)
+                                .Descendants<M.OfficeMath>().FirstOrDefault();
+                        if (wrapped != null) return (M.OfficeMath)wrapped.CloneNode(true);
+                    }
+                    catch { /* malformed — fall through to the formula string */ }
+                }
+            }
+            var parsed = FormulaParser.Parse(formula);
+            return parsed as M.OfficeMath ?? new M.OfficeMath(parsed.CloneNode(true));
+        }
+
         if (mode == "inline" && parent is Paragraph inlinePara)
         {
             // Insert inline math into existing paragraph
-            var mathElement = FormulaParser.Parse(formula);
-            if (mathElement is M.OfficeMath oMathInline)
-                inlinePara.AppendChild(oMathInline);
-            else
-                inlinePara.AppendChild(new M.OfficeMath(mathElement.CloneNode(true)));
+            inlinePara.AppendChild(BuildSourceOMath());
             var mathCount = inlinePara.Elements<M.OfficeMath>().Count();
             resultPath = $"{parentPath}/oMath[{mathCount}]";
             newElement = inlinePara;
@@ -1709,11 +1739,7 @@ public partial class WordHandler
             // round-trip. AddEquation accepts a hyperlink parent so the
             // emitter can replay the equation INSIDE the hyperlink rather
             // than alongside it.
-            var mathElement = FormulaParser.Parse(formula);
-            if (mathElement is M.OfficeMath oMathInline)
-                inlineHl.AppendChild(oMathInline);
-            else
-                inlineHl.AppendChild(new M.OfficeMath(mathElement.CloneNode(true)));
+            inlineHl.AppendChild(BuildSourceOMath());
             var mathCount = inlineHl.Elements<M.OfficeMath>().Count();
             resultPath = $"{parentPath}/equation[{mathCount}]";
             newElement = inlineHl;
@@ -1727,10 +1753,7 @@ public partial class WordHandler
             // others). Emit a bare m:oMath instead of m:oMathPara so the math
             // renders as inline-with-text rather than as a centered display
             // equation.
-            var mathElement = FormulaParser.Parse(formula);
-            M.OfficeMath inlineOMath = mathElement is M.OfficeMath direct
-                ? direct
-                : new M.OfficeMath(mathElement.CloneNode(true));
+            M.OfficeMath inlineOMath = BuildSourceOMath();
             var hostPara = new Paragraph(inlineOMath);
             AssignParaId(hostPara);
             if (index.HasValue)
@@ -1752,12 +1775,7 @@ public partial class WordHandler
         else
         {
             // Display mode: create m:oMathPara
-            var mathContent = FormulaParser.Parse(formula);
-            M.OfficeMath oMath;
-            if (mathContent is M.OfficeMath directMath)
-                oMath = directMath;
-            else
-                oMath = new M.OfficeMath(mathContent.CloneNode(true));
+            M.OfficeMath oMath = BuildSourceOMath();
 
             var mathPara = new M.Paragraph(oMath);
 

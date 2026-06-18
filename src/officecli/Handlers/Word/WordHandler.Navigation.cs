@@ -4892,7 +4892,14 @@ public partial class WordHandler
                         eqPath = $"{path}/equation[{inlineEqIdx + 1}]";
                         inlineEqIdx++;
                     }
-                    node.Children.Add(ElementToNode(entry.el, eqPath, depth - 1));
+                    var eqNode = ElementToNode(entry.el, eqPath, depth - 1);
+                    // BUG-DUMP-EQVERBATIM: stash the verbatim <m:oMath> so the
+                    // emitter can round-trip it exactly (the LaTeX formula string
+                    // drops per-run <w:rPr> like rFonts="Cambria Math"). Captured
+                    // here from the live element — the equation[N] path doesn't
+                    // resolve through GetElementXml.
+                    eqNode.Format["_omathXml"] = entry.el.OuterXml;
+                    node.Children.Add(eqNode);
                 }
                 else if (entry.kind == "ruby")
                 {
