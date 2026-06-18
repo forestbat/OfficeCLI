@@ -150,6 +150,22 @@ public partial class PowerPointHandler
         return sb.Length > 0 ? sb.ToString() : null;
     }
 
+    /// <summary>
+    /// R7-10: returns the re-feedable `list` companion value for a paragraph's bullet,
+    /// or null when the bullet only round-trips via bulletRaw. A char bullet bound to a
+    /// symbol font (buFont, e.g. Wingdings "l") is font-dependent and NOT re-feedable, so
+    /// it is suppressed (preserving B5's bulletRaw-only contract for custom symbol bullets);
+    /// a plain Unicode char bullet (e.g. "→") or a recognized keyword/auto-number IS emitted.
+    /// </summary>
+    private static string? ReadCanonicalListKeyword(Drawing.ParagraphProperties pProps)
+    {
+        // Char bullet with an explicit symbol font is not portable as list=.
+        if (pProps.GetFirstChild<Drawing.CharacterBullet>() != null
+            && pProps.GetFirstChild<Drawing.BulletFont>() != null)
+            return null;
+        return ReadListStyleFromPProps(pProps);
+    }
+
     private static string? ReadListStyleFromPProps(Drawing.ParagraphProperties pProps)
     {
         var noBullet = pProps.GetFirstChild<Drawing.NoBullet>();

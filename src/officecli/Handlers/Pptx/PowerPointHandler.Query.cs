@@ -492,7 +492,13 @@ public partial class PowerPointHandler
                 // paragraph-level Get exposes the same canonical bullet key set
                 // as shape-level Get (mutually exclusive).
                 var qParaBulletRaw = ReadBulletRawFromPProps(qParaPProps);
-                if (qParaBulletRaw != null) paraNode.Format["bulletRaw"] = qParaBulletRaw;
+                if (qParaBulletRaw != null)
+                {
+                    paraNode.Format["bulletRaw"] = qParaBulletRaw;
+                    // R7-10: re-feedable `list` companion when canonical (suppressed for raw chars).
+                    var qParaListCanon = ReadCanonicalListKeyword(qParaPProps);
+                    if (qParaListCanon != null) paraNode.Format["list"] = qParaListCanon;
+                }
                 else
                 {
                     var qParaList = ReadListStyleFromPProps(qParaPProps);
@@ -529,6 +535,111 @@ public partial class PowerPointHandler
                 }
             }
             return paraNode;
+        }
+
+        // R7-5: placeholder paragraph/run sub-paths — /slide[N]/placeholder[X]/paragraph[P][/run[K]]
+        // and /slide[N]/placeholder[X]/run[K]. The placeholder shape's <a:p> live under
+        // <p:txBody>; mirror the shape paraPathMatch branch but resolve via ResolvePlaceholderShape
+        // (same fix class as the master/layout child-path navigation).
+        var phRunPathMatch = Regex.Match(path, @"^/slide\[(\d+)\]/placeholder\[(\w+)\]/(?:run|r)\[(\d+)\]$");
+        if (phRunPathMatch.Success)
+        {
+            var sIdx = int.Parse(phRunPathMatch.Groups[1].Value);
+            var phId = phRunPathMatch.Groups[2].Value;
+            var rIdx = int.Parse(phRunPathMatch.Groups[3].Value);
+            var phSlideParts = GetSlideParts().ToList();
+            if (sIdx < 1 || sIdx > phSlideParts.Count)
+                throw new ArgumentException($"Slide {sIdx} not found (total: {phSlideParts.Count})");
+            var runSlidePart = phSlideParts[sIdx - 1];
+            var shape = ResolvePlaceholderShape(runSlidePart, phId);
+            var allRuns = GetAllRuns(shape);
+            if (rIdx < 1 || rIdx > allRuns.Count)
+                throw new ArgumentException($"Run {rIdx} not found (placeholder has {allRuns.Count} runs)");
+            return RunToNode(allRuns[rIdx - 1], $"/slide[{sIdx}]/placeholder[{phId}]/run[{rIdx}]", runSlidePart);
+        }
+
+        var phParaPathMatch = Regex.Match(path, @"^/slide\[(\d+)\]/placeholder\[(\w+)\]/(?:paragraph|p)\[(\d+)\](?:/(?:run|r)\[(\d+)\])?$");
+        if (phParaPathMatch.Success)
+        {
+            var sIdx = int.Parse(phParaPathMatch.Groups[1].Value);
+            var phId = phParaPathMatch.Groups[2].Value;
+            var pIdx = int.Parse(phParaPathMatch.Groups[3].Value);
+            var phSlideParts = GetSlideParts().ToList();
+            if (sIdx < 1 || sIdx > phSlideParts.Count)
+                throw new ArgumentException($"Slide {sIdx} not found (total: {phSlideParts.Count})");
+            var paraSlidePart = phSlideParts[sIdx - 1];
+            var shape = ResolvePlaceholderShape(paraSlidePart, phId);
+            var paragraphs = shape.TextBody?.Elements<Drawing.Paragraph>().ToList()
+                ?? throw new ArgumentException("Placeholder has no text body");
+            if (pIdx < 1 || pIdx > paragraphs.Count)
+                throw new ArgumentException($"Paragraph {pIdx} not found (placeholder has {paragraphs.Count} paragraphs)");
+            var para = paragraphs[pIdx - 1];
+
+            if (phParaPathMatch.Groups[4].Success)
+            {
+                var rIdx = int.Parse(phParaPathMatch.Groups[4].Value);
+                var paraRuns = para.Elements<Drawing.Run>().ToList();
+                if (rIdx < 1 || rIdx > paraRuns.Count)
+                    throw new ArgumentException($"Run {rIdx} not found (paragraph has {paraRuns.Count} runs)");
+                return RunToNode(paraRuns[rIdx - 1],
+                    $"/slide[{sIdx}]/placeholder[{phId}]/paragraph[{pIdx}]/run[{rIdx}]", paraSlidePart);
+            }
+
+            // Build the paragraph node mirroring the shape paraPathMatch branch above.
+            var phParaText = string.Join("", para.Elements<Drawing.Run>().Select(r => r.Text?.Text ?? ""));
+            var phParaNode = new DocumentNode
+            {
+                Path = $"/slide[{sIdx}]/placeholder[{phId}]/paragraph[{pIdx}]",
+                Type = "paragraph",
+                Text = phParaText
+            };
+            var phPProps = para.ParagraphProperties;
+            if (phPProps?.Alignment?.HasValue == true) phParaNode.Format["align"] = NormalizeAlignment(phPProps.Alignment.InnerText!);
+            if (phPProps?.Level?.HasValue == true) phParaNode.Format["level"] = phPProps.Level.Value.ToString(System.Globalization.CultureInfo.InvariantCulture);
+            if (phPProps?.Indent?.HasValue == true) phParaNode.Format["indent"] = FormatPptIndentPoints(phPProps.Indent.Value);
+            if (phPProps?.LeftMargin?.HasValue == true) phParaNode.Format["marginLeft"] = FormatPptIndentPoints(phPProps.LeftMargin.Value);
+            if (phPProps?.RightMargin?.HasValue == true) phParaNode.Format["marginRight"] = FormatPptIndentPoints(phPProps.RightMargin.Value);
+            if (phPProps != null)
+            {
+                var phBulletRaw = ReadBulletRawFromPProps(phPProps);
+                if (phBulletRaw != null)
+                {
+                    phParaNode.Format["bulletRaw"] = phBulletRaw;
+                    var phListCanon = ReadCanonicalListKeyword(phPProps);
+                    if (phListCanon != null) phParaNode.Format["list"] = phListCanon;
+                }
+                else
+                {
+                    var phList = ReadListStyleFromPProps(phPProps);
+                    if (phList != null) phParaNode.Format["list"] = phList;
+                }
+                var phTabs = ReadTabsFromPProps(phPProps);
+                if (phTabs != null) phParaNode.Format["tabs"] = phTabs;
+            }
+            var phLsPct = phPProps?.GetFirstChild<Drawing.LineSpacing>()?.GetFirstChild<Drawing.SpacingPercent>()?.Val?.Value;
+            if (phLsPct.HasValue) phParaNode.Format["lineSpacing"] = SpacingConverter.FormatPptLineSpacingPercent(phLsPct.Value);
+            var phLsPts = phPProps?.GetFirstChild<Drawing.LineSpacing>()?.GetFirstChild<Drawing.SpacingPoints>()?.Val?.Value;
+            if (phLsPts.HasValue) phParaNode.Format["lineSpacing"] = SpacingConverter.FormatPptLineSpacingPoints(phLsPts.Value);
+            var phSb = phPProps?.GetFirstChild<Drawing.SpaceBefore>()?.GetFirstChild<Drawing.SpacingPoints>()?.Val?.Value;
+            if (phSb.HasValue) phParaNode.Format["spaceBefore"] = SpacingConverter.FormatPptSpacing(phSb.Value);
+            var phSa = phPProps?.GetFirstChild<Drawing.SpaceAfter>()?.GetFirstChild<Drawing.SpacingPoints>()?.Val?.Value;
+            if (phSa.HasValue) phParaNode.Format["spaceAfter"] = SpacingConverter.FormatPptSpacing(phSa.Value);
+            if (phPProps?.RightToLeft?.HasValue == true)
+                phParaNode.Format["direction"] = phPProps.RightToLeft.Value ? "rtl" : "ltr";
+
+            var phRuns = para.Elements<Drawing.Run>().ToList();
+            phParaNode.ChildCount = phRuns.Count;
+            if (depth > 0)
+            {
+                int phRunIdx = 0;
+                foreach (var run in phRuns)
+                {
+                    phParaNode.Children.Add(RunToNode(run,
+                        $"/slide[{sIdx}]/placeholder[{phId}]/paragraph[{pIdx}]/run[{phRunIdx + 1}]", paraSlidePart));
+                    phRunIdx++;
+                }
+            }
+            return phParaNode;
         }
 
         // Try zoom path: /slide[N]/zoom[M]

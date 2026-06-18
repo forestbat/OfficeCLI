@@ -1143,7 +1143,15 @@ public partial class PowerPointHandler
         if (firstParaBullet != null)
         {
             var firstBulletRaw = ReadBulletRawFromPProps(firstParaBullet);
-            if (firstBulletRaw != null) node.Format["bulletRaw"] = firstBulletRaw;
+            if (firstBulletRaw != null)
+            {
+                node.Format["bulletRaw"] = firstBulletRaw;
+                // R7-10: emit a re-feedable `list` companion alongside bulletRaw when
+                // the bullet maps to a canonical keyword (suppressed for raw-char
+                // passthroughs, preserving the bulletRaw-only contract for custom bullets).
+                var firstListCanon = ReadCanonicalListKeyword(firstParaBullet);
+                if (firstListCanon != null) node.Format["list"] = firstListCanon;
+            }
             else
             {
                 var firstList = ReadListStyleFromPProps(firstParaBullet);
@@ -2021,7 +2029,14 @@ public partial class PowerPointHandler
                         // Wingdings bullets round-trip; the lossy `list` keyword
                         // is emitted only as a fallback when there's no raw block.
                         var paraBulletRaw = ReadBulletRawFromPProps(paraPProps);
-                        if (paraBulletRaw != null) paraNode.Format["bulletRaw"] = paraBulletRaw;
+                        if (paraBulletRaw != null)
+                        {
+                            paraNode.Format["bulletRaw"] = paraBulletRaw;
+                            // R7-10: re-feedable `list` companion when canonical (suppressed
+                            // for raw-char passthroughs). Mirrors R4-7 background.src companion.
+                            var paraListCanon = ReadCanonicalListKeyword(paraPProps);
+                            if (paraListCanon != null) paraNode.Format["list"] = paraListCanon;
+                        }
                         else
                         {
                             var paraList = ReadListStyleFromPProps(paraPProps);
