@@ -44,7 +44,32 @@ public partial class PowerPointHandler
                 // R4-4: honor <a:tile> — repeat at native size rather than cover.
                 if (blipFill.GetFirstChild<Drawing.Tile>() != null)
                     return $"background:url('{dataUri}') repeat;background-size:auto";
-                return $"background:url('{dataUri}') center/cover no-repeat";
+                // R9-5: honor <a:srcRect> crop insets (l/t/r/b, units of 1/1000%).
+                // Emulate the crop by zooming the background past the box and
+                // shifting its origin so the visible region maps to the kept rect.
+                var srcRect = blipFill.GetFirstChild<Drawing.SourceRectangle>();
+                if (srcRect != null)
+                {
+                    double l = (srcRect.Left?.Value ?? 0) / 1000.0;
+                    double t = (srcRect.Top?.Value ?? 0) / 1000.0;
+                    double r = (srcRect.Right?.Value ?? 0) / 1000.0;
+                    double b = (srcRect.Bottom?.Value ?? 0) / 1000.0;
+                    double keptW = 100.0 - l - r;
+                    double keptH = 100.0 - t - b;
+                    if (keptW > 0 && keptH > 0 && (l != 0 || t != 0 || r != 0 || b != 0))
+                    {
+                        // Scale so the kept fraction fills 100% of the box; offset
+                        // so the cropped-away top/left is pushed out of view.
+                        var sizeW = (100.0 / keptW * 100.0).ToString("0.##", System.Globalization.CultureInfo.InvariantCulture);
+                        var sizeH = (100.0 / keptH * 100.0).ToString("0.##", System.Globalization.CultureInfo.InvariantCulture);
+                        var posX = (keptW <= 0 ? 0 : l / (l + r == 0 ? 1 : (l + r)) * 100.0);
+                        var posY = (keptH <= 0 ? 0 : t / (t + b == 0 ? 1 : (t + b)) * 100.0);
+                        var px = posX.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture);
+                        var py = posY.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture);
+                        return $"background:transparent url('{dataUri}') {px}% {py}%/{sizeW}% {sizeH}% no-repeat";
+                    }
+                }
+                return $"background:transparent url('{dataUri}') center/cover no-repeat";
             }
         }
 
@@ -496,6 +521,22 @@ public partial class PowerPointHandler
             return $"box-shadow:inset {offsetX:0.##}pt {offsetY:0.##}pt {blurPt:0.##}pt {color}";
         }
 
+        // R9-1: a:prstShdw (preset shadow). No CSS filter equivalent for the
+        // preset bitmap; approximate from its dist/dir/color as a box-shadow.
+        var preset = effectList.GetFirstChild<Drawing.PresetShadow>();
+        if (preset != null)
+        {
+            var color = ResolveShadowColor(preset, themeColors);
+            var distPt = preset.Distance?.HasValue == true ? preset.Distance.Value / EmuConverter.EmuPerPointF : 0;
+            var angleDeg = preset.Direction?.HasValue == true ? preset.Direction.Value / 60000.0 : 0;
+            var angleRad = angleDeg * Math.PI / 180;
+            var offsetX = distPt * Math.Cos(angleRad);
+            var offsetY = distPt * Math.Sin(angleRad);
+            // Emit as filter:drop-shadow so it merges with the glow/shadow filter
+            // chain in RenderShape (box-shadow can't combine there). Blur ≈ half dist.
+            return $"filter:drop-shadow({offsetX:0.##}pt {offsetY:0.##}pt {(distPt / 2):0.##}pt {color})";
+        }
+
         return "";
     }
 
@@ -718,6 +759,43 @@ public partial class PowerPointHandler
     }
 
     /// <summary>
+    /// Build a directional arrow clip-path honoring avLst, derived from the
+    /// rightArrow geometry by mirroring/transposing the point coordinates.
+    /// dir: "left" mirrors X, "up" transposes (swap X/Y), "down" transposes
+    /// then mirrors Y. adj1/adj2 carry the same meaning as rightArrow.
+    /// </summary>
+    private static string DirectionalArrowPolygon(string dir, long widthEmu, long heightEmu, Drawing.PresetGeometry? presetGeom)
+    {
+        // For up/down the head extends along height, so the head-width adj is
+        // measured against the perpendicular dimension — swap dims when transposing.
+        var (w, h) = (dir == "up" || dir == "down") ? (heightEmu, widthEmu) : (widthEmu, heightEmu);
+        var baseCss = RightArrowPolygon(w, h, presetGeom); // "clip-path:polygon(...)"
+        var inner = System.Text.RegularExpressions.Regex.Match(baseCss, @"polygon\(([^)]+)\)").Groups[1].Value;
+        var pts = inner.Split(',');
+        var outPts = new List<string>();
+        foreach (var p in pts)
+        {
+            var xy = p.Trim().Split(' ');
+            double x = ParsePct(xy[0]);
+            double y = ParsePct(xy[1]);
+            double nx, ny;
+            switch (dir)
+            {
+                case "left": nx = 100 - x; ny = y; break;
+                case "up":   nx = y; ny = x; break;       // transpose
+                case "down": nx = y; ny = 100 - x; break; // transpose + flip Y
+                default:     nx = x; ny = y; break;
+            }
+            outPts.Add($"{nx:0.##}% {ny:0.##}%");
+        }
+        return $"clip-path:polygon({string.Join(",", outPts)})";
+    }
+
+    private static double ParsePct(string s) =>
+        double.TryParse(s.TrimEnd('%').Trim(), System.Globalization.NumberStyles.Float,
+            System.Globalization.CultureInfo.InvariantCulture, out var v) ? v : 0;
+
+    /// <summary>
     /// Build a clip-path polygon for a 5-point star honoring OOXML adj value.
     /// adj = inner radius fraction * 50000 (default 19098, giving inner ratio ~0.382).
     /// Star is stretched to fill bounding box (outer radius = min(w,h)/2 scaled independently to w,h).
@@ -745,9 +823,15 @@ public partial class PowerPointHandler
     private static string PresetGeometryToCss(string preset, long widthEmu, long heightEmu,
         Drawing.PresetGeometry? presetGeom)
     {
-        // Parametric rightArrow honoring avLst
+        // Parametric arrows honoring avLst
         if (preset == "rightArrow")
             return RightArrowPolygon(widthEmu, heightEmu, presetGeom);
+        if (preset == "leftArrow")
+            return DirectionalArrowPolygon("left", widthEmu, heightEmu, presetGeom);
+        if (preset == "upArrow")
+            return DirectionalArrowPolygon("up", widthEmu, heightEmu, presetGeom);
+        if (preset == "downArrow")
+            return DirectionalArrowPolygon("down", widthEmu, heightEmu, presetGeom);
         // Parametric star5 honoring avLst
         if (preset == "star5")
             return Star5Polygon(presetGeom);
@@ -866,9 +950,6 @@ public partial class PowerPointHandler
 
             // Arrows
             "rightArrow" => "clip-path:polygon(0 20%,70% 20%,70% 0,100% 50%,70% 100%,70% 80%,0 80%)",
-            "leftArrow" => "clip-path:polygon(30% 0,30% 20%,100% 20%,100% 80%,30% 80%,30% 100%,0 50%)",
-            "upArrow" => "clip-path:polygon(50% 0,100% 30%,80% 30%,80% 100%,20% 100%,20% 30%,0 30%)",
-            "downArrow" => "clip-path:polygon(20% 0,80% 0,80% 70%,100% 70%,50% 100%,0 70%,20% 70%)",
             "leftRightArrow" => "clip-path:polygon(0 50%,15% 20%,15% 35%,85% 35%,85% 20%,100% 50%,85% 80%,85% 65%,15% 65%,15% 80%)",
             "upDownArrow" => "clip-path:polygon(50% 0,80% 15%,65% 15%,65% 85%,80% 85%,50% 100%,20% 85%,35% 85%,35% 15%,20% 15%)",
             "notchedRightArrow" => "clip-path:polygon(0 20%,70% 20%,70% 0,100% 50%,70% 100%,70% 80%,0 80%,10% 50%)",
@@ -1051,6 +1132,39 @@ public partial class PowerPointHandler
             ?? _doc.PresentationPart?.SlideMasterParts?.FirstOrDefault()
                 ?.ThemePart?.Theme?.ThemeElements?.ColorScheme;
         return ThemeColorResolver.BuildColorMap(colorScheme, includePptAliases: true);
+    }
+
+    /// <summary>
+    /// R9-2: apply a slide's &lt;p:clrMapOvr&gt;&lt;p:overrideClrMapping&gt; on top of
+    /// the global theme color map. The override remaps the 12 color slots
+    /// (e.g. accent1="accent2" makes the accent1 slot resolve to accent2's hex).
+    /// Returns the base map unchanged when the slide carries no override mapping.
+    /// </summary>
+    private static Dictionary<string, string> ApplySlideColorMapOverride(
+        SlidePart slidePart, Dictionary<string, string> baseMap)
+    {
+        var clrMapOvr = slidePart.Slide?.GetFirstChild<ColorMapOverride>();
+        // The overrideClrMapping element may be authored under either the a: or p:
+        // namespace (real PowerPoint emits a:overrideClrMapping); read attributes
+        // generically by local name to be namespace-agnostic. A masterClrMapping
+        // child (no attributes) means "inherit" — nothing to remap.
+        var ovr = clrMapOvr?.ChildElements
+            .FirstOrDefault(e => e.LocalName == "overrideClrMapping");
+        if (ovr == null || !ovr.HasAttributes) return baseMap;
+
+        var remapped = new Dictionary<string, string>(baseMap, StringComparer.OrdinalIgnoreCase);
+        // Each attribute (bg1/tx1/bg2/tx2/accent1..6/hlink/folHlink) names a slot
+        // and its value is the scheme token it now points at (e.g. accent1="accent2"
+        // makes the accent1 slot resolve to accent2's hex).
+        foreach (var attr in ovr.GetAttributes())
+        {
+            var slot = attr.LocalName;
+            var token = attr.Value;
+            if (string.IsNullOrEmpty(token)) continue;
+            if (baseMap.TryGetValue(token!, out var hex))
+                remapped[slot] = hex;
+        }
+        return remapped;
     }
 
     // ==================== Image Helpers ====================

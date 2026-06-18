@@ -176,6 +176,9 @@ public partial class PowerPointHandler
             if (startSlide.HasValue && slideNum < startSlide.Value) continue;
             if (endSlide.HasValue && slideNum > endSlide.Value) break;
 
+            // R9-2: per-slide color map honoring any p:clrMapOvr on this slide.
+            var slideColors = ApplySlideColorMapOverride(slidePart, themeColors);
+
             sb.AppendLine($"<div class=\"slide-container\" data-slide=\"{slideNum}\">");
             sb.AppendLine($"  <div class=\"slide-label\">Slide {slideNum}</div>");
             sb.AppendLine("  <div class=\"slide-wrapper\">");
@@ -183,10 +186,10 @@ public partial class PowerPointHandler
 
             // Slide background + inherited text defaults from master/layout/theme
             var slideStyles = new List<string>();
-            var bgStyle = GetSlideBackgroundCss(slidePart, themeColors);
+            var bgStyle = GetSlideBackgroundCss(slidePart, slideColors);
             if (!string.IsNullOrEmpty(bgStyle))
                 slideStyles.Add(bgStyle);
-            var textDefaults = GetTextDefaults(slidePart, themeColors);
+            var textDefaults = GetTextDefaults(slidePart, slideColors);
             if (!string.IsNullOrEmpty(textDefaults))
                 slideStyles.Add(textDefaults);
             if (slideStyles.Count > 0)
@@ -194,8 +197,8 @@ public partial class PowerPointHandler
             sb.AppendLine(">");
 
             // Render slide elements + inherited layout placeholders
-            RenderLayoutPlaceholders(sb, slidePart, themeColors);
-            RenderSlideElements(sb, slidePart, slideNum, slideWidthEmu, slideHeightEmu, themeColors);
+            RenderLayoutPlaceholders(sb, slidePart, slideColors);
+            RenderSlideElements(sb, slidePart, slideNum, slideWidthEmu, slideHeightEmu, slideColors);
 
             sb.AppendLine("    </div>");
             sb.AppendLine("  </div>");
@@ -282,6 +285,8 @@ public partial class PowerPointHandler
         var (slideWidthEmu, slideHeightEmu) = GetSlideSize();
         var themeColors = ResolveThemeColorMap();
         var slidePart = slideParts[slideNum - 1];
+        // R9-2: per-slide color map honoring any p:clrMapOvr on this slide.
+        var slideColors = ApplySlideColorMapOverride(slidePart, themeColors);
 
         var sb = new StringBuilder();
         sb.AppendLine($"<div class=\"slide-container\" data-slide=\"{slideNum}\">");
@@ -290,18 +295,18 @@ public partial class PowerPointHandler
         sb.Append($"    <div class=\"slide\"");
 
         var slideStyles = new List<string>();
-        var bgStyle = GetSlideBackgroundCss(slidePart, themeColors);
+        var bgStyle = GetSlideBackgroundCss(slidePart, slideColors);
         if (!string.IsNullOrEmpty(bgStyle))
             slideStyles.Add(bgStyle);
-        var textDefaults = GetTextDefaults(slidePart, themeColors);
+        var textDefaults = GetTextDefaults(slidePart, slideColors);
         if (!string.IsNullOrEmpty(textDefaults))
             slideStyles.Add(textDefaults);
         if (slideStyles.Count > 0)
             sb.Append($" style=\"{string.Join("", slideStyles)}\"");
         sb.AppendLine(">");
 
-        RenderLayoutPlaceholders(sb, slidePart, themeColors);
-        RenderSlideElements(sb, slidePart, slideNum, slideWidthEmu, slideHeightEmu, themeColors);
+        RenderLayoutPlaceholders(sb, slidePart, slideColors);
+        RenderSlideElements(sb, slidePart, slideNum, slideWidthEmu, slideHeightEmu, slideColors);
 
         sb.AppendLine("    </div>");
         sb.AppendLine("  </div>");
