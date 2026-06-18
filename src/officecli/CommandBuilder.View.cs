@@ -238,7 +238,25 @@ static partial class CommandBuilder
                     if (renderMode == "native" && directPng == null)
                         throw new OfficeCli.Core.CliException("--render native requires Windows with Microsoft Word installed.")
                         { Code = "native_unavailable", Suggestion = "Use --render html or --render auto." };
-                    if (directPng == null) html = wordHandler.ViewAsHtml(effectiveFilter);
+                    if (directPng == null)
+                    {
+                        html = wordHandler.ViewAsHtml(effectiveFilter);
+
+                        // HTML-path screenshot of a single page: size the viewport to the
+                        // page's 96-DPI native pixels so the PNG is the page, padding-free
+                        // (the preview scales the page to fill + drops its chrome when
+                        // headless). Default dims -> native px; a custom --screenshot-width
+                        // -> that width with an aspect-matched height. The Windows COM path
+                        // (directPng != null) renders real pages and is untouched.
+                        if (int.TryParse(effectiveFilter, out _) && gridCols == 0)
+                        {
+                            var (nativeW, nativeH) = wordHandler.GetPageNativePixels();
+                            if (screenshotWidth == 1600 && screenshotHeight == 1200)
+                                (screenshotWidth, screenshotHeight) = (nativeW, nativeH);
+                            else if (screenshotHeight == 1200)
+                                screenshotHeight = Math.Max(1, (int)Math.Round(screenshotWidth * (double)nativeH / nativeW));
+                        }
+                    }
                 }
 
                 if (html == null && directPng == null)

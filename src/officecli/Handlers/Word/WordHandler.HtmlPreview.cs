@@ -1108,13 +1108,21 @@ public partial class WordHandler
         // Pass requested pages to JS for post-pagination filtering
         if (requestedPages != null && requestedPages.Count > 0)
             sb.AppendLine($"  window._requestedPages=[{string.Join(",", requestedPages)}];");
-        sb.AppendLine(@"  var SCREENSHOT=location.hash.indexOf('screenshot')>=0;
+        sb.AppendLine(@"  var SCREENSHOT=location.hash.indexOf('screenshot')>=0||navigator.webdriver||/HeadlessChrome/.test(navigator.userAgent);
   window._wpSync=SCREENSHOT;
   if(SCREENSHOT){
     var rp=window._requestedPages;
     if(rp&&rp.length===1&&rp[0]===1){
       var first=document.querySelector('.page');
-      if(first){first.style.height=first.style.minHeight;first.style.overflow='hidden';}
+      if(first){
+        first.style.height=first.style.minHeight;first.style.overflow='hidden';
+        // Flush capture: the screenshot viewport is sized to the page's native
+        // pixels, so drop the page chrome (gray body padding, drop-shadow,
+        // rounded corners, wrapper centering margin) and the page fills the PNG.
+        document.body.style.padding='0';
+        first.style.boxShadow='none';first.style.borderRadius='0';
+        var _fw=first.closest('.page-wrapper');if(_fw)_fw.style.margin='0';
+      }
       document.querySelectorAll('.page-wrapper:not(:first-of-type)').forEach(function(w){w.style.display='none';});
       positionFootnotes();wrapFloats();applyLineNumbers();
     }else{paginate();}
@@ -1145,6 +1153,21 @@ public partial class WordHandler
         var result = GetPageLayoutFor(sectPr);
         if (_ctx != null) _ctx.CachedPageLayout = result;
         return result;
+    }
+
+    /// <summary>
+    /// First-section page size in CSS pixels at 96 DPI (page pt × 96/72) — the
+    /// size a page renders at in the HTML preview. The screenshot path sizes a
+    /// single-page viewport to this so the PNG is the page, with no letterbox
+    /// padding. Mirrors PowerPointHandler.GetSlideNativePixels. Falls back to
+    /// US-Letter (816×1056).
+    /// </summary>
+    internal (int width, int height) GetPageNativePixels()
+    {
+        var pg = GetPageLayout();
+        int w = (int)Math.Round(pg.WidthPt * 96.0 / 72.0);
+        int h = (int)Math.Round(pg.HeightPt * 96.0 / 72.0);
+        return w > 0 && h > 0 ? (w, h) : (816, 1056);
     }
 
     // OpenXML typed-value accessors throw on malformed raw attrs
