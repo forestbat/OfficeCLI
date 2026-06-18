@@ -177,7 +177,7 @@ public partial class PowerPointHandler
         bool hasOnlyLines = true;
         foreach (var child in path.ChildElements)
         {
-            if (child is Drawing.CubicBezierCurveTo or Drawing.QuadraticBezierCurveTo)
+            if (child is Drawing.CubicBezierCurveTo or Drawing.QuadraticBezierCurveTo or Drawing.ArcTo)
             {
                 hasOnlyLines = false;
                 break;
@@ -275,6 +275,33 @@ public partial class PowerPointHandler
                         }
                         break;
                     }
+                    case Drawing.ArcTo arc:
+                    {
+                        // OOXML arcTo: an elliptical arc relative to the current point.
+                        // wR/hR are the ellipse radii (path units); stAng/swAng are in
+                        // 60000ths of a degree (clockwise from 3-o'clock). The arc STARTS
+                        // at the current point (which lies on the ellipse at angle stAng),
+                        // so the ellipse center is back-solved from the current point.
+                        double wr = ParseArcRadius(arc.WidthRadius?.Value, pathW);
+                        double hr = ParseArcRadius(arc.HeightRadius?.Value, pathH);
+                        double stAng = Angle60kToDegrees(arc.StartAngle?.Value);
+                        double swAng = Angle60kToDegrees(arc.SwingAngle?.Value);
+                        // Center in percent space: c = current - (rx·cos st, ry·sin st).
+                        double rxPct = wr * 100.0 / pathW;
+                        double ryPct = hr * 100.0 / pathH;
+                        double ccx = curX - rxPct * Math.Cos(stAng * Math.PI / 180.0);
+                        double ccy = curY - ryPct * Math.Sin(stAng * Math.PI / 180.0);
+                        int steps = Math.Max(2, (int)Math.Ceiling(Math.Abs(swAng) / 6.0));
+                        for (int s = 1; s <= steps; s++)
+                        {
+                            double a = (stAng + swAng * s / steps) * Math.PI / 180.0;
+                            double px = ccx + rxPct * Math.Cos(a);
+                            double py = ccy + ryPct * Math.Sin(a);
+                            polyPoints.Add($"{px:0.##}% {py:0.##}%");
+                            curX = px; curY = py;
+                        }
+                        break;
+                    }
                     case Drawing.CloseShapePath:
                         break; // polygon implicitly closes
                 }
@@ -285,6 +312,16 @@ public partial class PowerPointHandler
 
         return "";
     }
+
+    /// <summary>Parse an arcTo radius (path-unit StringValue). Falls back to a quarter
+    /// of the path dimension when missing/invalid so a malformed arc still curves.</summary>
+    private static double ParseArcRadius(string? raw, double fallbackDim)
+        => long.TryParse(raw, out var v) ? v : fallbackDim / 4.0;
+
+    /// <summary>Parse an OOXML angle (60000ths of a degree) to degrees. (Named to
+    /// avoid colliding with Model3D's degrees→60000ths ParseAngle60k overload.)</summary>
+    private static double Angle60kToDegrees(string? raw)
+        => long.TryParse(raw, out var v) ? v / 60000.0 : 0;
 
     // ==================== CSS Helper: Gradient ====================
 
@@ -1000,6 +1037,63 @@ public partial class PowerPointHandler
         return $"clip-path:polygon({string.Join(",", pts)})";
     }
 
+    /// <summary>
+    /// R19 BUG A: build an N-point star clip-path honoring OOXML adj1 (inner-radius
+    /// ratio), mirroring <see cref="Star5Polygon"/> but for arbitrary point counts.
+    /// adj1 ranges 0..50000 mapping to inner ratio 0..1 (same scaling as star5,
+    /// whose guide max is 50000). 2N vertices alternate outer radius (0.5) and
+    /// inner radius (0.5·ratio), starting at the top (-90°).
+    /// </summary>
+    private static string StarNPolygon(int points, long defaultAdj, Drawing.PresetGeometry? presetGeom)
+    {
+        var adj = ReadAdjValueCss(presetGeom, 0, defaultAdj);
+        if (adj < 0) adj = 0; if (adj > 50000) adj = 50000;
+        var innerRatio = adj / 50000.0;
+        var pts = new List<string>();
+        for (int i = 0; i < points * 2; i++)
+        {
+            var angle = -Math.PI / 2 + Math.PI * i / points;
+            var r = (i % 2 == 0) ? 0.5 : 0.5 * innerRatio;
+            var x = 50.0 + r * Math.Cos(angle) * 100.0;
+            var y = 50.0 + r * Math.Sin(angle) * 100.0;
+            pts.Add($"{x:0.##}% {y:0.##}%");
+        }
+        return $"clip-path:polygon({string.Join(",", pts)})";
+    }
+
+    /// <summary>R19 BUG A: parallelogram honoring adj1 (top-left x offset fraction
+    /// of width, ×100000; default 25000). polygon (a,0)(100,0)(100-a,100)(0,100).</summary>
+    private static string ParallelogramPolygon(Drawing.PresetGeometry? presetGeom)
+    {
+        var a = Math.Clamp(ReadAdjValueCss(presetGeom, 0, 25000) / 100000.0 * 100.0, 0, 100);
+        return $"clip-path:polygon({a:0.##}% 0,100% 0,{100 - a:0.##}% 100%,0 100%)";
+    }
+
+    /// <summary>R19 BUG A: trapezoid honoring adj1 (top-edge inset from each side,
+    /// ×100000; default 25000). polygon (a,0)(100-a,0)(100,100)(0,100).</summary>
+    private static string TrapezoidPolygon(Drawing.PresetGeometry? presetGeom)
+    {
+        var a = Math.Clamp(ReadAdjValueCss(presetGeom, 0, 25000) / 100000.0 * 100.0, 0, 50);
+        return $"clip-path:polygon({a:0.##}% 0,{100 - a:0.##}% 0,100% 100%,0 100%)";
+    }
+
+    /// <summary>R19 BUG A: chevron (right-pointing) honoring adj1 (notch depth
+    /// fraction, ×100000; default 50000).
+    /// polygon (0,0)(100-a,0)(100,50)(100-a,100)(0,100)(a,50).</summary>
+    private static string ChevronPolygon(Drawing.PresetGeometry? presetGeom)
+    {
+        var a = Math.Clamp(ReadAdjValueCss(presetGeom, 0, 50000) / 100000.0 * 100.0, 0, 100);
+        return $"clip-path:polygon(0 0,{100 - a:0.##}% 0,100% 50%,{100 - a:0.##}% 100%,0 100%,{a:0.##}% 50%)";
+    }
+
+    /// <summary>R19 BUG A: hexagon honoring adj1 (corner inset fraction, ×100000;
+    /// default 25000). polygon (a,0)(100-a,0)(100,50)(100-a,100)(a,100)(0,50).</summary>
+    private static string HexagonPolygon(Drawing.PresetGeometry? presetGeom)
+    {
+        var a = Math.Clamp(ReadAdjValueCss(presetGeom, 0, 25000) / 100000.0 * 100.0, 0, 100);
+        return $"clip-path:polygon({a:0.##}% 0,{100 - a:0.##}% 0,100% 50%,{100 - a:0.##}% 100%,{a:0.##}% 100%,0 50%)";
+    }
+
     // ---- R18 BUG B/D/E: sector / ring / segment geometry --------------------
     // OOXML angle units are 60000ths of a degree, measured clockwise from the
     // 3-o'clock direction. In a 0..100% clip-path box, +x is right and +y is
@@ -1156,9 +1250,20 @@ public partial class PowerPointHandler
             return DirectionalArrowPolygon("up", widthEmu, heightEmu, presetGeom);
         if (preset == "downArrow")
             return DirectionalArrowPolygon("down", widthEmu, heightEmu, presetGeom);
-        // Parametric star5 honoring avLst
+        // Parametric stars honoring avLst (inner-radius ratio)
         if (preset == "star5")
             return Star5Polygon(presetGeom);
+        if (preset == "star4") return StarNPolygon(4, 38250, presetGeom);
+        if (preset == "star6") return StarNPolygon(6, 28868, presetGeom);
+        if (preset == "star8") return StarNPolygon(8, 37500, presetGeom);
+        if (preset == "star10") return StarNPolygon(10, 42533, presetGeom);
+        if (preset == "star12") return StarNPolygon(12, 37500, presetGeom);
+
+        // R19 BUG A: parametric quads/polys honoring avLst (slant/notch/inset)
+        if (preset == "parallelogram") return ParallelogramPolygon(presetGeom);
+        if (preset == "trapezoid") return TrapezoidPolygon(presetGeom);
+        if (preset == "chevron") return ChevronPolygon(presetGeom);
+        if (preset == "hexagon") return HexagonPolygon(presetGeom);
 
         // Calculate roundRect corner radius from avLst or default (16.667% of shorter side)
         if (preset is "roundRect" or "round1Rect" or "round2SameRect" or "round2DiagRect")
@@ -1253,12 +1358,11 @@ public partial class PowerPointHandler
 
             // Diamonds and parallelograms
             "diamond" => "clip-path:polygon(50% 0,100% 50%,50% 100%,0 50%)",
-            "parallelogram" => "clip-path:polygon(15% 0,100% 0,85% 100%,0 100%)",
-            "trapezoid" => "clip-path:polygon(20% 0,80% 0,100% 100%,0 100%)",
+            // parallelogram/trapezoid handled above (parametric, honor avLst)
 
             // Polygons
             "pentagon" => "clip-path:polygon(50% 0,100% 38%,82% 100%,18% 100%,0 38%)",
-            "hexagon" => "clip-path:polygon(25% 0,75% 0,100% 50%,75% 100%,25% 100%,0 50%)",
+            // hexagon handled above (parametric, honors avLst)
             "heptagon" => "clip-path:polygon(50% 0,90% 20%,100% 60%,75% 100%,25% 100%,0 60%,10% 20%)",
             "octagon" => "clip-path:polygon(29% 0,71% 0,100% 29%,100% 71%,71% 100%,29% 100%,0 71%,0 29%)",
             "decagon" => "clip-path:polygon(35% 0,65% 0,90% 12%,100% 38%,100% 62%,90% 88%,65% 100%,35% 100%,10% 88%,0 62%,0 38%,10% 12%)",
