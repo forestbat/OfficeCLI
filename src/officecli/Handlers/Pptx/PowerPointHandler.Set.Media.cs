@@ -143,6 +143,17 @@ public partial class PowerPointHandler
                     xfrm.Rotation = (int)(ParseHelpers.SafeParseDouble(value, "rotation") * 60000);
                     break;
                 }
+                case "geometry" or "shape":
+                {
+                    // CONSISTENCY(add-set-parity): Add.Media writes spPr/prstGeom
+                    // for picture geometry=; Set must mirror so the property
+                    // surface agrees across Add and Set.
+                    var spPr = pic.ShapeProperties ?? (pic.ShapeProperties = new ShapeProperties());
+                    spPr.RemoveAllChildren<Drawing.PresetGeometry>();
+                    spPr.AppendChild(
+                        new Drawing.PresetGeometry(new Drawing.AdjustValueList()) { Preset = ParsePresetShape(value) });
+                    break;
+                }
                 case "crop" or "cropleft" or "cropright" or "croptop" or "cropbottom":
                 {
                     // R10: tolerate trailing '%' on crop values — error message
