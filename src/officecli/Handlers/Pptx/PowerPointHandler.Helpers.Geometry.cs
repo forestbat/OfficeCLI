@@ -83,6 +83,24 @@ public partial class PowerPointHandler
                     TrackMax(ref maxX, ref maxY, x2, y2);
                     break;
                 }
+                case "A":
+                {
+                    // arcTo. NodeBuilder.ReconstructCustomGeometryPath emits only
+                    // "A{wR},{hR}" (the width/height radii), so the token carries a
+                    // single "wR,hR" coordinate pair. stAng/swAng are not round-tripped
+                    // by the emitter, so default them to 0 (a degenerate-but-valid arc
+                    // that preserves the ArcTo element across Get→Add). Radii are
+                    // scaled ×1000 like every other coordinate token.
+                    var (wr, hr) = ParsePointToken(tokens[i++]);
+                    path.AppendChild(new Drawing.ArcTo
+                    {
+                        WidthRadius = wr.ToString(),
+                        HeightRadius = hr.ToString(),
+                        StartAngle = "0",
+                        SwingAngle = "0",
+                    });
+                    break;
+                }
                 case "Z":
                     path.AppendChild(new Drawing.CloseShapePath());
                     break;
