@@ -1372,6 +1372,14 @@ public partial class PowerPointHandler
                 {
                     var spPr = shape.ShapeProperties;
                     if (spPr == null || part is not SlidePart slidePart) { unsupported.Add(key); break; }
+                    // image=none/clear removes the blip fill (mirrors fill=none → NoFill).
+                    // Guard before any file resolve so ImageSource.Resolve never throws on "none".
+                    if (value.Equals("none", StringComparison.OrdinalIgnoreCase)
+                        || value.Equals("clear", StringComparison.OrdinalIgnoreCase))
+                    {
+                        spPr.RemoveAllChildren<Drawing.BlipFill>();
+                        break;
+                    }
                     // Pass any sibling fillRect= / srcRect= so the image fill's
                     // framing (stretch insets / crop) round-trips with it.
                     string? frSpec = properties.TryGetValue("fillRect", out var frv) ? frv
