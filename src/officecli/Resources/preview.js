@@ -13,7 +13,10 @@
 
     // ===== Responsive scaling =====
     function scaleSlides() {
-        const availW = main.clientWidth - 40;
+        // 40px breathing room for interactive viewing; headless captures fill the
+        // viewport (the screenshot path sizes it to the slide) so they take none.
+        const headless = document.documentElement.classList.contains('headless');
+        const availW = main.clientWidth - (headless ? 0 : 40);
         document.querySelectorAll('.main > .slide-container .slide').forEach(slide => {
             const designW = slide.offsetWidth;
             if (designW > availW && availW > 0) {

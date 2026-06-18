@@ -208,6 +208,16 @@ static partial class CommandBuilder
                         effectiveFilter = "1";
                     var (pStart, pEnd) = ParsePptHtmlPage(effectiveFilter, start, end, pptHandler);
                     html = pptHandler.ViewAsHtml(pStart, pEnd, gridCols, screenshotWidth);
+
+                    // A single slide renders at its native size (design pt × 4/3 px), not
+                    // the viewport — so the generic 4:3 viewport (1600×1200) letterboxes it
+                    // with canvas padding on every side. When capturing one slide (not a
+                    // multi-slide range or grid) and the caller kept both default dims, set
+                    // the viewport to the slide's native pixels so the PNG is the slide,
+                    // padding-free. ViewAsHtml zeroes the headless page padding to match.
+                    // Multi-slide ranges stack vertically and keep the tall viewport.
+                    if (pStart == pEnd && gridCols == 0 && screenshotWidth == 1600 && screenshotHeight == 1200)
+                        (screenshotWidth, screenshotHeight) = pptHandler.GetSlideNativePixels();
                 }
                 else if (handler is OfficeCli.Handlers.ExcelHandler excelHandler)
                     html = excelHandler.ViewAsHtml();

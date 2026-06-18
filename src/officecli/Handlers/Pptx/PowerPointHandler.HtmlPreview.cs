@@ -141,6 +141,14 @@ public partial class PowerPointHandler
             sb.AppendLine($".slide{{transform:scale({scale:0.######}) !important;transform-origin:top left !important;position:absolute !important;top:0 !important;left:0 !important}}");
             sb.AppendLine("</style>");
         }
+        else if (startSlide.HasValue && endSlide.HasValue && startSlide.Value == endSlide.Value)
+        {
+            // Single-slide screenshot: drop the .main page padding/gap so the slide
+            // renders flush to the captured viewport (which the screenshot path sizes
+            // to the slide's native pixels). Scoped to headless so interactive
+            // `view html` keeps its breathing room.
+            sb.AppendLine("<style>html.headless .main{padding:0 !important;gap:0 !important}html.headless .slide{box-shadow:none !important}</style>");
+        }
         // Auto-hide sidebar in headless/automated browsers (screenshot, Playwright, etc.)
         sb.AppendLine("<script>if(navigator.webdriver||/HeadlessChrome/.test(navigator.userAgent))document.documentElement.classList.add('headless')</script>");
         sb.AppendLine("</head>");
