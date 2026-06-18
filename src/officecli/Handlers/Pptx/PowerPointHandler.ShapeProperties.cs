@@ -1337,7 +1337,9 @@ public partial class PowerPointHandler
                                 if (stopColorEl != null)
                                 {
                                     stopColorEl.RemoveAllChildren<Drawing.Alpha>();
-                                    stopColorEl.AppendChild(new Drawing.Alpha { Val = alphaPct });
+                                    // 100000 = 100% = OOXML default; omit the element.
+                                    if (alphaPct < 100000)
+                                        stopColorEl.AppendChild(new Drawing.Alpha { Val = alphaPct });
                                 }
                             }
                         }
@@ -1358,7 +1360,9 @@ public partial class PowerPointHandler
                         if (colorEl != null)
                         {
                             colorEl.RemoveAllChildren<Drawing.Alpha>();
-                            colorEl.AppendChild(new Drawing.Alpha { Val = alphaPct });
+                            // 100000 = 100% = OOXML default; omit the element.
+                            if (alphaPct < 100000)
+                                colorEl.AppendChild(new Drawing.Alpha { Val = alphaPct });
                         }
                     }
                     break;
