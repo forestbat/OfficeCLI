@@ -1685,6 +1685,10 @@ public partial class PowerPointHandler
                 "bentConnector4" or "bentConnector5" => "0,0 25,0 25,50 75,50 75,100 100,100",
                 _ => "0,0 50,0 50,100 100,100", // bentConnector3
             };
+            // R27: mirror the polyline in the 0..100 viewBox when flipH/flipV is
+            // set so a flipped elbow lands on the shape edges (the straight branch
+            // already flips via svgX1/Y1/X2/Y2). flipH → x'=100-x, flipV → y'=100-y.
+            points = MirrorConnectorPoints(points, flipH, flipV);
             sb.AppendLine("      <svg width=\"100%\" height=\"100%\" viewBox=\"0 0 100 100\" preserveAspectRatio=\"none\" style=\"overflow:visible;display:block\">");
             if (!string.IsNullOrEmpty(markerDefs))
                 sb.AppendLine($"        {markerDefs}");
@@ -1703,6 +1707,9 @@ public partial class PowerPointHandler
                 "curvedConnector4" or "curvedConnector5" => "M 0,0 C 25,0 25,50 50,50 C 75,50 75,100 100,100",
                 _ => "M 0,0 C 50,0 50,100 100,100", // curvedConnector3
             };
+            // R27: mirror the bezier control points in the 0..100 viewBox when
+            // flipH/flipV is set (parity with the bent + straight branches).
+            d = MirrorConnectorPath(d, flipH, flipV);
             sb.AppendLine("      <svg width=\"100%\" height=\"100%\" viewBox=\"0 0 100 100\" preserveAspectRatio=\"none\" style=\"overflow:visible;display:block\">");
             if (!string.IsNullOrEmpty(markerDefs))
                 sb.AppendLine($"        {markerDefs}");
@@ -1731,6 +1738,41 @@ public partial class PowerPointHandler
             sb.AppendLine("</div>");
         }
         sb.AppendLine("    </div>");
+    }
+
+    // R27: mirror a "x,y x,y ..." polyline-points string in the 0..100 viewBox.
+    // flipH → x'=100-x; flipV → y'=100-y. Both axes are applied independently so
+    // a bent/curved connector flips to the same orientation real PowerPoint routes.
+    private static string MirrorConnectorPoints(string points, bool flipH, bool flipV)
+    {
+        if (!flipH && !flipV) return points;
+        var pairs = points.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        for (var i = 0; i < pairs.Length; i++)
+        {
+            var xy = pairs[i].Split(',');
+            if (xy.Length != 2) continue;
+            if (flipH && double.TryParse(xy[0], System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var px))
+                xy[0] = (100 - px).ToString("0.###", System.Globalization.CultureInfo.InvariantCulture);
+            if (flipV && double.TryParse(xy[1], System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var py))
+                xy[1] = (100 - py).ToString("0.###", System.Globalization.CultureInfo.InvariantCulture);
+            pairs[i] = $"{xy[0]},{xy[1]}";
+        }
+        return string.Join(' ', pairs);
+    }
+
+    // R27: mirror an SVG path "d" of the form "M x,y C/Q x,y x,y x,y" — the
+    // command letters (M/C/Q) pass through; every "x,y" coordinate token is
+    // mirrored via MirrorConnectorPoints' per-pair logic.
+    private static string MirrorConnectorPath(string d, bool flipH, bool flipV)
+    {
+        if (!flipH && !flipV) return d;
+        var tokens = d.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        for (var i = 0; i < tokens.Length; i++)
+        {
+            if (!tokens[i].Contains(',')) continue; // command letter (M/C/Q)
+            tokens[i] = MirrorConnectorPoints(tokens[i], flipH, flipV);
+        }
+        return string.Join(' ', tokens);
     }
 
     // ==================== Group Rendering ====================
