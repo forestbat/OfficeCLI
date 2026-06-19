@@ -245,6 +245,16 @@ public partial class PowerPointHandler
         // Geometry: preset or custom — track clip-path separately to avoid clipping text
         string clipPathCss = "";
         string borderRadiusCss = "";
+        // R48: multi-subpath / fill="none" custGeom rendered as an inline SVG <path>
+        // overlay instead of clip-path:polygon (which can hold only one polygon).
+        string custGeomSvgFillD = "";
+        string custGeomSvgStrokeD = "";
+        long custGeomSvgW = 100000L;
+        long custGeomSvgH = 100000L;
+        // R48: true once a custGeom routes its fill/stroke through the SVG overlay, so the
+        // shape <div> must NOT also paint the solidFill background (or for an all-fill="none"
+        // path, must paint nothing at all).
+        bool custGeomSvgRouted = false;
         var presetGeom = shape.ShapeProperties?.GetFirstChild<Drawing.PresetGeometry>();
         if (presetGeom?.Preset?.HasValue == true)
         {
@@ -266,9 +276,34 @@ public partial class PowerPointHandler
             var custGeom = shape.ShapeProperties?.GetFirstChild<Drawing.CustomGeometry>();
             if (custGeom != null)
             {
-                var clipPath = CustomGeometryToClipPath(custGeom);
-                if (!string.IsNullOrEmpty(clipPath))
-                    clipPathCss = clipPath;
+                // R48: a single filled subpath keeps the clip-path:polygon path (broadest
+                // browser support, unchanged common case). Multiple subpaths OR any
+                // fill="none" subpath cannot be expressed by one clip-path polygon, so
+                // route those through an inline SVG <path> overlay (set below).
+                var pathLst = custGeom.GetFirstChild<Drawing.PathList>();
+                var subPaths = pathLst?.Elements<Drawing.Path>().ToList() ?? new List<Drawing.Path>();
+                var needsSvg = subPaths.Count > 1
+                    || subPaths.Any(p => p.Fill?.Value == Drawing.PathFillModeValues.None);
+
+                if (needsSvg)
+                {
+                    // Multi-subpath or fill="none": never use clip-path (it can hold only
+                    // one polygon and cannot express a fill-less stroke-only path). The SVG
+                    // overlay carries fill+stroke; if every subpath is both fill="none" and
+                    // stroke=off the shape is correctly invisible (no fill, no clip-path).
+                    custGeomSvgRouted = true;
+                    CustomGeometryToSvgPaths(custGeom, out var fd, out var sd, out var pw, out var ph);
+                    custGeomSvgFillD = fd;
+                    custGeomSvgStrokeD = sd;
+                    custGeomSvgW = pw;
+                    custGeomSvgH = ph;
+                }
+                else
+                {
+                    var clipPath = CustomGeometryToClipPath(custGeom);
+                    if (!string.IsNullOrEmpty(clipPath))
+                        clipPathCss = clipPath;
+                }
             }
         }
 
@@ -469,7 +504,40 @@ public partial class PowerPointHandler
             sb.Append($"    <a class=\"shape-link\" href=\"{HtmlEncode(shapeHrefUrl!)}\" rel=\"noopener\" target=\"_blank\"{tooltipAttr} style=\"display:contents;cursor:pointer\">");
         }
 
-        if (!string.IsNullOrEmpty(clipPathCss))
+        if (custGeomSvgRouted)
+        {
+            // R48: multi-subpath / fill="none" custGeom. The shape fill is drawn by the
+            // SVG <path> (so background:/border: must NOT also be applied to the div).
+            // Pull the fill color out of the CSS background declaration; gradients
+            // degrade gracefully to the first parsed color (or no fill).
+            var outerStyles = new List<string>();
+            string svgFill = "none";
+            foreach (var s in styles)
+            {
+                if (s.StartsWith("background:"))
+                    svgFill = s["background:".Length..].Trim();
+                else if (s.StartsWith("background-image:") || s.StartsWith("border"))
+                    continue; // gradient/image fill or border handled by SVG paths
+                else
+                    outerStyles.Add(s);
+            }
+            if (!string.IsNullOrEmpty(shapeHrefUrl)) outerStyles.Add("cursor:pointer");
+            sb.Append($"    <div class=\"{shapeClass}\"{dataPathAttr}{textWarpAttr} style=\"{string.Join(";", outerStyles)}\">");
+
+            sb.Append($"<svg style=\"position:absolute;inset:0;width:100%;height:100%;overflow:visible\" viewBox=\"0 0 {custGeomSvgW} {custGeomSvgH}\" preserveAspectRatio=\"none\">");
+            if (!string.IsNullOrEmpty(custGeomSvgFillD) && svgFill != "none")
+                sb.Append($"<path d=\"{custGeomSvgFillD}\" fill=\"{CssSanitizeColor(svgFill)}\" fill-rule=\"evenodd\"/>");
+            if (!string.IsNullOrEmpty(custGeomSvgStrokeD) && parsedOutline != null)
+            {
+                var (bw, dt, bc, cap, _) = parsedOutline.Value;
+                var dashArr = DashTypeToSvgDasharray(dt, bw);
+                var dashAttr = !string.IsNullOrEmpty(dashArr) ? $" stroke-dasharray=\"{dashArr}\"" : "";
+                var linecap = CapToSvgLinecap(cap);
+                sb.Append($"<path d=\"{custGeomSvgStrokeD}\" fill=\"none\" stroke=\"{CssSanitizeColor(bc)}\" stroke-width=\"{bw:0.##}pt\" vector-effect=\"non-scaling-stroke\" stroke-linecap=\"{linecap}\"{dashAttr}/>");
+            }
+            sb.Append("</svg>");
+        }
+        else if (!string.IsNullOrEmpty(clipPathCss))
         {
             // For clip-path shapes: move fill to a clipped background layer, keep text unclipped
             // Extract fill-related styles for the clipped background layer

@@ -331,6 +331,149 @@ public partial class PowerPointHandler
         return "";
     }
 
+    /// <summary>
+    /// R48: convert a multi-subpath / fill="none" custGeom to inline SVG path data.
+    /// CSS clip-path:polygon() can only express ONE polygon, so a custGeom whose
+    /// pathLst holds more than one &lt;a:path&gt; (or a path with fill="none") cannot
+    /// round-trip through the clip-path branch. Build SVG path `d` segments in the
+    /// path's own w×h coordinate space (used as the SVG viewBox), so the renderer can
+    /// emit a scaled &lt;svg&gt; with a fill path (all fillable subpaths, evenodd) and a
+    /// separate stroke path (all stroked subpaths). Returns false when there is no
+    /// usable path data. <paramref name="fillD"/>/<paramref name="strokeD"/> may be
+    /// empty individually (e.g. a fill="none" path has no fill segment).
+    /// </summary>
+    private static bool CustomGeometryToSvgPaths(
+        Drawing.CustomGeometry custGeom,
+        out string fillD, out string strokeD, out long pathW, out long pathH)
+    {
+        fillD = strokeD = "";
+        pathW = pathH = 100000L;
+
+        var pathList = custGeom.GetFirstChild<Drawing.PathList>();
+        if (pathList == null) return false;
+
+        var paths = pathList.Elements<Drawing.Path>().ToList();
+        if (paths.Count == 0) return false;
+
+        // viewBox uses the FIRST path's coordinate space (OOXML paths in one custGeom
+        // share the shape's coordinate system; w/h are the same in practice).
+        var first = paths[0];
+        pathW = first.Width?.HasValue == true && first.Width.Value != 0 ? first.Width.Value : 100000L;
+        pathH = first.Height?.HasValue == true && first.Height.Value != 0 ? first.Height.Value : 100000L;
+
+        var fillSegs = new System.Text.StringBuilder();
+        var strokeSegs = new System.Text.StringBuilder();
+
+        foreach (var path in paths)
+        {
+            var pw = path.Width?.HasValue == true && path.Width.Value != 0 ? path.Width.Value : pathW;
+            var ph = path.Height?.HasValue == true && path.Height.Value != 0 ? path.Height.Value : pathH;
+            var seg = PathToSvgD(path, pw, ph, pathW, pathH);
+            if (string.IsNullOrEmpty(seg)) continue;
+
+            // fill="none" → excluded from fill geometry. Stroke="0"/false → excluded from stroke.
+            var fillNone = path.Fill?.Value == Drawing.PathFillModeValues.None;
+            var strokeOff = path.Stroke?.Value == false;
+            if (!fillNone) fillSegs.Append(seg).Append(' ');
+            if (!strokeOff) strokeSegs.Append(seg).Append(' ');
+        }
+
+        fillD = fillSegs.ToString().Trim();
+        strokeD = strokeSegs.ToString().Trim();
+        return fillD.Length > 0 || strokeD.Length > 0;
+    }
+
+    /// <summary>Convert a single &lt;a:path&gt;'s commands to an SVG path `d` segment in
+    /// the viewBox (vbW×vbH) coordinate space. Curves are emitted exactly (C/Q);
+    /// arcTo is flattened to line segments (same math as CustomGeometryToClipPath).</summary>
+    private static string PathToSvgD(Drawing.Path path, long pw, long ph, long vbW, long vbH)
+    {
+        // Map path-unit coords into the viewBox space (handles paths declaring a
+        // different w/h than the viewBox).
+        static bool TryPt(Drawing.Point? pt, long pw, long ph, long vbW, long vbH, out double x, out double y)
+        {
+            x = y = 0;
+            if (pt?.X?.HasValue != true || pt?.Y?.HasValue != true) return false;
+            if (!long.TryParse(pt.X.Value, out var xv) || !long.TryParse(pt.Y.Value, out var yv)) return false;
+            x = xv * (double)vbW / pw;
+            y = yv * (double)vbH / ph;
+            return true;
+        }
+
+        var d = new System.Text.StringBuilder();
+        double curX = 0, curY = 0;
+        foreach (var child in path.ChildElements)
+        {
+            switch (child)
+            {
+                case Drawing.MoveTo moveTo:
+                    if (TryPt(moveTo.GetFirstChild<Drawing.Point>(), pw, ph, vbW, vbH, out var mx, out var my))
+                    {
+                        d.Append($"M{mx:0.##} {my:0.##} ");
+                        curX = mx; curY = my;
+                    }
+                    break;
+                case Drawing.LineTo lineTo:
+                    if (TryPt(lineTo.GetFirstChild<Drawing.Point>(), pw, ph, vbW, vbH, out var lx, out var ly))
+                    {
+                        d.Append($"L{lx:0.##} {ly:0.##} ");
+                        curX = lx; curY = ly;
+                    }
+                    break;
+                case Drawing.CubicBezierCurveTo cubic:
+                {
+                    var pts = cubic.Elements<Drawing.Point>().ToList();
+                    if (pts.Count >= 3
+                        && TryPt(pts[0], pw, ph, vbW, vbH, out var c1x, out var c1y)
+                        && TryPt(pts[1], pw, ph, vbW, vbH, out var c2x, out var c2y)
+                        && TryPt(pts[2], pw, ph, vbW, vbH, out var c3x, out var c3y))
+                    {
+                        d.Append($"C{c1x:0.##} {c1y:0.##} {c2x:0.##} {c2y:0.##} {c3x:0.##} {c3y:0.##} ");
+                        curX = c3x; curY = c3y;
+                    }
+                    break;
+                }
+                case Drawing.QuadraticBezierCurveTo quad:
+                {
+                    var pts = quad.Elements<Drawing.Point>().ToList();
+                    if (pts.Count >= 2
+                        && TryPt(pts[0], pw, ph, vbW, vbH, out var q1x, out var q1y)
+                        && TryPt(pts[1], pw, ph, vbW, vbH, out var q2x, out var q2y))
+                    {
+                        d.Append($"Q{q1x:0.##} {q1y:0.##} {q2x:0.##} {q2y:0.##} ");
+                        curX = q2x; curY = q2y;
+                    }
+                    break;
+                }
+                case Drawing.ArcTo arc:
+                {
+                    // Flatten the elliptical arc into line segments (same back-solve as
+                    // CustomGeometryToClipPath, but in viewBox units instead of percent).
+                    double wr = ParseArcRadius(arc.WidthRadius?.Value, pw) * (double)vbW / pw;
+                    double hr = ParseArcRadius(arc.HeightRadius?.Value, ph) * (double)vbH / ph;
+                    double stAng = Angle60kToDegrees(arc.StartAngle?.Value);
+                    double swAng = Angle60kToDegrees(arc.SwingAngle?.Value);
+                    double ccx = curX - wr * Math.Cos(stAng * Math.PI / 180.0);
+                    double ccy = curY - hr * Math.Sin(stAng * Math.PI / 180.0);
+                    int steps = Math.Max(2, (int)Math.Ceiling(Math.Abs(swAng) / 6.0));
+                    for (int s = 1; s <= steps; s++)
+                    {
+                        double a = (stAng + swAng * s / steps) * Math.PI / 180.0;
+                        double px = ccx + wr * Math.Cos(a);
+                        double py = ccy + hr * Math.Sin(a);
+                        d.Append($"L{px:0.##} {py:0.##} ");
+                        curX = px; curY = py;
+                    }
+                    break;
+                }
+                case Drawing.CloseShapePath:
+                    d.Append("Z ");
+                    break;
+            }
+        }
+        return d.ToString().Trim();
+    }
+
     /// <summary>Parse an arcTo radius (path-unit StringValue). Falls back to a quarter
     /// of the path dimension when missing/invalid so a malformed arc still curves.</summary>
     private static double ParseArcRadius(string? raw, double fallbackDim)
