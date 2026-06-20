@@ -1533,7 +1533,7 @@ public partial class PowerPointHandler
             return preset switch
             {
                 "roundRect" => $"border-radius:{r}",
-                "round1Rect" => $"border-radius:{r} 0 0 0",
+                "round1Rect" => $"border-radius:0 {r} 0 0",  // PowerPoint rounds the top-right corner
                 "round2SameRect" => $"border-radius:{r} {r} 0 0",
                 "round2DiagRect" => $"border-radius:{r} 0 {r} 0",
                 _ => ""
