@@ -1172,11 +1172,10 @@ public partial class WordHandler
         var level = abstractNum?.Elements<Level>()
             .FirstOrDefault(l => l.LevelIndex?.Value == ilvl);
 
-        // Check for lvlPicBulletId
-        var picBulletIdAttr = level?.GetAttributes().FirstOrDefault(a => a.LocalName == "lvlPicBulletId");
-        if (picBulletIdAttr is not { } attr || attr.Value == null) return null;
-
-        // Find the matching numPicBullet element
+        // <w:lvlPicBulletId w:val="N"/> is a CHILD element of <w:lvl>, not an
+        // attribute — the old GetAttributes() guard here never matched and made
+        // this method always return null (picture bullets fell back to a plain
+        // circle in the HTML preview). Read the child element directly.
         var picBulletEl = level?.Descendants().FirstOrDefault(e => e.LocalName == "lvlPicBulletId");
         if (picBulletEl == null) return null;
         var picBulletIdStr = picBulletEl.GetAttributes().FirstOrDefault(a => a.LocalName == "val").Value;
