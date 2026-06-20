@@ -47,6 +47,13 @@ public static class HyperlinkUriValidator
         // hyperlinks instead of emitting a command the batch rejects.
         // javascript:/data:/vbscript: stay rejected (omitted from this set).
         "file",
+        // BUG-DUMP-ABOUTBLANK: `about:` (RFC 6694) is an inert scheme — Office
+        // never navigates it and it executes no script. Word natively writes
+        // about:blank as the placeholder Target for a hyperlink with no real
+        // destination (a styled link whose URL was cleared). Rejecting it dropped
+        // the <w:hyperlink> wrapper on dump→batch, so the link text lost its
+        // hyperlink styling. Same low-risk rationale as file: above.
+        "about",
     };
 
     /// <summary>
@@ -76,7 +83,7 @@ public static class HyperlinkUriValidator
         if (string.IsNullOrEmpty(scheme)) return;
         if (AllowedSchemes.Contains(scheme)) return;
         throw new ArgumentException(
-            $"Invalid {contextKey} URL scheme '{scheme}:': only http, https, mailto, ftp, ftps, sftp, news, tel, sms, file, and ppaction targets are accepted. " +
+            $"Invalid {contextKey} URL scheme '{scheme}:': only http, https, mailto, ftp, ftps, sftp, news, tel, sms, file, about, and ppaction targets are accepted. " +
             "javascript:, data:, vbscript:, and similar schemes are rejected to prevent click-bait redirection in shared documents.");
     }
 }
