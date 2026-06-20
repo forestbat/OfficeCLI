@@ -929,7 +929,11 @@ public partial class PowerPointHandler
             // as a zero-length segment relying on stroke-linecap=round to paint a cap;
             // that collapses when linecap=butt or when stroke-width rounds down.
             "solid" => "",
-            "dot" or "sysDot" => $"{w:0.##} {w * 2:0.##}",
+            // dot: on 1w, off 3w (clear separation); sysDot: on 1w, off 1w (tight,
+            // dots nearly touching). Measured against real PowerPoint — the two must
+            // render distinctly (previously both emitted "w 2w" and looked identical).
+            "dot" => $"{w:0.##} {w * 3:0.##}",
+            "sysDot" => $"{w:0.##} {w:0.##}",
             "dash" => $"{w * 4:0.##} {w * 3:0.##}",
             "lgDash" => $"{w * 8:0.##} {w * 3:0.##}",
             "sysDash" => $"{w * 3:0.##} {w * 1:0.##}",
