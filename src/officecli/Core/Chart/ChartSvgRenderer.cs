@@ -937,7 +937,8 @@ internal partial class ChartSvgRenderer
         string? highLowLineColor = null, double highLowLineWidth = 1,
         List<TrendlineInfo?>? trendlines = null, List<ErrorBarInfo?>? errorBars = null,
         bool scatterMarkersOnly = false, bool stacked = false, bool percent = false,
-        string? dataLabelNumFmt = null)
+        string? dataLabelNumFmt = null,
+        List<string?>? markerFillColors = null, List<string?>? markerLineColors = null)
     {
         bool isLog = logBase.HasValue && logBase.Value > 1;
 
@@ -1144,9 +1145,11 @@ internal partial class ChartSvgRenderer
 
             var shape = markerShapes != null && s < markerShapes.Count ? markerShapes[s] : "circle";
             var mSize = markerSizes != null && s < markerSizes.Count ? markerSizes[s] * 0.6 : 3;
+            var mFill = markerFillColors != null && s < markerFillColors.Count ? markerFillColors[s] : null;
+            var mStroke = markerLineColors != null && s < markerLineColors.Count ? markerLineColors[s] : null;
             for (int p = 0; p < pts.Count; p++)
             {
-                sb.AppendLine($"        {RenderMarkerSvg(shape, pts[p].x, pts[p].y, mSize, lineColor)}");
+                sb.AppendLine($"        {RenderMarkerSvg(shape, pts[p].x, pts[p].y, mSize, mFill ?? lineColor, mStroke ?? lineColor)}");
                 if (showDataLabels)
                 {
                     // R44: label TEXT uses the original (pre-stack) per-series
@@ -1751,7 +1754,8 @@ internal partial class ChartSvgRenderer
         int ox, int oy, int pw, int ph, List<string>? markerShapes, List<int>? markerSizes,
         List<double>? lineWidths, List<string>? lineDashes, bool markersOnly,
         bool showDataLabels, double? axisMin, double? axisMax, double? majorUnit, string? valNumFmt,
-        List<bool>? smooth = null, List<TrendlineInfo?>? trendlines = null, List<ErrorBarInfo?>? errorBars = null)
+        List<bool>? smooth = null, List<TrendlineInfo?>? trendlines = null, List<ErrorBarInfo?>? errorBars = null,
+        List<string?>? markerFillColors = null, List<string?>? markerLineColors = null)
     {
         var scatterSeries = plotArea.Descendants<OpenXmlCompositeElement>()
             .Where(e => e.LocalName == "ser" && e.Parent?.LocalName == "scatterChart").ToList();
@@ -1861,9 +1865,11 @@ internal partial class ChartSvgRenderer
 
             var shape = markerShapes != null && s < markerShapes.Count ? markerShapes[s] : "circle";
             var mSize = markerSizes != null && s < markerSizes.Count ? markerSizes[s] * 0.6 : 3;
+            var mFill = markerFillColors != null && s < markerFillColors.Count ? markerFillColors[s] : null;
+            var mStroke = markerLineColors != null && s < markerLineColors.Count ? markerLineColors[s] : null;
             foreach (var p in pts)
             {
-                sb.AppendLine($"        {RenderMarkerSvg(shape, p.x, p.y, mSize, color)}");
+                sb.AppendLine($"        {RenderMarkerSvg(shape, p.x, p.y, mSize, mFill ?? color, mStroke ?? color)}");
                 if (showDataLabels)
                 {
                     var vlabel = p.yv % 1 == 0 ? $"{(int)p.yv}" : $"{p.yv:0.#}";
@@ -2310,6 +2316,10 @@ internal partial class ChartSvgRenderer
         // --- Marker shapes per series (circle, diamond, square, triangle, star, x, plus, dash, dot, none) ---
         public List<string> MarkerShapes { get; set; } = [];
         public List<int> MarkerSizes { get; set; } = [];
+        // Per-series marker fill / border (from <c:marker><c:spPr>). null => use
+        // the series color (PowerPoint's default: solid series-colored marker).
+        public List<string?> MarkerFillColors { get; set; } = [];
+        public List<string?> MarkerLineColors { get; set; } = [];
 
         // --- Smooth line (cubic spline) per series ---
         public List<bool> Smooth { get; set; } = [];
@@ -2765,6 +2775,15 @@ internal partial class ChartSvgRenderer
                 var sizeEl = marker?.Elements().FirstOrDefault(e => e.LocalName == "size");
                 var sizeVal = sizeEl?.GetAttributes().FirstOrDefault(a => a.LocalName == "val").Value;
                 info.MarkerSizes.Add(sizeVal != null && int.TryParse(sizeVal, out var ms) ? ms : 5);
+                // Marker fill + border (<c:marker><c:spPr>). PowerPoint paints a
+                // marker with an explicit fill AND a series-colored outline; we
+                // read the fill from solidFill and the border from <a:ln>. null
+                // (no spPr) defers to the series color at the call site.
+                var markerSpPr = marker?.Elements().FirstOrDefault(e => e.LocalName == "spPr");
+                var mFill = ExtractFillColor(markerSpPr, themeColors);
+                info.MarkerFillColors.Add(mFill != null ? $"#{mFill}" : null);
+                var mLine = ExtractLineColor(markerSpPr);
+                info.MarkerLineColors.Add(mLine != null ? $"#{mLine}" : null);
                 serIdx++;
 
                 // Per-series smooth (overrides chart-level)
@@ -3224,7 +3243,8 @@ internal partial class ChartSvgRenderer
                 info.MarkerShapes, info.MarkerSizes, info.LineWidths, info.LineDashes,
                 info.ScatterMarkersOnly, info.ShowDataLabels,
                 info.AxisMin, info.AxisMax, info.MajorUnit, info.ValNumFmt,
-                info.Smooth, info.Trendlines, info.ErrorBars);
+                info.Smooth, info.Trendlines, info.ErrorBars,
+                info.MarkerFillColors, info.MarkerLineColors);
         }
         else if (chartType.Contains("line") || chartType == "scatter")
         {
@@ -3239,7 +3259,8 @@ internal partial class ChartSvgRenderer
                     info.DropLineColor, info.DropLineWidth, info.DropLineDash,
                     info.HighLowLineColor, info.HighLowLineWidth,
                     info.Trendlines, info.ErrorBars, info.ScatterMarkersOnly,
-                    info.IsStacked, info.IsPercent, info.DataLabelsNumFmt);
+                    info.IsStacked, info.IsPercent, info.DataLabelsNumFmt,
+                    info.MarkerFillColors, info.MarkerLineColors);
         }
         else
         {
@@ -3397,24 +3418,31 @@ internal partial class ChartSvgRenderer
     // ==================== 3D Chart Helpers ====================
 
     /// <summary>Darken or lighten a hex color by a factor (0.0-2.0, 1.0=unchanged)</summary>
-    private static string RenderMarkerSvg(string shape, double cx, double cy, double r, string color)
+    // fill = marker interior (from <c:marker><c:spPr> solidFill, or series color),
+    // stroke = marker outline (from <c:marker><c:spPr><a:ln>, or series color).
+    // PowerPoint always draws a series-colored outline, so a white-filled marker
+    // stays visible (hollow) on a white slide instead of vanishing.
+    private static string RenderMarkerSvg(string shape, double cx, double cy, double r, string fill, string stroke)
     {
+        // line-style glyphs (x/plus/dash/dot) have no interior — they are drawn
+        // in the stroke color only; the fill arg is meaningless for them.
+        const string sw = "1";
         return shape switch
         {
-            "diamond" => $"<polygon points=\"{cx},{cy - r} {cx + r},{cy} {cx},{cy + r} {cx - r},{cy}\" fill=\"{color}\"/>",
-            "square" => $"<rect x=\"{cx - r}\" y=\"{cy - r}\" width=\"{r * 2}\" height=\"{r * 2}\" fill=\"{color}\"/>",
-            "triangle" => $"<polygon points=\"{cx},{cy - r} {cx + r},{cy + r} {cx - r},{cy + r}\" fill=\"{color}\"/>",
-            "star" => BuildStarPath(cx, cy, r, color),
-            "x" => $"<g stroke=\"{color}\" stroke-width=\"1.5\"><line x1=\"{cx - r}\" y1=\"{cy - r}\" x2=\"{cx + r}\" y2=\"{cy + r}\"/><line x1=\"{cx + r}\" y1=\"{cy - r}\" x2=\"{cx - r}\" y2=\"{cy + r}\"/></g>",
-            "plus" => $"<g stroke=\"{color}\" stroke-width=\"1.5\"><line x1=\"{cx}\" y1=\"{cy - r}\" x2=\"{cx}\" y2=\"{cy + r}\"/><line x1=\"{cx - r}\" y1=\"{cy}\" x2=\"{cx + r}\" y2=\"{cy}\"/></g>",
-            "dash" => $"<line x1=\"{cx - r}\" y1=\"{cy}\" x2=\"{cx + r}\" y2=\"{cy}\" stroke=\"{color}\" stroke-width=\"2\"/>",
-            "dot" => $"<circle cx=\"{cx}\" cy=\"{cy}\" r=\"1.5\" fill=\"{color}\"/>",
+            "diamond" => $"<polygon points=\"{cx},{cy - r} {cx + r},{cy} {cx},{cy + r} {cx - r},{cy}\" fill=\"{fill}\" stroke=\"{stroke}\" stroke-width=\"{sw}\"/>",
+            "square" => $"<rect x=\"{cx - r}\" y=\"{cy - r}\" width=\"{r * 2}\" height=\"{r * 2}\" fill=\"{fill}\" stroke=\"{stroke}\" stroke-width=\"{sw}\"/>",
+            "triangle" => $"<polygon points=\"{cx},{cy - r} {cx + r},{cy + r} {cx - r},{cy + r}\" fill=\"{fill}\" stroke=\"{stroke}\" stroke-width=\"{sw}\"/>",
+            "star" => BuildStarPath(cx, cy, r, fill, stroke),
+            "x" => $"<g stroke=\"{stroke}\" stroke-width=\"1.5\"><line x1=\"{cx - r}\" y1=\"{cy - r}\" x2=\"{cx + r}\" y2=\"{cy + r}\"/><line x1=\"{cx + r}\" y1=\"{cy - r}\" x2=\"{cx - r}\" y2=\"{cy + r}\"/></g>",
+            "plus" => $"<g stroke=\"{stroke}\" stroke-width=\"1.5\"><line x1=\"{cx}\" y1=\"{cy - r}\" x2=\"{cx}\" y2=\"{cy + r}\"/><line x1=\"{cx - r}\" y1=\"{cy}\" x2=\"{cx + r}\" y2=\"{cy}\"/></g>",
+            "dash" => $"<line x1=\"{cx - r}\" y1=\"{cy}\" x2=\"{cx + r}\" y2=\"{cy}\" stroke=\"{stroke}\" stroke-width=\"2\"/>",
+            "dot" => $"<circle cx=\"{cx}\" cy=\"{cy}\" r=\"1.5\" fill=\"{stroke}\"/>",
             "none" => "",
-            _ => $"<circle cx=\"{cx}\" cy=\"{cy}\" r=\"{r}\" fill=\"{color}\"/>", // circle or auto
+            _ => $"<circle cx=\"{cx}\" cy=\"{cy}\" r=\"{r}\" fill=\"{fill}\" stroke=\"{stroke}\" stroke-width=\"{sw}\"/>", // circle or auto
         };
     }
 
-    private static string BuildStarPath(double cx, double cy, double r, string color)
+    private static string BuildStarPath(double cx, double cy, double r, string fill, string stroke)
     {
         var sb = new StringBuilder();
         sb.Append($"<polygon points=\"");
@@ -3424,7 +3452,7 @@ internal partial class ChartSvgRenderer
             var rad = i % 2 == 0 ? r : r * 0.4;
             sb.Append($"{cx + rad * Math.Cos(angle):0.#},{cy - rad * Math.Sin(angle):0.#} ");
         }
-        sb.Append($"\" fill=\"{color}\"/>");
+        sb.Append($"\" fill=\"{fill}\" stroke=\"{stroke}\" stroke-width=\"1\"/>");
         return sb.ToString();
     }
 
