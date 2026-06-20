@@ -104,9 +104,14 @@ public partial class PowerPointHandler
                     "ctr" => "center",
                     "r" => "right",
                     "just" => "justify",
+                    "dist" => "justify",
                     _ => "left"
                 };
                 paraStyles.Add($"text-align:{align}");
+                // algn="dist" stretches EVERY line — including the last — to the
+                // full text-box width (inter-word, not inter-character for Latin).
+                if (algnInner == "dist")
+                    paraStyles.Add("text-align-last:justify");
             }
 
             // Paragraph spacing. PowerPoint ignores spcBef on the FIRST paragraph
