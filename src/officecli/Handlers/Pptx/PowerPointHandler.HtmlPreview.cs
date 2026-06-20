@@ -436,12 +436,18 @@ public partial class PowerPointHandler
         var slideCss = LevelBackgroundCss(slide.CommonSlideData?.Background, slidePart, themeColors);
         if (slideCss != null) return slideCss;
 
+        // Image/blip backgrounds inherited from the layout/master register their
+        // r:embed relationship in the LAYOUT/MASTER part, not the slide part, so
+        // the blip must be resolved against the owning part (else GetPartById throws
+        // and the background is silently dropped).
         var layoutCss = LevelBackgroundCss(
-            slidePart.SlideLayoutPart?.SlideLayout?.CommonSlideData?.Background, slidePart, themeColors);
+            slidePart.SlideLayoutPart?.SlideLayout?.CommonSlideData?.Background,
+            (OpenXmlPart?)slidePart.SlideLayoutPart ?? slidePart, themeColors);
         if (layoutCss != null) return layoutCss;
 
         var masterCss = LevelBackgroundCss(
-            slidePart.SlideLayoutPart?.SlideMasterPart?.SlideMaster?.CommonSlideData?.Background, slidePart, themeColors);
+            slidePart.SlideLayoutPart?.SlideMasterPart?.SlideMaster?.CommonSlideData?.Background,
+            (OpenXmlPart?)slidePart.SlideLayoutPart?.SlideMasterPart ?? slidePart, themeColors);
         if (masterCss != null) return masterCss;
 
         return "";
@@ -451,13 +457,13 @@ public partial class PowerPointHandler
     // <p:bgPr> wins; otherwise a <p:bgRef> (theme background-fill-style index +
     // schemeClr) is resolved against the theme map. Returns null when this level
     // has no background at all, so the caller can descend to the next level.
-    private string? LevelBackgroundCss(Background? bg, SlidePart slidePart, Dictionary<string, string> themeColors)
+    private string? LevelBackgroundCss(Background? bg, OpenXmlPart part, Dictionary<string, string> themeColors)
     {
         if (bg == null) return null;
 
         var bgPr = bg.BackgroundProperties;
         if (bgPr != null)
-            return BackgroundPropertiesToCss(bgPr, slidePart, themeColors);
+            return BackgroundPropertiesToCss(bgPr, part, themeColors);
 
         // R4-3: a level can style its background via <p:bgRef> instead of
         // explicit bgPr. Resolve the bgRef's scheme color against the theme map.
