@@ -23,6 +23,7 @@ public partial class PowerPointHandler
         // we count manually and emit the numeric glyph inline.
         var autoNumCounters = new Dictionary<string, int>();
         string? lastAutoKey = null;
+        int? lastAutoLevel = null;
         // Resolve the theme font that runs in this textbody should inherit when
         // they carry no explicit Latin typeface (or carry the theme reference
         // "+mj-lt" / "+mn-lt"). Title placeholders inherit the major (heading)
@@ -305,6 +306,19 @@ public partial class PowerPointHandler
             if (bulletAuto != null && !isEmptyPara)
             {
                 int paraLevel = pProps?.Level?.Value ?? 0;
+                // When a shallower-level paragraph interrupts a deeper numbered list,
+                // PowerPoint resets the deeper levels' counters so they restart from
+                // startAt the next time they appear (parent continues, child resets).
+                if (lastAutoLevel.HasValue && paraLevel < lastAutoLevel.Value)
+                {
+                    var staleKeys = autoNumCounters.Keys.Where(k =>
+                    {
+                        var at = k.LastIndexOf('@');
+                        return at >= 0 && int.TryParse(k[(at + 1)..], out var kl) && kl > paraLevel;
+                    }).ToList();
+                    foreach (var k in staleKeys) autoNumCounters.Remove(k);
+                }
+                lastAutoLevel = paraLevel;
                 string schemeKey = (bulletAuto.Type?.HasValue == true && !string.IsNullOrEmpty(bulletAuto.Type.InnerText)
                     ? bulletAuto.Type.InnerText : "arabicPeriod") + "@" + paraLevel;
                 if (lastAutoKey != schemeKey)
