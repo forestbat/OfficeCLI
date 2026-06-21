@@ -561,7 +561,11 @@ public partial class WordHandler
             // reflows. Absent → null → no wp14 child emitted.
             var sizeRelH = properties.GetValueOrDefault("sizeRelH");
             var sizeRelV = properties.GetValueOrDefault("sizeRelV");
-            imgRun = CreateAnchorImageRun(relId, cxEmu, cyEmu, altText, wrapType, hPos, vPos, hRel, vRel, behind, imgDocPropId, pictureName, hAlign, vAlign, relHeight, effectExtent, wrapDist, wrapPolygon, sizeRelH, sizeRelV);
+            // BUG-DUMP-WRAPSIDE: forward the wrapSquare text side (left/right/
+            // largest) so a one-sided wrap round-trips instead of defaulting to
+            // bothSides and reflowing the text around the float.
+            var wrapSide = properties.GetValueOrDefault("wrap.side") ?? properties.GetValueOrDefault("wrapSide");
+            imgRun = CreateAnchorImageRun(relId, cxEmu, cyEmu, altText, wrapType, hPos, vPos, hRel, vRel, behind, imgDocPropId, pictureName, hAlign, vAlign, relHeight, effectExtent, wrapDist, wrapPolygon, sizeRelH, sizeRelV, wrapSide);
         }
         else
         {

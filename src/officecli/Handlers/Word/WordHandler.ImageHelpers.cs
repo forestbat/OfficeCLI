@@ -127,14 +127,18 @@ public partial class WordHandler
     private static DW.WrapTextValues WrapSideFrom(string? serialized)
     {
         var side = serialized?.Split(';') is { Length: >= 2 } p ? p[1] : "bothSides";
-        return side switch
-        {
-            "left" => DW.WrapTextValues.Left,
-            "right" => DW.WrapTextValues.Right,
-            "largest" => DW.WrapTextValues.Largest,
-            _ => DW.WrapTextValues.BothSides,
-        };
+        return WrapSideValue(side);
     }
+
+    // Map a wrapText side token (left/right/largest/bothSides) to its enum;
+    // default bothSides (Word's default and OOXML required value on wrapSquare).
+    private static DW.WrapTextValues WrapSideValue(string? side) => side switch
+    {
+        "left" => DW.WrapTextValues.Left,
+        "right" => DW.WrapTextValues.Right,
+        "largest" => DW.WrapTextValues.Largest,
+        _ => DW.WrapTextValues.BothSides,
+    };
 
     private static Run CreateAnchorImageRun(string relationshipId, long cx, long cy, string altText,
         string wrap, long hPos, long vPos,
@@ -144,11 +148,12 @@ public partial class WordHandler
         (long L, long T, long R, long B)? effectExtent = null,
         (uint T, uint B, uint L, uint R)? wrapDist = null,
         string? wrapPolygon = null,
-        string? sizeRelH = null, string? sizeRelV = null)
+        string? sizeRelH = null, string? sizeRelV = null,
+        string? wrapSide = null)
     {
         OpenXmlElement wrapElement = wrap.ToLowerInvariant() switch
         {
-            "square" => new DW.WrapSquare { WrapText = DW.WrapTextValues.BothSides },
+            "square" => new DW.WrapSquare { WrapText = WrapSideValue(wrapSide) },
             // WrapText is REQUIRED on wrapTight/wrapThrough (same as wrapSquare);
             // omitting it produces schema-invalid XML that real Word refuses to
             // open. BUG-R24-WRAPPOLY: honor a captured source polygon (vertices +
@@ -439,6 +444,19 @@ public partial class WordHandler
             // replay produces an inline picture (BUG-R6-1).
             node.Format["anchor"] = true;
             node.Format["wrap"] = DetectWrapType(anchorEl);
+            // BUG-DUMP-WRAPSIDE: wrapSquare carries a wrapText side (left/right/
+            // largest/bothSides) controlling which sides text flows past the
+            // float. DetectWrapType returns only the type, and the apply path
+            // hardcoded bothSides — so a right-floated image with text wrapping
+            // on its left ONLY ("left") rebuilt as bothSides, reflowing the
+            // surrounding text and pushing the page. Capture the side so it
+            // round-trips. (tight/through carry their side in wrap.polygon below.)
+            var sqWrapText = anchorEl.GetFirstChild<DW.WrapSquare>()?.WrapText;
+            if (sqWrapText?.Value is { } sqv && sqv != DW.WrapTextValues.BothSides)
+                node.Format["wrap.side"] =
+                    sqv == DW.WrapTextValues.Left ? "left"
+                    : sqv == DW.WrapTextValues.Right ? "right"
+                    : sqv == DW.WrapTextValues.Largest ? "largest" : "bothSides";
             if (anchorEl.BehindDoc?.Value == true)
                 node.Format["behindText"] = true;
             // BUG-R24-WRAPPOLY: a wrapTight / wrapThrough wrap carries a custom
