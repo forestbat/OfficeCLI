@@ -2188,6 +2188,47 @@ public partial class PowerPointHandler
         return "clip-path:polygon(" + string.Join(",", pts) + ")";
     }
 
+    // uturnArrow: a U-turn arrow — up the left arm, semicircular bend over the top, down
+    // the right arm into a downward arrowhead. 5 adjusts (shaft thickness, arrowhead width,
+    // arrowhead length, bend radius, arrowhead-tip height). Single connected path: 4 circular
+    // arcs (outer + inner bend halves) + straight arms/arrowhead. Was missing (rectangle).
+    // Guide chain from the ECMA preset definition; verified against PowerPoint.
+    private static string UturnArrowPolygon(long widthEmu, long heightEmu, Drawing.PresetGeometry? presetGeom)
+    {
+        double w = widthEmu, h = heightEmu, ss = Math.Min(w, h);
+        var a2 = Math.Clamp(ReadAdjValueCss(presetGeom, 1, 25000), 0, 25000);
+        double maxAdj1 = a2 * 2;
+        var a1 = Math.Clamp(ReadAdjValueCss(presetGeom, 0, 25000), 0, maxAdj1);
+        double q2 = a1 * ss / h, q3 = 100000 - q2, maxAdj3 = q3 * h / ss;
+        var a3 = Math.Clamp(ReadAdjValueCss(presetGeom, 2, 25000), 0, maxAdj3);
+        double q1 = a3 - a1, minAdj5 = q1 * ss / h;
+        var a5 = Math.Clamp(ReadAdjValueCss(presetGeom, 4, 75000), minAdj5, 100000);
+        double th = ss * a1 / 100000.0, aw2 = ss * a2 / 100000.0, th2 = th / 2, dh2 = aw2 - th2;
+        double y5 = h * a5 / 100000.0, ah = ss * a3 / 100000.0, y4 = y5 - ah;
+        double x9 = w - dh2, bw = x9 / 2, bs = Math.Min(bw, y4), maxAdj4 = bs * 100000 / ss;
+        var a4 = Math.Clamp(ReadAdjValueCss(presetGeom, 3, 43750), 0, maxAdj4);
+        double bd = ss * a4 / 100000.0, bd2 = Math.Max(bd - th, 0);
+        double x3 = th + bd2, x8 = w - aw2, x6 = x8 - aw2, x7 = x6 + dh2, x4 = x9 - bd;
+        var ci = System.Globalization.CultureInfo.InvariantCulture;
+        string X(double v) => (v / w * 100).ToString("0.##", ci);
+        string Y(double v) => (v / h * 100).ToString("0.##", ci);
+        var pts = new System.Collections.Generic.List<string>();
+        void Pt(double x, double y) => pts.Add($"{X(x)}% {Y(y)}%");
+        const int N = 8;
+        void Arc(double cx, double cy, double r, double d0, double d1)
+        { for (int i = 0; i <= N; i++) { double a = (d0 + (d1 - d0) * i / N) * Math.PI / 180.0; Pt(cx + r * Math.Cos(a), cy + r * Math.Sin(a)); } }
+        Pt(0, h); Pt(0, bd);
+        Arc(bd, bd, bd, 180, 270);     // outer bend, left half
+        Pt(x4, 0);
+        Arc(x4, bd, bd, 270, 360);     // outer bend, right half
+        Pt(x9, y4); Pt(w, y4); Pt(x8, y5); Pt(x6, y4); Pt(x7, y4); Pt(x7, x3);
+        Arc(x7 - bd2, x3, bd2, 0, -90);   // inner bend, right half
+        Pt(x3, th);
+        Arc(x3, x3, bd2, 270, 180);    // inner bend, left half
+        Pt(th, h);
+        return "clip-path:polygon(" + string.Join(",", pts) + ")";
+    }
+
     private static string PresetGeometryToCss(string preset, long widthEmu, long heightEmu,
         Drawing.PresetGeometry? presetGeom)
     {
@@ -2305,6 +2346,8 @@ public partial class PowerPointHandler
             return TeardropPolygon(widthEmu, heightEmu, presetGeom);
         if (preset == "swooshArrow" && widthEmu > 0 && heightEmu > 0)
             return SwooshArrowPolygon(widthEmu, heightEmu, presetGeom);
+        if (preset == "uturnArrow" && widthEmu > 0 && heightEmu > 0)
+            return UturnArrowPolygon(widthEmu, heightEmu, presetGeom);
         // corner (L-shape): adj1 = bottom (horizontal) arm height %, adj2 = left
         // (vertical) arm width %; both default 50000. Inner corner at (adj2, 100-adj1).
         // The old hardcoded 50/50 ignored both, so a thin-armed L looked fat.
