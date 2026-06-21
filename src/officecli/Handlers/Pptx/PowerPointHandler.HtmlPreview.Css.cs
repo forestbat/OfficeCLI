@@ -1542,6 +1542,14 @@ public partial class PowerPointHandler
         if (preset == "trapezoid") return TrapezoidPolygon(presetGeom);
         if (preset == "chevron") return ChevronPolygon(presetGeom);
         if (preset == "hexagon") return HexagonPolygon(presetGeom);
+        // triangle/isosTriangle: adj = apex horizontal position (fraction*100000,
+        // default 50000 = centered). A non-default adj shifts the apex, making a
+        // scalene triangle; the old hardcoded 50% ignored it.
+        if (preset is "triangle" or "isosTriangle")
+        {
+            var apexPct = Math.Clamp(ReadAdjValueCss(presetGeom, 0, 50000) / 1000.0, 0, 100);
+            return $"clip-path:polygon({apexPct:0.##}% 0,100% 100%,0 100%)";
+        }
 
         // Calculate roundRect corner radius from avLst or default (16.667% of shorter side)
         if (preset is "roundRect" or "round1Rect" or "round2SameRect" or "round2DiagRect")
@@ -1631,7 +1639,6 @@ public partial class PowerPointHandler
             "ellipse" => "border-radius:50%",
 
             // Triangles
-            "triangle" or "isosTriangle" => "clip-path:polygon(50% 0,100% 100%,0 100%)",
             "rtTriangle" => "clip-path:polygon(0 0,100% 100%,0 100%)",
 
             // Diamonds and parallelograms
