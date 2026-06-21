@@ -2027,6 +2027,35 @@ public partial class PowerPointHandler
              + $"{P(x4, 0)},{P(w, x1)},{P(x5, x1)},{P(x5, y5)},{P(x1, y5)},{P(x1, h)})";
     }
 
+    // leftRightUpArrow: a three-headed arrow (left + right + up) sharing a central hub.
+    // Was missing from the switch (rendered as a plain rectangle). adj1=shaft thickness,
+    // adj2=arrowhead half-width, adj3=arrowhead depth (fractions of ss). 17 straight-edge
+    // vertices, single connected. Verified against real PowerPoint (default + non-default).
+    private static string LeftRightUpArrowPolygon(long widthEmu, long heightEmu, Drawing.PresetGeometry? presetGeom)
+    {
+        double w = widthEmu, h = heightEmu, ss = Math.Min(w, h);
+        var a2 = Math.Clamp(ReadAdjValueCss(presetGeom, 1, 25000), 0, 50000);
+        double maxAdj1 = a2 * 2;
+        var a1 = Math.Clamp(ReadAdjValueCss(presetGeom, 0, 25000), 0, maxAdj1);
+        double maxAdj3 = (100000 - maxAdj1) / 2;
+        var a3 = Math.Clamp(ReadAdjValueCss(presetGeom, 2, 25000), 0, maxAdj3);
+        double hc = w / 2;
+        double x1 = ss * a3 / 100000.0;
+        double dx2 = ss * a2 / 100000.0, x2 = hc - dx2, x5 = hc + dx2;
+        double dx3 = ss * a1 / 200000.0, x3 = hc - dx3, x4 = hc + dx3;
+        double x6 = w - x1;
+        double dy2 = ss * a2 / 50000.0, y2 = h - dy2;
+        double y4 = h - dx2, y3 = y4 - dx3, y5 = y4 + dx3;
+        var ci = System.Globalization.CultureInfo.InvariantCulture;
+        string X(double v) => (v / w * 100).ToString("0.##", ci);
+        string Y(double v) => (v / h * 100).ToString("0.##", ci);
+        string P(double x, double y) => $"{X(x)}% {Y(y)}%";
+        return "clip-path:polygon("
+             + $"0 {Y(y4)}%,{P(x1, y2)},{P(x1, y3)},{P(x3, y3)},{P(x3, x1)},{P(x2, x1)},"
+             + $"{P(hc, 0)},{P(x5, x1)},{P(x4, x1)},{P(x4, y3)},{P(x6, y3)},{P(x6, y2)},"
+             + $"{P(w, y4)},{P(x6, h)},{P(x6, y5)},{P(x1, y5)},{P(x1, h)})";
+    }
+
     private static string PresetGeometryToCss(string preset, long widthEmu, long heightEmu,
         Drawing.PresetGeometry? presetGeom)
     {
@@ -2123,6 +2152,8 @@ public partial class PowerPointHandler
             return BentUpArrowPolygon(widthEmu, heightEmu, presetGeom);
         if (preset == "leftUpArrow" && widthEmu > 0 && heightEmu > 0)
             return LeftUpArrowPolygon(widthEmu, heightEmu, presetGeom);
+        if (preset == "leftRightUpArrow" && widthEmu > 0 && heightEmu > 0)
+            return LeftRightUpArrowPolygon(widthEmu, heightEmu, presetGeom);
         // corner (L-shape): adj1 = bottom (horizontal) arm height %, adj2 = left
         // (vertical) arm width %; both default 50000. Inner corner at (adj2, 100-adj1).
         // The old hardcoded 50/50 ignored both, so a thin-armed L looked fat.
