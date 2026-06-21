@@ -60,6 +60,9 @@ internal partial class ChartSvgRenderer
     public string AxisColor { get; set; } = "#B0B8C0";
     public string SecondaryAxisColor { get; set; } = "#aaa";
     public string GridColor { get; set; } = "#333";
+    // Value-axis major-gridline dash name (<a:prstDash val="...">). Null/"solid"
+    // => solid gridlines (no stroke-dasharray emitted). Synced from ChartInfo.
+    public string? GridlineDash { get; set; }
     // Whether the chart XML declared <c:majorGridlines> on the value/category axis.
     // Gridlines are emitted only when present (real PowerPoint draws none otherwise).
     // Default true so paths that don't parse axis info keep prior behavior.
@@ -377,7 +380,7 @@ internal partial class ChartSvgRenderer
             for (int t = 0; t <= nTicks; t++)
             {
                 var gx = TickX((double)t / nTicks);
-                sb.AppendLine($"        <line x1=\"{gx:0.#}\" y1=\"{oy}\" x2=\"{gx:0.#}\" y2=\"{oy + ph}\" stroke=\"{GridColor}\" stroke-width=\"0.5\"/>");
+                sb.AppendLine($"        <line x1=\"{gx:0.#}\" y1=\"{oy}\" x2=\"{gx:0.#}\" y2=\"{oy + ph}\" stroke=\"{GridColor}\" stroke-width=\"0.5\"{ValGridDashAttr}/>");
             }
             // Category-axis major gridlines (horizontal) — at the category-slot
             // boundaries. The category axis is vertical for horizontal bars, so
@@ -606,7 +609,7 @@ internal partial class ChartSvgRenderer
             for (int t = 0; t <= nTicks; t++)
             {
                 var gy = TickY((double)t / nTicks);
-                sb.AppendLine($"        <line x1=\"{ox}\" y1=\"{gy:0.#}\" x2=\"{ox + pw}\" y2=\"{gy:0.#}\" stroke=\"{GridColor}\" stroke-width=\"0.5\"/>");
+                sb.AppendLine($"        <line x1=\"{ox}\" y1=\"{gy:0.#}\" x2=\"{ox + pw}\" y2=\"{gy:0.#}\" stroke=\"{GridColor}\" stroke-width=\"0.5\"{ValGridDashAttr}/>");
             }
             if (ShowValMinorGridlines && ValAxisVisible)
             for (int t = 0; t < nTicks; t++)
@@ -1210,7 +1213,8 @@ internal partial class ChartSvgRenderer
             double tickVal = isLog ? niceMin + t : niceMin + tickStep * t;
             if (!isLog && tickVal > niceMax + 1e-9) continue; // no gridline past axisMax
             var gy = MapY(isLog ? Math.Pow(logBase!.Value, tickVal) : tickVal);
-            sb.AppendLine($"        <line x1=\"{ox}\" y1=\"{gy:0.#}\" x2=\"{ox + pw}\" y2=\"{gy:0.#}\" stroke=\"{GridColor}\" stroke-width=\"0.5\" stroke-dasharray=\"none\"/>");
+            var lineGridDash = !string.IsNullOrEmpty(GridlineDash) && GridlineDash != "solid" ? RefLineDashArray(GridlineDash) : "none";
+            sb.AppendLine($"        <line x1=\"{ox}\" y1=\"{gy:0.#}\" x2=\"{ox + pw}\" y2=\"{gy:0.#}\" stroke=\"{GridColor}\" stroke-width=\"0.5\" stroke-dasharray=\"{lineGridDash}\"/>");
         }
         // Category-axis major gridlines (vertical) — at the category-slot
         // boundaries, only when <c:catAx><c:majorGridlines/> was declared and
@@ -1794,7 +1798,7 @@ internal partial class ChartSvgRenderer
         for (int t = 1; t <= tickCount; t++)
         {
             var gy = oy + ph - (double)ph * t / tickCount;
-            sb.AppendLine($"        <line x1=\"{ox}\" y1=\"{gy:0.#}\" x2=\"{ox + pw}\" y2=\"{gy:0.#}\" stroke=\"{GridColor}\" stroke-width=\"0.5\"/>");
+            sb.AppendLine($"        <line x1=\"{ox}\" y1=\"{gy:0.#}\" x2=\"{ox + pw}\" y2=\"{gy:0.#}\" stroke=\"{GridColor}\" stroke-width=\"0.5\"{ValGridDashAttr}/>");
         }
         if (ShowValMinorGridlines && ValAxisVisible)
         for (int t = 0; t < tickCount; t++)
@@ -2036,7 +2040,7 @@ internal partial class ChartSvgRenderer
         for (int t = 0; t <= nTicksY; t++)
         {
             var gy = MapY(minY + tickStepY * t);
-            sb.AppendLine($"        <line x1=\"{ox}\" y1=\"{gy:0.#}\" x2=\"{ox + pw}\" y2=\"{gy:0.#}\" stroke=\"{GridColor}\" stroke-width=\"0.5\"/>");
+            sb.AppendLine($"        <line x1=\"{ox}\" y1=\"{gy:0.#}\" x2=\"{ox + pw}\" y2=\"{gy:0.#}\" stroke=\"{GridColor}\" stroke-width=\"0.5\"{ValGridDashAttr}/>");
         }
         sb.AppendLine($"        <line x1=\"{ox}\" y1=\"{oy}\" x2=\"{ox}\" y2=\"{oy + ph}\" stroke=\"{AxisLineColor}\" stroke-width=\"1\"/>");
         sb.AppendLine($"        <line x1=\"{ox}\" y1=\"{oy + ph}\" x2=\"{ox + pw}\" y2=\"{oy + ph}\" stroke=\"{AxisLineColor}\" stroke-width=\"1\"/>");
@@ -2140,7 +2144,7 @@ internal partial class ChartSvgRenderer
             for (int t = 0; t <= nTicksY; t++)
             {
                 var gy = MapY(minY + tickStepY * t);
-                sb.AppendLine($"        <line x1=\"{ox}\" y1=\"{gy:0.#}\" x2=\"{ox + pw}\" y2=\"{gy:0.#}\" stroke=\"{GridColor}\" stroke-width=\"0.5\"/>");
+                sb.AppendLine($"        <line x1=\"{ox}\" y1=\"{gy:0.#}\" x2=\"{ox + pw}\" y2=\"{gy:0.#}\" stroke=\"{GridColor}\" stroke-width=\"0.5\"{ValGridDashAttr}/>");
             }
         // Gridlines (vertical, on the X value axis). Scatter has no catAx, so the
         // X-axis majorGridlines are routed into ShowCatGridlines by ExtractChartInfo.
@@ -2699,6 +2703,9 @@ internal partial class ChartSvgRenderer
         public string? DataLabelsNumFmt { get; set; }
         public string? TitleFontColor { get; set; }
         public string? GridlineColor { get; set; }
+        /// <summary>Value-axis major-gridline OOXML dash name (&lt;a:prstDash val="..."/&gt;,
+        /// e.g. "dash"). Null when absent or "solid".</summary>
+        public string? GridlineDash { get; set; }
         /// <summary>True when the value axis has &lt;c:majorGridlines&gt; (horizontal gridlines).</summary>
         public bool ValMajorGridlines { get; set; }
         /// <summary>True when the category axis has &lt;c:majorGridlines&gt; (vertical gridlines).</summary>
@@ -3067,6 +3074,12 @@ internal partial class ChartSvgRenderer
             info.ValMinorGridlines = valAxis.Elements().Any(e => e.LocalName == "minorGridlines");
             var gridSpPr = majorGridlines?.Elements().FirstOrDefault(e => e.LocalName == "spPr");
             info.GridlineColor = ExtractLineColor(gridSpPr);
+            // Value-axis major-gridline dash style (<a:ln><a:prstDash val="dash"/>).
+            var gridLnEl = gridSpPr?.Elements().FirstOrDefault(e => e.LocalName == "ln");
+            var gridDashEl = gridLnEl?.Elements().FirstOrDefault(e => e.LocalName == "prstDash");
+            var gridDashVal = gridDashEl?.GetAttributes().FirstOrDefault(a => a.LocalName == "val").Value;
+            if (!string.IsNullOrEmpty(gridDashVal) && gridDashVal != "solid")
+                info.GridlineDash = gridDashVal;
 
             // BUG4(R25): <c:delete val="1"/> hides the axis (ticks + gridlines).
             var valDeleteEl = valAxis.Elements().FirstOrDefault(e => e.LocalName == "delete");
@@ -3725,6 +3738,7 @@ internal partial class ChartSvgRenderer
         if (info.ValFontColor != null) AxisColor = CssHexColor(info.ValFontColor);
         if (info.CatFontColor != null) CatColor = CssHexColor(info.CatFontColor);
         if (info.GridlineColor != null) GridColor = CssHexColor(info.GridlineColor);
+        GridlineDash = info.GridlineDash;
         ShowValGridlines = info.ValMajorGridlines;
         ShowCatGridlines = info.CatMajorGridlines;
         ShowValMinorGridlines = info.ValMinorGridlines;
@@ -4045,6 +4059,14 @@ internal partial class ChartSvgRenderer
         _ => "5,3"
     };
 
+    /// <summary>SVG attribute fragment (with leading space) for the value-axis
+    /// major-gridline dash, or "" when solid/absent. Driven by &lt;c:valAx&gt;
+    /// &lt;c:majorGridlines&gt;&lt;c:spPr&gt;&lt;a:ln&gt;&lt;a:prstDash&gt;.</summary>
+    private string ValGridDashAttr =>
+        !string.IsNullOrEmpty(GridlineDash) && GridlineDash != "solid"
+            ? $" stroke-dasharray=\"{RefLineDashArray(GridlineDash)}\""
+            : "";
+
     // ==================== 3D Chart Helpers ====================
 
     /// <summary>Darken or lighten a hex color by a factor (0.0-2.0, 1.0=unchanged)</summary>
@@ -4179,7 +4201,7 @@ internal partial class ChartSvgRenderer
             for (int t = 1; t <= tickCount; t++)
             {
                 var gx = plotOx + (double)plotPw * t / tickCount;
-                sb.AppendLine($"        <line x1=\"{gx:0.#}\" y1=\"{oy}\" x2=\"{gx:0.#}\" y2=\"{oy + ph}\" stroke=\"{GridColor}\" stroke-width=\"0.5\"/>");
+                sb.AppendLine($"        <line x1=\"{gx:0.#}\" y1=\"{oy}\" x2=\"{gx:0.#}\" y2=\"{oy + ph}\" stroke=\"{GridColor}\" stroke-width=\"0.5\"{ValGridDashAttr}/>");
             }
             sb.AppendLine($"        <line x1=\"{plotOx}\" y1=\"{oy}\" x2=\"{plotOx}\" y2=\"{oy + ph}\" stroke=\"{AxisLineColor}\" stroke-width=\"1\"/>");
             sb.AppendLine($"        <line x1=\"{plotOx}\" y1=\"{oy + ph}\" x2=\"{plotOx + plotPw}\" y2=\"{oy + ph}\" stroke=\"{AxisLineColor}\" stroke-width=\"1\"/>");
@@ -4241,7 +4263,7 @@ internal partial class ChartSvgRenderer
             for (int t = 1; t <= tickCount; t++)
             {
                 var gy = oy + ph - (double)ph * t / tickCount;
-                sb.AppendLine($"        <line x1=\"{ox}\" y1=\"{gy:0.#}\" x2=\"{ox + pw}\" y2=\"{gy:0.#}\" stroke=\"{GridColor}\" stroke-width=\"0.5\"/>");
+                sb.AppendLine($"        <line x1=\"{ox}\" y1=\"{gy:0.#}\" x2=\"{ox + pw}\" y2=\"{gy:0.#}\" stroke=\"{GridColor}\" stroke-width=\"0.5\"{ValGridDashAttr}/>");
             }
             sb.AppendLine($"        <line x1=\"{ox}\" y1=\"{oy}\" x2=\"{ox}\" y2=\"{oy + ph}\" stroke=\"{AxisLineColor}\" stroke-width=\"1\"/>");
             sb.AppendLine($"        <line x1=\"{ox}\" y1=\"{oy + ph}\" x2=\"{ox + pw}\" y2=\"{oy + ph}\" stroke=\"{AxisLineColor}\" stroke-width=\"1\"/>");
@@ -4518,7 +4540,7 @@ internal partial class ChartSvgRenderer
         for (int t = 1; t <= 4; t++)
         {
             var gy = oy + plotH - (double)plotH * t / 4;
-            sb.AppendLine($"        <line x1=\"{ox}\" y1=\"{gy:0.#}\" x2=\"{ox + plotW}\" y2=\"{gy:0.#}\" stroke=\"{GridColor}\" stroke-width=\"0.5\"/>");
+            sb.AppendLine($"        <line x1=\"{ox}\" y1=\"{gy:0.#}\" x2=\"{ox + plotW}\" y2=\"{gy:0.#}\" stroke=\"{GridColor}\" stroke-width=\"0.5\"{ValGridDashAttr}/>");
         }
         sb.AppendLine($"        <line x1=\"{ox}\" y1=\"{oy + totalDepthY}\" x2=\"{ox}\" y2=\"{oy + plotH}\" stroke=\"{AxisLineColor}\" stroke-width=\"1\"/>");
         sb.AppendLine($"        <line x1=\"{ox}\" y1=\"{oy + plotH}\" x2=\"{ox + pw}\" y2=\"{oy + plotH}\" stroke=\"{AxisLineColor}\" stroke-width=\"1\"/>");
