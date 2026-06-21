@@ -1908,7 +1908,15 @@ public partial class WordHandler : IDocumentHandler
             foreach (var rPr in root.Descendants<RunProperties>().ToList())
                 NormalizeRunPropsSchemaOrder(rPr);
             foreach (var pmRpr in root.Descendants<ParagraphMarkRunProperties>().ToList())
+            {
                 NormalizeRunPropsSchemaOrder(pmRpr);
+                // The paragraph-mark rPr itself must sit at its CT_PPr slot
+                // (after numPr/spacing, before sectPr/pPrChange); a verbatim or
+                // mixed-path pPr build can land it out of order ("unexpected
+                // child element rPr"). Re-seat the element within its pPr.
+                if (pmRpr.Parent is OpenXmlCompositeElement pPrParent)
+                    Core.SchemaOrder.Place(pPrParent, pmRpr);
+            }
         }
     }
 
