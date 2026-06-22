@@ -363,6 +363,9 @@ public partial class PowerPointHandler
         }
         if (!string.IsNullOrEmpty(glowCss))
             filterParts.Add(glowCss.Replace("filter:", ""));
+        var blurCss = EffectListToBlurCss(effectFor);
+        if (!string.IsNullOrEmpty(blurCss))
+            filterParts.Add(blurCss);
         if (filterParts.Count > 0)
             styles.Add($"filter:{string.Join(" ", filterParts)}");
 
@@ -1549,6 +1552,9 @@ public partial class PowerPointHandler
         }
         if (!string.IsNullOrEmpty(glowCss))
             filterParts.Add(glowCss.Replace("filter:", ""));
+        var picBlurCss = EffectListToBlurCss(effectList);
+        if (!string.IsNullOrEmpty(picBlurCss))
+            filterParts.Add(picBlurCss);
         if (filterParts.Count > 0)
             styles.Add($"filter:{string.Join(" ", filterParts)}");
 

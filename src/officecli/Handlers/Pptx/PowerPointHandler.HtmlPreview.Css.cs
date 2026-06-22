@@ -1011,6 +1011,22 @@ public partial class PowerPointHandler
 
     // ==================== CSS Helper: Shadow ====================
 
+    /// <summary>a:blur — a Gaussian blur over the ENTIRE shape/picture (distinct from
+    /// a:softEdge, which only feathers the edge region). Maps to CSS filter:blur().
+    /// Returns just the filter function (e.g. "blur(8pt)") or "" when absent. The
+    /// caller merges it into the combined filter: property alongside drop-shadow/glow.</summary>
+    private static string EffectListToBlurCss(Drawing.EffectList? effectList)
+    {
+        var blur = effectList?.GetFirstChild<Drawing.Blur>();
+        if (blur?.Radius?.HasValue != true || blur.Radius.Value <= 0) return "";
+        // PowerPoint's a:blur rad is a Gaussian blur RADIUS; CSS filter:blur() takes a
+        // standard deviation (sigma), and a Gaussian's visible spread is ~2*sigma. Using
+        // the radius directly as sigma over-blurs badly (text becomes unreadable);
+        // sigma ≈ radius/2 matches PowerPoint's milder render.
+        var blurPt = blur.Radius.Value / EmuConverter.EmuPerPointF / 2.0;
+        return $"blur({blurPt:0.##}pt)";
+    }
+
     private static string EffectListToShadowCss(Drawing.EffectList? effectList, Dictionary<string, string> themeColors)
     {
         if (effectList == null) return "";
