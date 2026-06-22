@@ -354,6 +354,11 @@ public partial class WordHandler
         // Already covered by the standard disc/circle/square switch in the
         // main render path — don't override those.
         if (BulletGlyphToCssKeyword(text!) != null) return null;
+        // Translate Symbol/Wingdings private-use code points that map to a
+        // real Unicode glyph but have no CSS list-style-type keyword (e.g.
+        // Symbol 0x2D minus → en-dash bullet). Otherwise the raw PUA char
+        // lands in the CSS string literal and renders as tofu (□).
+        text = TranslateSymbolPuaGlyph(text!);
         // Escape ' and \ for CSS string literal.
         var escaped = text!.Replace("\\", "\\\\").Replace("'", "\\'");
         return $"'{escaped} '";
@@ -380,6 +385,21 @@ public partial class WordHandler
         _ => null
     };
 
+    // CONSISTENCY(bullet-glyph-map): Symbol/Wingdings private-use bullet code
+    // points that resolve to a real Unicode glyph with NO CSS list-style-type
+    // keyword (so they can't go through BulletGlyphToCssKeyword). Word renders
+    // the font's glyph at that slot; the HTML preview must substitute the
+    // matching Unicode char or the raw PUA code point renders as tofu (□).
+    //   - U+F02D = Symbol font slot 0x2D (minus/hyphen) → en-dash "–" (U+2013),
+    //     which is what Word draws for this common second-level dash bullet.
+    // Single source of truth, applied by GetCustomListStyleString (HTML ::marker
+    // string literal) and BulletGlyphForText (plain-text walker).
+    private static string TranslateSymbolPuaGlyph(string lvlText) => lvlText switch
+    {
+        "" => "–", // Symbol 0x2D minus → en-dash bullet
+        _ => lvlText
+    };
+
     // CONSISTENCY(bullet-glyph-map): plain-text counterpart of
     // BulletGlyphToCssKeyword. `view text` must show the SAME bullet Word
     // renders, which for a custom lvlText glyph (★ ▶ ● …) is the glyph itself —
@@ -398,6 +418,11 @@ public partial class WordHandler
             case "square": return "▪";
         }
         if (string.IsNullOrEmpty(lvlText)) return "•";
+        // Symbol/Wingdings PUA slots with a known real-glyph equivalent
+        // (e.g. F02D → en-dash) translate before the generic-disc fallback so
+        // plain text matches Word and the HTML ::marker string.
+        var translated = TranslateSymbolPuaGlyph(lvlText!);
+        if (!ReferenceEquals(translated, lvlText)) return translated;
         var c = lvlText![0];
         if (c >= 0xF000 && c <= 0xF0FF) return "•"; // unmapped PUA -> generic disc
         return lvlText;
