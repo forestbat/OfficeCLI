@@ -1987,8 +1987,30 @@ public partial class WordHandler
         // BUG-R2b: accept the "dxa" suffix that Get now emits for colWidths/width
         // so a dxa-qualified value round-trips back through Set. dxa is the OOXML
         // twip unit, so it strips to a bare integer (no scaling).
+        // BUG-DUMP-FRACTWIPS: a source <w:col w:w="4521.5"> (an authoring-tool
+        // artifact — twips are integer in the schema, but Word tolerates and
+        // rounds fractional widths) made `dump --format batch` emit "4521.5",
+        // which Set's integer-only parse then REJECTED — officecli could not
+        // round-trip a value it itself produced, dropping the multi-column
+        // layout. Accept fractional twips and round, matching the cm/in/pt
+        // branches above (Word rounds the same way).
         if (value.EndsWith("dxa", StringComparison.OrdinalIgnoreCase))
-            return ParseHelpers.SafeParseUint(value[..^3], "twips");
-        return ParseHelpers.SafeParseUint(value, "twips");
+            return RoundNonNegativeTwips(value[..^3]);
+        return RoundNonNegativeTwips(value);
+    }
+
+    // Parse a bare twip value, tolerating a fractional component (rounded to the
+    // nearest integer twip) so a source's fractional length round-trips. A plain
+    // integer string still parses exactly; only a non-integer takes the rounding
+    // path. Negative values are rejected, matching the unit branches.
+    private static uint RoundNonNegativeTwips(string s)
+    {
+        s = s.Trim();
+        if (uint.TryParse(s, System.Globalization.CultureInfo.InvariantCulture, out var exact))
+            return exact;
+        var num = ParseHelpers.SafeParseDouble(s, "twips");
+        if (num < 0)
+            throw new ArgumentException($"length must be non-negative, got {num}.");
+        return (uint)Math.Round(num);
     }
 }
