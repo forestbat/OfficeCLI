@@ -129,6 +129,12 @@ public partial class WordHandler
             }
         }
 
+        // Set when an auto-layout (tblW=auto / no tblW) table carries a complete tblGrid: it then
+        // gets a definite width + table-layout:fixed so its colgroup proportions become hard column
+        // widths (prevents pure-text columns collapsing to 1-char vertical when a list-bearing cell
+        // would otherwise eat the row's width). See the auto-fit comment in the width block below.
+        bool autoGridFixable = false;
+
         // Table width: explicit tblW → use it; pct → percentage; otherwise sum gridCol widths
         var tblW = tblPr?.TableWidth;
         var tblWType = tblW?.Type?.InnerText;
@@ -143,8 +149,16 @@ public partial class WordHandler
         }
         else
         {
-            // No explicit tblW or type=auto: use gridCol sum as max-width (Word auto-fit behavior)
-            // auto layout tables in Word shrink to content; max-width lets browser do the same
+            // No explicit tblW or type=auto: use gridCol sum for the table width (Word auto-fit behavior).
+            // Word auto-fit does NOT let columns grow past their grid widths to the point of starving a
+            // neighbour — it fixes the column widths from the grid and wraps content inside each cell.
+            // A browser auto table-layout, in contrast, distributes width by content min/max, and with the
+            // page-body `overflow-wrap:anywhere` rule the min-content of every text column collapses to one
+            // character. A row whose middle/last cell carries long list content then steals the whole width,
+            // squeezing pure-text columns into a 1-char vertical strip ("P/a/g/e/St/r/u/c…") while long cells
+            // overflow the page edge. When the grid is complete we therefore pin a *definite* width plus
+            // table-layout:fixed (below) so the colgroup proportions become hard column widths and content
+            // wraps inside its column, matching Word. Tables with a partial/absent grid keep content sizing.
             var isFixed = tblPr?.TableLayout?.Type?.InnerText == "fixed";
             var grid = table.GetFirstChild<TableGrid>();
             var gridCols = grid?.Elements<GridColumn>().ToList();
@@ -161,7 +175,11 @@ public partial class WordHandler
                 }
                 if (allValid && totalTwips > 0)
                 {
-                    var prop = isFixed ? "width" : "max-width";
+                    // fixed layout already uses a definite width; auto layout with a complete grid now
+                    // also gets a definite width so the table-layout:fixed pin (below) can resolve the
+                    // colgroup percentages instead of falling back to content distribution.
+                    autoGridFixable = !isFixed;
+                    var prop = (isFixed || autoGridFixable) ? "width" : "max-width";
                     tableStyles.Add($"{prop}:{totalTwips / 20.0:0.##}pt");
                 }
             }
@@ -206,7 +224,8 @@ public partial class WordHandler
         // matching Word. Only applied when an explicit tblGrid is present (autofit /
         // no-grid tables keep their content-driven sizing).
         var isTableFixedLayout = tblPr?.TableLayout?.Type?.InnerText == "fixed";
-        if (isTableFixedLayout && table.GetFirstChild<TableGrid>()?.Elements<GridColumn>().Any() == true)
+        if ((isTableFixedLayout && table.GetFirstChild<TableGrid>()?.Elements<GridColumn>().Any() == true)
+            || autoGridFixable)
             tableStyles.Add("table-layout:fixed");
 
         var tableClass = tableBordersNone ? "borderless" : "";
