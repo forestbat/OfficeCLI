@@ -4782,9 +4782,17 @@ public partial class WordHandler
             // pointing at one rendered "Error! Bookmark not defined." Include the
             // ins/del-nested starts too (mirrors inlineEqsAll above); descendantPos
             // already positions them by DOM order.
+            // BUG-DUMP-HYPERLINK-BOOKMARK: a <w:bookmarkStart> can sit INSIDE a
+            // <w:hyperlink> (a cross-reference target placed on a linked phrase) —
+            // a paragraph grandchild, so the bare Elements<BookmarkStart>() walk
+            // dropped it and every PAGEREF/REF pointing at it rebuilt as a dangling
+            // "Error! Bookmark not defined." Surface the hyperlink-nested starts too
+            // (mirrors the ins/del-nested handling above); descendantPos positions
+            // them by DOM order and the bookmark emit replays them at that offset.
             var paraBookmarks = para.Elements<BookmarkStart>()
                 .Concat(para.Elements<InsertedRun>().SelectMany(ins => ins.Elements<BookmarkStart>()))
                 .Concat(para.Elements<DeletedRun>().SelectMany(del => del.Elements<BookmarkStart>()))
+                .Concat(para.Elements<Hyperlink>().SelectMany(hl => hl.Elements<BookmarkStart>()))
                 .ToList();
             // BUG-DUMP-BMSPAN: a bookmark that WRAPS content (runs/equations
             // between BookmarkStart and the matching BookmarkEnd) must round-
@@ -4799,6 +4807,7 @@ public partial class WordHandler
             var paraBookmarkEnds = para.Elements<BookmarkEnd>()
                 .Concat(para.Elements<InsertedRun>().SelectMany(ins => ins.Elements<BookmarkEnd>()))
                 .Concat(para.Elements<DeletedRun>().SelectMany(del => del.Elements<BookmarkEnd>()))
+                .Concat(para.Elements<Hyperlink>().SelectMany(hl => hl.Elements<BookmarkEnd>()))
                 .Where(be => be.Id?.Value != null && IsContentSpanBookmark(be))
                 .ToList();
             // BUG-DUMP-PERM: ranged editing-permission markers (<w:permStart>/
