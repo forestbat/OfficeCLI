@@ -227,7 +227,12 @@ officecli add "$FILE" "/body/p[3]" --type field --prop fieldType=mergefield --pr
 
 **MERGEFIELD templates: never render placeholder literals.** A `{{customer_name}}` or `$NAME$` shown as body text is a failed template the recipient sees — insert a real MERGEFIELD (above), or confine literal tokens to an obvious instruction paragraph. Confirm with `query 'field[fieldType=mergefield]'`.
 
-**SEQ / PAGEREF cached-value trap.** `seq` and `pageref` are CLI-expressible and pass `validate`, but every instance emits cached `<w:t>` of `1` regardless of position — three `SEQ Figure` captions render `Figure 1 / 1 / 1` in viewers that don't recompute. Fix with `officecli set "$FILE" /settings --prop updateFields=true` so Word recomputes every field on open. Multi-figure academic papers: see the `officecli-academic-paper` skill.
+**SEQ / PAGEREF / TOC field values.** officecli doesn't store rendered field values at write time. Recompute by what each path needs:
+
+- **SEQ numbering** (`Figure 1/2/3`): `officecli set "$FILE" / --prop recalcFields=seq` counts SEQ fields in body document order and writes the cached values (`evaluated` flips true; switches/formats in `help docx document`). Heading-relative `\s` and SEQ in headers/footers defer to Word.
+- **PAGE / PAGEREF / NUMPAGES / TOC page numbers** need pagination, which officecli has no engine for — `officecli set "$FILE" /settings --prop updateFields=true` defers them to Word on open.
+
+Use both on a multi-figure document. Academic papers: see the `officecli-academic-paper` skill.
 
 ### Headers & Footers (page numbering)
 
@@ -538,7 +543,7 @@ When deleting ALL content of a paragraph/list item, also mark the paragraph mark
 <w:r><w:rPr><w:rStyle w:val="CommentReference"/></w:rPr><w:commentReference w:id="0"/></w:r>
 ```
 
-Force field recalc on open with `officecli set "$FILE" /settings --prop updateFields=true` (writes `<w:updateFields w:val="true"/>`; fixes the SEQ/PAGEREF cached-`1` trap — no raw-set needed).
+Force field recalc on open with `officecli set "$FILE" /settings --prop updateFields=true` (writes `<w:updateFields w:val="true"/>`; covers the layout-dependent fields PAGE / PAGEREF / NUMPAGES / TOC page numbers — no raw-set needed). For SEQ numbering, prefer `set / --prop recalcFields=seq`, which writes correct cached values now without waiting on Word.
 
 ### Help pointer
 
