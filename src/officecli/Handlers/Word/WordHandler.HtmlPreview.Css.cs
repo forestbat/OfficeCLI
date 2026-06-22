@@ -1949,8 +1949,16 @@ public partial class WordHandler
             textShadows.Add("0 1px 0 rgba(0,0,0,.4)");
         }
         if (rProps.Outline != null && (rProps.Outline.Val == null || rProps.Outline.Val.Value))
-            // Hollow/outline text approximation.
+        {
+            // Hollow/outline text: stroke the glyph edge AND make the fill
+            // transparent so the interior shows through (white-centre + edge =
+            // hollow outline, matching Word). Stroke alone only thickened the
+            // glyph, leaving it solid. -webkit-text-fill-color overrides the
+            // fill independently of `color`, which still drives the stroke
+            // (currentColor). Chromium (Playwright preview) honours both.
             parts.Add("-webkit-text-stroke:0.5pt currentColor");
+            parts.Add("-webkit-text-fill-color:transparent");
+        }
 
         if (textShadows.Count > 0)
             parts.Add($"text-shadow:{string.Join(",", textShadows)}");
