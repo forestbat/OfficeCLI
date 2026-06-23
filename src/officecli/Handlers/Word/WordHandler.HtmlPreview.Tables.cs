@@ -143,6 +143,14 @@ public partial class WordHandler
         // would otherwise eat the row's width). See the auto-fit comment in the width block below.
         bool autoGridFixable = false;
 
+        // Set when a pct-width table (w:tblW type="pct", e.g. width:100%) carries a complete tblGrid:
+        // like autoGridFixable, it gets table-layout:fixed (below) so the colgroup proportions become
+        // hard column widths. Without it the browser's auto algorithm lets a wide/unbreakable cell
+        // override the declared col widths and squeeze pure-text columns into a 1-char vertical strip
+        // ("O/w/n/e/r"). R31/R32's fixed pin only covered tblW=dxa / auto+grid tables; pct-width tables
+        // (common in templates) fell through. The percentage width itself stays on the table.
+        bool pctGridFixable = false;
+
         // Table width: explicit tblW → use it; pct → percentage; otherwise sum gridCol widths
         var tblW = tblPr?.TableWidth;
         var tblWType = tblW?.Type?.InnerText;
@@ -154,6 +162,16 @@ public partial class WordHandler
         {
             // pct values are in 1/50th of a percent (5000 = 100%)
             tableStyles.Add($"width:{pctW / 50.0:0.##}%");
+            // A complete tblGrid lets the colgroup percentages act as hard column proportions under
+            // table-layout:fixed (pinned below), matching Word's column sizing instead of letting the
+            // browser's content-driven auto algorithm collapse text columns.
+            var pctGrid = table.GetFirstChild<TableGrid>();
+            var pctGridCols = pctGrid?.Elements<GridColumn>().ToList();
+            if (pctGridCols != null && pctGridCols.Count > 0)
+            {
+                pctGridFixable = pctGridCols.All(gc =>
+                    gc.Width?.Value is string gw && int.TryParse(gw, out var v) && v > 0);
+            }
         }
         else
         {
@@ -233,7 +251,7 @@ public partial class WordHandler
         // no-grid tables keep their content-driven sizing).
         var isTableFixedLayout = tblPr?.TableLayout?.Type?.InnerText == "fixed";
         if ((isTableFixedLayout && table.GetFirstChild<TableGrid>()?.Elements<GridColumn>().Any() == true)
-            || autoGridFixable)
+            || autoGridFixable || pctGridFixable)
             tableStyles.Add("table-layout:fixed");
 
         var tableClass = tableBordersNone ? "borderless" : "";
@@ -278,16 +296,24 @@ public partial class WordHandler
                 foreach (var tc in r.Elements<TableCell>())
                 {
                     if (ci >= colCount) break;
+                    var span = tc.TableCellProperties?.GridSpan?.Val?.Value ?? 1;
+                    if (span < 1) span = 1;
                     var tcW = tc.TableCellProperties?.TableCellWidth;
-                    if (tcW?.Type?.InnerText == "pct" && pctByCol[ci] == null
+                    // Only a single-column cell's pct can be attributed to one grid column. A cell
+                    // that spans N columns carries the COMBINED pct for all N columns (whole-table
+                    // units, 5000 = 100%); stamping that combined value onto the span's first column
+                    // (and leaving the rest to gridCol fallback) produced wildly wrong widths whose
+                    // sum exceeded 100% (e.g. a 3-col span's 71% landing on one column). For spanning
+                    // pct cells we skip the per-cell path entirely and let every column it covers use
+                    // the accurate gridCol proportions below (which already sum to ~100%).
+                    if (span == 1 && tcW?.Type?.InnerText == "pct" && pctByCol[ci] == null
                         && int.TryParse(tcW.Width?.Value, out var pctVal) && pctVal > 0)
                     {
                         // pct units are 1/50th of a percent (5000 = 100%)
                         pctByCol[ci] = pctVal / 50.0;
                     }
                     // gridSpan-aware advance so column index stays aligned
-                    var span = tc.TableCellProperties?.GridSpan?.Val?.Value ?? 1;
-                    ci += span < 1 ? 1 : span;
+                    ci += span;
                 }
             }
 
@@ -421,11 +447,16 @@ public partial class WordHandler
                 var diagSvg = TryBuildCellDiagonalSvg(cell);
                 if (diagSvg != null) sb.Append(diagSvg);
 
-                // hRule="exact": browsers ignore max-height on <td> (table layout
-                // forces cells to contain their content), so wrap content in an
-                // inner div with fixed height + overflow:hidden. The wrap also
-                // takes over vertical alignment via flex (the td's vertical-align
-                // applies to the wrap as a whole, not to content within it).
+                // hRule="exact": wrap content in an inner div whose flex column
+                // takes over vertical alignment (the td's vertical-align applies
+                // to the wrap as a whole, not to content within it). Use
+                // min-height as a floor rather than a fixed height + max-height +
+                // overflow:hidden — content taller than the exact value (e.g. a
+                // label plus several stacked checkbox SDTs) would otherwise be
+                // clipped to a single centered line, silently dropping the rest.
+                // Priority: content stays visible over honoring the exact height
+                // strictly (the R49/R31 don't-clip-content rule); Word shows the
+                // content. Content at/under the exact value keeps that height.
                 bool exactWrap = exactRowHeightPt.HasValue;
                 if (exactWrap)
                 {
@@ -434,7 +465,7 @@ public partial class WordHandler
                     if (vAlign == TableVerticalAlignmentValues.Center) justify = "center";
                     else if (vAlign == TableVerticalAlignmentValues.Bottom) justify = "flex-end";
                     else justify = "flex-start";
-                    sb.Append($"<div style=\"height:{exactRowHeightPt:0.#}pt;max-height:{exactRowHeightPt:0.#}pt;overflow:hidden;display:flex;flex-direction:column;justify-content:{justify}\">");
+                    sb.Append($"<div style=\"min-height:{exactRowHeightPt:0.#}pt;display:flex;flex-direction:column;justify-content:{justify}\">");
                 }
 
                 // Render cell content in XML order. OOXML lets paragraphs and
