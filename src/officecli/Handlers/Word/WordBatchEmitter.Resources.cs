@@ -1629,6 +1629,32 @@ public static partial class WordBatchEmitter
                 props["style"] = cStyle.ToString()!;
             }
 
+            // BUG-DUMP-NOTE-PBDR (comment parity): the comment's first paragraph can
+            // carry direct paragraph formatting (alignment / indent / spacing / a
+            // paragraph border <w:pBdr> / shading / markRPr) — none of which
+            // CommentToNode surfaces onto the comment node, so the `add comment` op
+            // (built from c.Format) dropped them all (only 2nd+ paragraphs, emitted
+            // via FilterEmittableProps(para.Format), kept their pPr). Forward the
+            // first paragraph's pPr keys (the same set EmitNoteReference forwards);
+            // ApplyCommentFormatKeys -> ApplyParagraphLevelProperty applies them.
+            if (bodyParas.Count > 0)
+            {
+                foreach (var (k, v) in FilterEmittableProps(bodyParas[0].Format))
+                {
+                    if (v == null) continue;
+                    bool isParaKey = k.StartsWith("markRPr.", StringComparison.OrdinalIgnoreCase)
+                        || k.StartsWith("pbdr.", StringComparison.OrdinalIgnoreCase)
+                        || k is "shading" or "shd"
+                        || k is "lineSpacing" or "lineRule" or "spaceBefore" or "spaceAfter"
+                              or "spaceBeforeLines" or "spaceAfterLines" or "alignment" or "align"
+                              or "direction" or "leftIndent" or "rightIndent" or "firstLine"
+                              or "indent" or "firstLineIndent" or "hangingIndent"
+                              or "hanging" or "contextualSpacing" or "spaceBeforeAuto" or "spaceAfterAuto";
+                    if (isParaKey && !props.ContainsKey(k))
+                        props[k] = v.ToString()!;
+                }
+            }
+
             // BUG-R6B(BUG1): always emit `text`, even when empty. An empty
             // comment (no inline text, or only an empty table) is valid OOXML;
             // omitting `text` produced a dump op that AddComment refused to
@@ -2102,10 +2128,23 @@ public static partial class WordBatchEmitter
         // already carries, and text/style handled above.
         if (bodyParas.Count > 0)
         {
-            foreach (var (k, v) in bodyParas[0].Format)
+            // BUG-DUMP-NOTE-PBDR: source from FilterEmittableProps so multi-segment
+            // paragraph props (pbdr.<side> + .sz/.color/.space, shading) arrive
+            // FOLDED into the single compound value ApplyParagraphLevelProperty
+            // parses — forwarding the raw sub-keys dropped the border weight/color.
+            foreach (var (k, v) in FilterEmittableProps(bodyParas[0].Format))
             {
                 if (v == null) continue;
                 bool isParaKey = k.StartsWith("markRPr.", StringComparison.OrdinalIgnoreCase)
+                    // BUG-DUMP-NOTE-PBDR: a note's first paragraph can carry a
+                    // paragraph border (<w:pBdr>) or shading — the body paragraph
+                    // readback emits these as pbdr.<side>(.sz/.color/.space) and
+                    // shading; ApplyFootnoteEndnoteFormatKeys -> ApplyParagraphLevel
+                    // Property already applies them, but they were absent from this
+                    // forward allowlist so a bordered footnote paragraph lost its
+                    // border on round-trip. Forward the whole pbdr.* family + shading.
+                    || k.StartsWith("pbdr.", StringComparison.OrdinalIgnoreCase)
+                    || k is "shading" or "shd"
                     || k is "lineSpacing" or "lineRule" or "spaceBefore" or "spaceAfter"
                           or "spaceBeforeLines" or "spaceAfterLines" or "alignment" or "align"
                           or "direction" or "leftIndent" or "rightIndent" or "firstLine"
