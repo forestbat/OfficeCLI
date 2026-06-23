@@ -894,8 +894,26 @@ public static partial class WordBatchEmitter
                         // document-order ordinal plus the current row/cell index.
                         var rawPart = containerPath == "/body" ? "/document" : containerPath;
                         var cellXPath = $"(//w:tbl)[{tableOrdinal}]/w:tr[{r + 1}]/w:tc[{c + 1}]";
+                        // BUG-DUMP-H85: EmitCellSdt's `cellHasContent` chooses
+                        // insert-before-the-auto-seed-<w:p> (false) vs append-to-cell
+                        // (true). Feeding it `cellHasAnyContent` was wrong: a leading
+                        // rich SDT inserts BEFORE the seed and PRESERVES it (returns
+                        // sdtLeftSeed), yet it flipped cellHasAnyContent true, so a
+                        // SECOND SDT that still precedes the cell's trailing paragraph
+                        // appended (landing AFTER that paragraph) — silently reordering
+                        // [sdt, sdt, p] to [sdt, p, sdt]. The real question is whether
+                        // the seed <w:p> is still available as an insert-before anchor:
+                        // it is, until a real paragraph claims it (firstParaSeen), a
+                        // typed `add sdt` consumes it (cellSdtConsumedSeed), or a nested
+                        // table is emitted (nestedTblIdx > 0). While the seed survives,
+                        // successive `insertbefore w:p[1]` raw-sets stack in document
+                        // order ([sdt1, sdt2, seed]); the trailing paragraph then claims
+                        // the seed, yielding [sdt1, sdt2, p]. The BUG-DUMP-CELLSDT-2ND
+                        // case (a typed SDT consumed the seed) still appends, via
+                        // cellSdtConsumedSeed.
+                        bool seedUnavailable = firstParaSeen || cellSdtConsumedSeed || nestedTblIdx > 0;
                         bool sdtLeftSeed = EmitCellSdt(word, cc.Path, cellTargetPath, cellXPath, rawPart,
-                                    cellHasContent: cellHasAnyContent, items, ctx);
+                                    cellHasContent: seedUnavailable, items, ctx);
                         cellSdtLeftSeed |= sdtLeftSeed;
                         // Typed `add sdt` (returns false here with no prior cell
                         // content) consumed the auto-seed; the raw-set seed-left
@@ -971,8 +989,13 @@ public static partial class WordBatchEmitter
                             if (ccNode == null) continue;
                             var rawPart = containerPath == "/body" ? "/document" : containerPath;
                             var cellXPath = $"(//w:tbl)[{tableOrdinal}]/w:tr[{r + 1}]/w:tc[{c + 1}]";
+                            // BUG-DUMP-H85: same seed-availability predicate as the fast
+                            // path — a leading rich SDT preserves the seed, so a second
+                            // SDT preceding the trailing paragraph must still insert
+                            // before it, not append.
+                            bool seedUnavailableCx = firstParaSeen || cellSdtConsumedSeed || planTblIdx > 0;
                             if (!EmitCellSdt(word, ccNode.Path, cellTargetPath, cellXPath, rawPart,
-                                        cellHasContent: firstParaSeen, items, ctx) && !firstParaSeen)
+                                        cellHasContent: seedUnavailableCx, items, ctx) && !seedUnavailableCx)
                                 cellSdtConsumedSeed = true;
                         }
                         else if (kind == "customXml")
