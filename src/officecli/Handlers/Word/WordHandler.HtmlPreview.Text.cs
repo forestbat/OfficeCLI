@@ -110,6 +110,73 @@ public partial class WordHandler
         return false;
     }
 
+    // True when the run's only visible content is whitespace text: it has at
+    // least one <w:t> and every <w:t> is whitespace, AND it carries no special
+    // child (tab / break / symbol / drawing / ptab) that would render a glyph
+    // or a decorated gap. Used to suppress a phantom inherited underline that
+    // real Word never draws under a pure-whitespace run.
+    private static bool IsWhitespaceOnlyTextRun(Run run)
+    {
+        bool hasText = false;
+        foreach (var child in run.ChildElements)
+        {
+            switch (child)
+            {
+                case Text t:
+                    hasText = true;
+                    if (!string.IsNullOrWhiteSpace(t.Text)) return false;
+                    break;
+                case RunProperties:
+                    break;
+                // Any glyph/gap-bearing special child disqualifies the run
+                // (tab underline / symbol / image are real decorated content).
+                case TabChar:
+                case PositionalTab:
+                case Break:
+                case CarriageReturn:
+                case SymbolChar:
+                case Drawing:
+                    return false;
+                default:
+                    if (child.LocalName is "noBreakHyphen" or "softHyphen")
+                        return false;
+                    break;
+            }
+        }
+        return hasText;
+    }
+
+    // Removes the "underline" keyword from a space-separated text-decoration
+    // declaration while preserving any co-present "line-through". Leaves all
+    // other style declarations untouched.
+    private static string StripUnderlineDecoration(string style)
+    {
+        var parts = style.Split(';');
+        var kept = new List<string>(parts.Length);
+        foreach (var p in parts)
+        {
+            var trimmed = p.Trim();
+            if (trimmed.StartsWith("text-decoration:", StringComparison.Ordinal))
+            {
+                var value = trimmed.Substring("text-decoration:".Length).Trim();
+                var keywords = value.Split(' ', StringSplitOptions.RemoveEmptyEntries)
+                    .Where(k => k != "underline")
+                    .ToArray();
+                if (keywords.Length == 0) continue; // drop the now-empty decl
+                kept.Add("text-decoration:" + string.Join(' ', keywords));
+                continue;
+            }
+            // Underline-only sub-properties become meaningless once underline
+            // is gone; drop them so no orphan style/thickness/color lingers.
+            if (trimmed.StartsWith("text-decoration-style:", StringComparison.Ordinal)
+                || trimmed.StartsWith("text-decoration-thickness:", StringComparison.Ordinal)
+                || trimmed.StartsWith("text-decoration-color:", StringComparison.Ordinal))
+                continue;
+            if (trimmed.Length > 0) kept.Add(trimmed);
+        }
+        return string.Join(";", kept);
+    }
+
     private void RenderParagraphHtml(StringBuilder sb, Paragraph para)
     {
         // Use <div> instead of <p> when paragraph contains block-level elements (text boxes, charts, shapes)
@@ -399,6 +466,28 @@ public partial class WordHandler
                 sb.Append(isChecked ? "☑" : "☐");
                 return;
             }
+            // Legacy FORMDROPDOWN: ffData/ddList holds the list entries; the
+            // selected index lives in <w:result w:val=N> (DropDownListSelection)
+            // or <w:default w:val=N> (DefaultDropDownListItemIndex), defaulting
+            // to 0. The chosen entry's text is a static display value (not a
+            // deferred field eval), so always render it — unlike FORMTEXT /
+            // FORMCHECKBOX whose live content is excluded from the eval allowlist.
+            var ddList = ffData?.GetFirstChild<DropDownListFormField>();
+            if (ddList != null)
+            {
+                var entries = ddList.Elements<ListEntryFormField>().ToList();
+                if (entries.Count > 0)
+                {
+                    int sel = (int?)ddList.GetFirstChild<DropDownListSelection>()?.Val?.Value
+                              ?? (int?)ddList.GetFirstChild<DefaultDropDownListItemIndex>()?.Val?.Value
+                              ?? 0;
+                    if (sel < 0 || sel >= entries.Count) sel = 0;
+                    var entryText = entries[sel].Val?.Value;
+                    if (!string.IsNullOrEmpty(entryText))
+                        sb.Append(HtmlEncode(entryText));
+                }
+                return;
+            }
         }
 
         // Footnote/endnote reference — render superscript number (don't return, run may also have text)
@@ -472,6 +561,21 @@ public partial class WordHandler
         if (rProps.SpecVanish != null && (rProps.SpecVanish.Val == null || rProps.SpecVanish.Val.Value))
             return;
         var style = GetRunInlineCss(rProps, para);
+
+        // Phantom-underline suppression: a run whose entire visible content is
+        // whitespace (e.g. a 30-space spacer carrying a Heading2 style's
+        // <w:u w:val="single"/>) draws NO underline in real Word. Strip the
+        // inherited underline from such a run's style. Restricted to runs whose
+        // content is purely whitespace TEXT — tab-only runs are excluded so the
+        // underlined-tab heading separator (RunHasContentAfter path below) and
+        // positional-tab leaders keep their decoration. line-through is
+        // preserved (strike on a blank run is unusual but harmless).
+        if (!string.IsNullOrEmpty(style)
+            && style.Contains("text-decoration:underline", StringComparison.Ordinal)
+            && IsWhitespaceOnlyTextRun(run))
+        {
+            style = StripUnderlineDecoration(style);
+        }
 
         // Format revision (w:rPrChange) — a tracked formatting change. The
         // final format is already applied via GetRunInlineCss above; mirror

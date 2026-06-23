@@ -121,6 +121,22 @@ public partial class WordHandler
                                 ?? false;
                             value = isChecked ? "true" : "false";
                         }
+                        else if (fieldType == "dropdown" && string.IsNullOrEmpty(value))
+                        {
+                            // No cached result run — the displayed value is the
+                            // selected listEntry, indexed by <w:result>/<w:default>
+                            // (defaults to 0 = first entry).
+                            var ddl = ffData.GetFirstChild<DropDownListFormField>()!;
+                            var entries = ddl.Elements<ListEntryFormField>().ToList();
+                            if (entries.Count > 0)
+                            {
+                                int sel = ddl.GetFirstChild<DropDownListSelection>()?.Val?.Value
+                                          ?? ddl.GetFirstChild<DefaultDropDownListItemIndex>()?.Val?.Value
+                                          ?? 0;
+                                if (sel < 0 || sel >= entries.Count) sel = 0;
+                                value = entries[sel].Val?.Value ?? "";
+                            }
+                        }
                         result.Add((name, fieldType, value));
                     }
                     beginRun = null;
