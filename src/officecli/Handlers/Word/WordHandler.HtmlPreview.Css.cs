@@ -3043,7 +3043,7 @@ public partial class WordHandler
            behind-text float (z-index:-1) paints ON the page, not under it. A
            background directly on .page would sit at the stacking-context root and
            hide any negative-z-index child (watermark/behind-doc image). */
-        .page::before {{ content: ""; position: absolute; inset: 0; background: white;
+        .page::before {{ content: ''; position: absolute; inset: 0; background: white;
             border-radius: 4px; z-index: -2; }}
         /* break-word (not anywhere): a Latin word is only broken when it cannot
            fit on a line BY ITSELF; an oversized word beside a float first wraps
