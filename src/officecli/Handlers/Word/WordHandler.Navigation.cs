@@ -5045,6 +5045,40 @@ public partial class WordHandler
                         node.Children.Add(MarkerNode("<w:r><w:fldChar w:fldCharType=\"end\"/></w:r>"));
                         fldSimpleMergeIdx++;
                     }
+                    else if (fld.Elements<DeletedRun>().Any() || fld.Elements<InsertedRun>().Any()
+                             || fld.Elements<MoveFromRun>().Any() || fld.Elements<MoveToRun>().Any())
+                    {
+                        // BUG-DUMP-H79: a <w:fldSimple> whose cached result contains a
+                        // tracked change (<w:del>/<w:ins>/<w:moveFrom>/<w:moveTo>) cannot
+                        // round-trip through the text-only `field` node below — the
+                        // displayText scan uses Descendants<Text>(), which excludes
+                        // <w:delText>, so the deleted result text was silently dropped,
+                        // and the typed `add field` path has no model for a deleted result
+                        // run. Decompose into a complex field whose result content is
+                        // emitted VERBATIM (each fldSimple child OuterXml, preserving the
+                        // <w:del>/<w:ins> wrapper), bracketed by synthesized begin/instr/
+                        // separate/end markers. Mirrors the drawing-result decomposition
+                        // above and the complex-field-result del fix.
+                        string EscInstr(string s) => s.Replace("&", "&amp;").Replace("<", "&lt;").Replace(">", "&gt;");
+                        var chain = new System.Text.StringBuilder();
+                        chain.Append("<w:r><w:fldChar w:fldCharType=\"begin\"/></w:r>")
+                             .Append("<w:r><w:instrText xml:space=\"preserve\">").Append(EscInstr(instr)).Append("</w:instrText></w:r>")
+                             .Append("<w:r><w:fldChar w:fldCharType=\"separate\"/></w:r>");
+                        foreach (var child in fld.Elements())
+                            chain.Append(child.OuterXml);
+                        chain.Append("<w:r><w:fldChar w:fldCharType=\"end\"/></w:r>");
+                        node.Children.Add(new DocumentNode
+                        {
+                            Type = "field",
+                            Path = $"{path}/field[{fldSimpleMergeIdx + 1}]",
+                            Format = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase)
+                            {
+                                ["_fieldMarkerRaw"] = true,
+                                ["_markerInlineXml"] = chain.ToString(),
+                            }
+                        });
+                        fldSimpleMergeIdx++;
+                    }
                     else
                     {
                         var displayText = string.Join("", fld.Descendants<Text>().Select(t => t.Text));
