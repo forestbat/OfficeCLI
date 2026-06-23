@@ -447,7 +447,7 @@ public static partial class WordBatchEmitter
                 // is preserved so the paragraph keeps its visible text.
                 var malformedSynth = new DocumentNode
                 {
-                    Path = c.Path,
+                    Path = c!.Path,
                     Type = "field",
                     Text = display,
                     Format = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase)
@@ -491,7 +491,7 @@ public static partial class WordBatchEmitter
                 }
                 var rawSynth = new DocumentNode
                 {
-                    Path = c.Path,
+                    Path = c!.Path,
                     Type = "field",
                     Text = display,
                     Format = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase)
@@ -516,7 +516,7 @@ public static partial class WordBatchEmitter
             // ffData props (name, default, maxLength, items, helpText, …).
             // Route to a `formfield` synth instead so TryEmitFieldRun emits
             // `add formfield` carrying the full payload.
-            if (c.Format.TryGetValue("hasFormFieldData", out var hffd)
+            if (c!.Format.TryGetValue("hasFormFieldData", out var hffd)
                 && hffd is bool hffdB && hffdB)
             {
                 var ffSynth = new DocumentNode

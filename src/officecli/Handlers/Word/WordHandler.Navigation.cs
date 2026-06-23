@@ -1540,8 +1540,8 @@ public partial class WordHandler
                     // first bookmarkEnd in a stack whose id is 4 but the 4th end has
                     // id 7) re-read the WRONG element, producing a duplicate bookmark
                     // id on round-trip.
-                    BookmarkEnd be => be.Id?.Value.ToString() == targetId,
-                    BookmarkStart bs => bs.Id?.Value.ToString() == targetId,
+                    BookmarkEnd be => be.Id?.Value?.ToString() == targetId,
+                    BookmarkStart bs => bs.Id?.Value?.ToString() == targetId,
                     _ => false,
                 });
             }
@@ -5924,9 +5924,9 @@ public partial class WordHandler
             // an absent hRule as auto row-sizing. Only emit height.rule when
             // the source actually carried an explicit exact/atLeast; emitting
             // it for auto would let Add/Set inject a spurious atLeast.
-            if (rh.HeightType?.Value == HeightRuleValues.Exact)
+            if (rh?.HeightType?.Value == HeightRuleValues.Exact)
                 node.Format["height.rule"] = "exact";
-            else if (rh.HeightType?.Value == HeightRuleValues.AtLeast)
+            else if (rh?.HeightType?.Value == HeightRuleValues.AtLeast)
                 node.Format["height.rule"] = "atLeast";
         }
         // BUG-DUMP-R35-TRBOOL: these are CT_TrPr on/off toggles (CT_OnOff). An
@@ -6170,7 +6170,7 @@ public partial class WordHandler
                     }
                     else if (isSolidVal && hasFillColor && !hasPatternColor && !hasTheme)
                     {
-                        node.Format["fill"] = ParseHelpers.FormatHexColor(cShdFill);
+                        node.Format["fill"] = ParseHelpers.FormatHexColor(cShdFill!);
                     }
                     else
                     {
@@ -6180,7 +6180,7 @@ public partial class WordHandler
                         // the same shape).
                         if (!string.IsNullOrEmpty(cShdVal)) node.Format["shading.val"] = cShdVal;
                         if (!string.IsNullOrEmpty(cShdFill)) node.Format["shading.fill"] = ParseHelpers.FormatHexColor(cShdFill);
-                        if (hasPatternColor) node.Format["shading.color"] = ParseHelpers.FormatHexColor(cShdColor);
+                        if (hasPatternColor) node.Format["shading.color"] = ParseHelpers.FormatHexColor(cShdColor!);
                         ReadShadingTheme(shd, node);
                     }
                 }
@@ -6460,14 +6460,14 @@ public partial class WordHandler
         }
         else if (isSolidVal && hasFillColor && !hasPatternColor && !hasTheme)
         {
-            node.Format["fill"] = ParseHelpers.FormatHexColor(shdFill);
+            node.Format["fill"] = ParseHelpers.FormatHexColor(shdFill!);
         }
         else
         {
             // Pattern / theme / pattern-color: keep the detail keys verbatim.
             if (!string.IsNullOrEmpty(shdVal)) node.Format["shading.val"] = shdVal;
             if (!string.IsNullOrEmpty(shdFill)) node.Format["shading.fill"] = ParseHelpers.FormatHexColor(shdFill);
-            if (hasPatternColor) node.Format["shading.color"] = ParseHelpers.FormatHexColor(shdColor);
+            if (hasPatternColor) node.Format["shading.color"] = ParseHelpers.FormatHexColor(shdColor!);
             ReadShadingTheme(shd, node);
         }
     }

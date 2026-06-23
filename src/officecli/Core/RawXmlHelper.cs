@@ -867,6 +867,8 @@ internal static class RawXmlHelper
     /// caller's Save re-serialize an untouched part. Best-effort: any failure to
     /// peek/flush a part is swallowed — validate must never throw on a quirk here.
     /// </summary>
+    [System.Diagnostics.CodeAnalysis.UnconditionalSuppressMessage("Trimming", "IL2075",
+        Justification = "Reflects over OpenXmlPart's private _rootElement field; officecli ships framework-dependent (not trimmed/AOT). Best-effort with a null guard if the field is removed.")]
     private static void FlushLoadedPartRoots(OpenXmlPackage package)
     {
         if (!_rootElementFieldResolved)

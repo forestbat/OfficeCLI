@@ -190,12 +190,12 @@ public partial class WordHandler
         bool explicitWidth = properties.TryGetValue("pagewidth", out var sw) || properties.TryGetValue("pageWidth", out sw) || properties.TryGetValue("width", out sw);
         if (explicitWidth)
         {
-            (EnsureSectPrChild<PageSize>(sectPr)).Width = ParseTwips(sw);
+            (EnsureSectPrChild<PageSize>(sectPr)).Width = ParseTwips(sw!);
         }
         bool explicitHeight = properties.TryGetValue("pageheight", out var sh) || properties.TryGetValue("pageHeight", out sh) || properties.TryGetValue("height", out sh);
         if (explicitHeight)
         {
-            (EnsureSectPrChild<PageSize>(sectPr)).Height = ParseTwips(sh);
+            (EnsureSectPrChild<PageSize>(sectPr)).Height = ParseTwips(sh!);
         }
         if (properties.TryGetValue("orientation", out var orient))
         {
