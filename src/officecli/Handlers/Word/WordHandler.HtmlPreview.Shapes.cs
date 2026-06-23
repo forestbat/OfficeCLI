@@ -1320,7 +1320,15 @@ public partial class WordHandler
             // surface as bare <p>s, losing the table structure). Mirror the
             // body-render pattern: Paragraph → RenderParagraphHtml,
             // Table → RenderTableHtml, SdtBlock → recurse into content.
-            RenderTextBoxContentChildren(sb, txbx);
+            // List grouping inside a text box mirrors the body/cell paths:
+            // a run of ListBullet/numbered paragraphs becomes <ul>/<ol> with
+            // <li> children instead of bare <p>s. Without this, a bullet list
+            // authored inside a DrawingML text box (e.g. a sidebar/cover layout
+            // box) lost every marker and collapsed to indented plain paragraphs.
+            var txbxOl = new OrderedListNumberingState();
+            string? txbxListTag = null;
+            RenderTextBoxContentChildren(sb, txbx, ref txbxListTag, txbxOl);
+            if (txbxListTag != null) sb.Append($"</{txbxListTag}>");
             sb.Append("</div>");
         }
         else
@@ -1348,16 +1356,31 @@ public partial class WordHandler
     /// paragraphs/tables; iterating only Paragraph/Table here lost every run
     /// nested under a <c>w:sdt</c>.
     /// </summary>
-    private void RenderTextBoxContentChildren(StringBuilder sb, OpenXmlElement container)
+    private void RenderTextBoxContentChildren(StringBuilder sb, OpenXmlElement container, ref string? txbxListTag, OrderedListNumberingState olState)
     {
         foreach (var child in container.ChildElements)
         {
             if (child is Paragraph para)
+            {
+                // List item → reuse the cell list renderer (opens <ul>/<ol>,
+                // renders the bullet glyph / ordered marker, carries indent).
+                var listStyle = GetParagraphListStyle(para);
+                if (listStyle != null)
+                {
+                    RenderCellListItem(sb, para, listStyle, ref txbxListTag, olState);
+                    continue;
+                }
+                // Non-list paragraph closes any open list, then renders flat.
+                if (txbxListTag != null) { sb.Append($"</{txbxListTag}>"); txbxListTag = null; }
                 RenderParagraphHtml(sb, para);
+            }
             else if (child is Table tbl)
+            {
+                if (txbxListTag != null) { sb.Append($"</{txbxListTag}>"); txbxListTag = null; }
                 RenderTableHtml(sb, tbl);
+            }
             else if (child is SdtBlock sdt && sdt.SdtContentBlock is { } content)
-                RenderTextBoxContentChildren(sb, content);
+                RenderTextBoxContentChildren(sb, content, ref txbxListTag, olState);
         }
     }
 
