@@ -1692,6 +1692,20 @@ public partial class WordHandler
         {
             parts.Add($"color:{resolvedColor}");
         }
+        else
+        {
+            // No explicit/theme run color → Word's automatic color: pick black
+            // or white by the run's effective background luminance. Word renders
+            // color=auto text as white on a dark fill (the deep-blue title bars
+            // in this corpus) and black on light/no fill. The browser default is
+            // unconditional black, so without this the title bars read black-on-
+            // dark-blue. Only auto runs are touched; explicit black stays black.
+            var bgHex = ResolveEffectiveBackgroundForRun(rProps, para);
+            // White (or absent) backdrop → black text: this is the prior
+            // behavior, so don't emit a redundant color for the common case.
+            if (bgHex != null && IsColorDark(bgHex))
+                parts.Add("color:#FFFFFF");
+        }
 
         // Highlight
         var highlight = rProps.Highlight?.Val?.InnerText;
@@ -2441,6 +2455,48 @@ public partial class WordHandler
             return ApplyTintShade(tcHex, tint, shade);
         }
         return null;
+    }
+
+    /// <summary>
+    /// Effective background color (#RRGGBB) behind a run, for automatic-color
+    /// (color=auto) text contrast. Priority mirrors Word's shading cascade:
+    /// run shd (w:rPr/w:shd) > paragraph shd (direct or style) > nearest
+    /// ancestor table-cell shd. Returns null when no opaque fill applies
+    /// (backdrop is the page/white) — callers then keep black auto text.
+    /// </summary>
+    private string? ResolveEffectiveBackgroundForRun(RunProperties? rProps, Paragraph? para)
+    {
+        // 1) Run-level shading (inverse-video spans set this directly).
+        var runFill = ResolveShadingFill(rProps?.Shading);
+        if (runFill != null) return runFill;
+
+        if (para != null)
+        {
+            // 2) Paragraph shading — direct, else via the pStyle chain (the
+            //    deep-blue title bars carry pPr/shd w:fill="1F3864").
+            var paraFill = ResolveShadingFill(para.ParagraphProperties?.Shading)
+                ?? ResolveParagraphShadingFromStyle(para);
+            if (paraFill != null) return paraFill;
+
+            // 3) Nearest ancestor table cell's shading.
+            var cell = para.Ancestors<TableCell>().FirstOrDefault();
+            var cellFill = ResolveShadingFill(cell?.TableCellProperties?.Shading);
+            if (cellFill != null) return cellFill;
+        }
+        return null;
+    }
+
+    /// <summary>
+    /// True when a #RRGGBB color is dark enough that automatic text should be
+    /// white. Standard relative-luminance approximation, threshold 128/255.
+    /// Mirrors the pptx <c>IsColorDark</c> helper.
+    /// </summary>
+    private static bool IsColorDark(string hex)
+    {
+        hex = hex.TrimStart('#');
+        if (hex.Length < 6) return false;
+        var (r, g, b) = ColorMath.HexToRgb(hex);
+        return (r * 0.299 + g * 0.587 + b * 0.114) < 128;
     }
 
     // Unit conversions moved to shared Units class (Core/Units.cs).
