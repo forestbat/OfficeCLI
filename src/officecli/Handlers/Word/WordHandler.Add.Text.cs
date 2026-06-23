@@ -2548,6 +2548,25 @@ public partial class WordHandler
             AppendTextWithBreaks(newRun, runText);
         }
 
+        // BUG-DUMP-PTABTEXT: a run that mixed a <w:ptab/> with text/delText carries
+        // the positional tab as inline props (Navigation kept it a `run` so the
+        // co-resident text survived). Rebuild the <w:ptab/> ahead of the text
+        // (ptab-then-text, the source convention) so BOTH round-trip. The later
+        // ins/del wrapper (if any) leaves the ptab in place and only converts <w:t>.
+        if (properties.TryGetValue("ptabInline", out var ptInline) && IsTruthy(ptInline))
+        {
+            var inlinePtab = new PositionalTab();
+            if (properties.TryGetValue("ptabInline.align", out var piAlign) && !string.IsNullOrWhiteSpace(piAlign))
+                inlinePtab.Alignment = ParsePtabAlignment(piAlign);
+            if (properties.TryGetValue("ptabInline.relativeTo", out var piRel) && !string.IsNullOrWhiteSpace(piRel))
+                inlinePtab.RelativeTo = ParsePtabRelativeTo(piRel);
+            if (properties.TryGetValue("ptabInline.leader", out var piLead) && !string.IsNullOrWhiteSpace(piLead))
+                inlinePtab.Leader = ParsePtabLeader(piLead);
+            var firstContent = newRun.Elements().FirstOrDefault(e => e is not RunProperties);
+            if (firstContent != null) newRun.InsertBefore(inlinePtab, firstContent);
+            else newRun.AppendChild(inlinePtab);
+        }
+
         // Dotted-key fallback: same generic helper as Set's run path.
         // Anything still unconsumed after the hand-rolled blocks above
         // gets routed through TypedAttributeFallback; failures land in
@@ -2585,6 +2604,9 @@ public partial class WordHandler
             "revision.type",
             // BUG-DUMP7-01: consumed up-front to emit <w:sym/> in place of <w:t>.
             "sym",
+            // BUG-DUMP-PTABTEXT: consumed above to rebuild an inline <w:ptab/>
+            // that shared a run with text.
+            "ptabInline", "ptabInline.align", "ptabInline.relativeTo", "ptabInline.leader",
             // CONSISTENCY(markRPr-inherit-opt-out): consumed up-front (line ~1587)
             // to suppress markRPr→rPr type-fill on dump→batch replay. Not a real
             // OOXML attribute — pure inheritance toggle. Without this entry the

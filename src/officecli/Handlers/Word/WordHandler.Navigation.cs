@@ -2380,17 +2380,35 @@ public partial class WordHandler
             var ptabEl = run.GetFirstChild<PositionalTab>();
             if (ptabEl != null)
             {
-                node.Type = "ptab";
                 // Open XML SDK v3 enum .ToString() returns "FooValues { }"
                 // — use .InnerText to get the actual XML attribute value
                 // ("center", "right", "begin", etc.). Same trap as the
                 // LineSpacingRuleValues note in WordHandler CLAUDE.md.
-                if (ptabEl.Alignment?.HasValue == true)
-                    node.Format["align"] = ptabEl.Alignment.InnerText;
-                if (ptabEl.RelativeTo?.HasValue == true)
-                    node.Format["relativeTo"] = ptabEl.RelativeTo.InnerText;
-                if (ptabEl.Leader?.HasValue == true)
-                    node.Format["leader"] = ptabEl.Leader.InnerText;
+                var ptabAlign = ptabEl.Alignment?.HasValue == true ? ptabEl.Alignment.InnerText : null;
+                var ptabRelTo = ptabEl.RelativeTo?.HasValue == true ? ptabEl.RelativeTo.InnerText : null;
+                var ptabLeader = ptabEl.Leader?.HasValue == true ? ptabEl.Leader.InnerText : null;
+                // BUG-DUMP-DELTAB sibling (BUG-DUMP-PTABTEXT): when the run ALSO
+                // carries text (<w:t> or <w:delText>), the standalone `add ptab`
+                // type-upgrade would drop that co-resident text — and unlike a
+                // plain tab the ptab can't ride back through GetRunText's \t, so
+                // keeping it a plain run would instead drop the ptab. Keep the run
+                // a `run` AND carry the ptab as inline props so AddRun rebuilds
+                // <w:ptab/> ahead of the text, preserving BOTH.
+                bool hasText = run.Elements<Text>().Any() || run.Elements<DeletedText>().Any();
+                if (hasText)
+                {
+                    node.Format["ptabInline"] = "true";
+                    if (ptabAlign != null) node.Format["ptabInline.align"] = ptabAlign;
+                    if (ptabRelTo != null) node.Format["ptabInline.relativeTo"] = ptabRelTo;
+                    if (ptabLeader != null) node.Format["ptabInline.leader"] = ptabLeader;
+                }
+                else
+                {
+                    node.Type = "ptab";
+                    if (ptabAlign != null) node.Format["align"] = ptabAlign;
+                    if (ptabRelTo != null) node.Format["relativeTo"] = ptabRelTo;
+                    if (ptabLeader != null) node.Format["leader"] = ptabLeader;
+                }
             }
         }
         if (node.Type == "run")
