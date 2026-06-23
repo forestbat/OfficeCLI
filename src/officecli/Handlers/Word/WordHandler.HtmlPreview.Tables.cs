@@ -873,7 +873,9 @@ public partial class WordHandler
             cellListTag = null;
         }
 
-        var (lvlLeft, lvlHanging) = GetListLevelIndentFull(numId, ilvl);
+        // BUG-R105: paragraph-direct <w:ind> overrides the numbering-level
+        // indentation (same as the body path).
+        var (lvlLeft, lvlHanging) = ResolveListIndent(para, numId, ilvl);
         var indentPt = lvlLeft / 20.0;
         if (indentPt < 18) indentPt = 18;
         var hangingPt = lvlHanging / 20.0;

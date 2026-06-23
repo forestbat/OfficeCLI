@@ -2472,8 +2472,10 @@ public partial class WordHandler
                         pendingLiClose = false;
                     }
 
-                    // Get indentation from numbering level definition
-                    var (lvlLeft, lvlHanging) = GetListLevelIndentFull(numId, ilvl);
+                    // Get indentation from numbering level definition, then let
+                    // the paragraph's own <w:ind> override it (BUG-R105:
+                    // paragraph-direct indentation supersedes the level value).
+                    var (lvlLeft, lvlHanging) = ResolveListIndent(para, numId, ilvl);
                     var parentLeft = ilvl > 0 ? GetListLevelIndent(numId, ilvl - 1) : 0;
                     double indentPt;
                     if (isMultiLevel)
@@ -3066,6 +3068,16 @@ public partial class WordHandler
         // would show the wrong content.
         if (isFirstPageOfSection && sectHasTitlePg)
             return bundle.First ?? string.Empty;
+        // BUG-R101: titlePg OFF (or absent). Per ECMA-376 §17.10.6, the
+        // "first" variant is used ONLY when titlePg is set; with titlePg off
+        // the first page uses the DEFAULT header/footer (or nothing when no
+        // default is defined). Resolve to bundle.Default ?? "" here — never to
+        // fallbackHtml, which is the first content-bearing part in arbitrary
+        // part order and may be the "first" variant (e.g. a DRAFT watermark
+        // header referenced only as type="first"). Letting it leak put the
+        // first-page header on page 1 even though titlePg was off.
+        if (isFirstPageOfSection)
+            return bundle.Default ?? string.Empty;
         if (evenAndOddGlobal && pageIsEven)
         {
             if (bundle.Even != null) return bundle.Even;
@@ -3099,6 +3111,12 @@ public partial class WordHandler
             && sections[sectionIdx].GetFirstChild<TitlePage>() != null;
         if (isFirstPageOfSection && sectHasTitlePg)
             return flags.First;
+        // BUG-R101 mirror: titlePg off → first page uses Default (or none).
+        // Match PickHeaderFooter's "return bundle.Default ?? string.Empty":
+        // no fallback-part leak. When Default html is absent the empty string
+        // carries no field, so flags are (false, false).
+        if (isFirstPageOfSection)
+            return html.Default != null ? flags.Default : (false, false);
         if (evenAndOddGlobal && pageIsEven)
         {
             if (html.Even != null) return flags.Even;
@@ -3250,4 +3268,29 @@ public partial class WordHandler
     }
 
     private int GetListLevelIndent(int numId, int ilvl) => GetListLevelIndentFull(numId, ilvl).left;
+
+    /// <summary>BUG-R105: a list paragraph's own &lt;w:ind&gt; OVERRIDES the
+    /// numbering-level indentation (ECMA-376 §17.3.1.12 — paragraph-direct
+    /// indentation supersedes the value inherited from the referenced
+    /// &lt;w:lvl&gt;&lt;w:pPr&gt;&lt;w:ind&gt;). Override is per-attribute: a
+    /// paragraph that specifies only w:left keeps the level's hanging, etc.
+    /// Returns (left, hanging) in twips, starting from the numbering-level
+    /// values and replacing each slot the paragraph defines.</summary>
+    private (int left, int hanging) ResolveListIndent(
+        Paragraph para, int numId, int ilvl)
+    {
+        var (left, hanging) = GetListLevelIndentFull(numId, ilvl);
+        var ind = para.ParagraphProperties?.Indentation;
+        if (ind == null) return (left, hanging);
+        if (ind.Left?.Value is string ls && int.TryParse(ls, out var lt))
+            left = lt;
+        // hanging and firstLine are mutually exclusive in OOXML. A direct
+        // w:hanging replaces the level hanging; a direct w:firstLine clears
+        // any hanging (first-line indent is the negative-hanging counterpart).
+        if (ind.Hanging?.Value is string hs && int.TryParse(hs, out var ht))
+            hanging = ht;
+        else if (ind.FirstLine?.Value is string fs && int.TryParse(fs, out _))
+            hanging = 0;
+        return (left, hanging);
+    }
 }
