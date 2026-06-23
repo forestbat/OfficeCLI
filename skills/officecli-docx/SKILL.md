@@ -178,6 +178,12 @@ officecli set "$FILE" "/body/tbl[1]/tr[1]/tc[1]/p[1]/r[1]" --prop bold=true
 
 Row-level `set` supports `height`, `header`, and `c1 / c2 / … / cN` text shortcuts (`cN` generalises to any column count). Cell formatting (bold, fill, color) goes on the cell's paragraph / run — **not** row-level. For per-cell borders, set cell-level `border.*` on the `tc` (`--prop border.bottom="single;6;000000;0"`), or paragraph-level `pbdr.*` on the inner paragraph.
 
+**Horizontal rule = a paragraph bottom border, never a 1-row table.** A table-as-divider renders as an empty min-height box (worst in headers/footers). Use `pbdr.bottom` (`STYLE;SIZE;COLOR`) on the paragraph instead:
+
+```bash
+officecli set "$FILE" "/body/p[3]" --prop pbdr.bottom="single;6;2E75B6"
+```
+
 ### Lists (bullets, numbered, multi-level)
 
 For single-level bullets/numbers, set `listStyle` on the paragraph (`listStyle` is a paragraph prop, NOT a run prop — common mistake):
@@ -296,6 +302,8 @@ Document root `/` carries page setup (`pageWidth`, `pageHeight`, margins, in twi
 
 ```bash
 officecli set "$FILE" / --prop pageWidth=12240 --prop pageHeight=15840 --prop marginTop=1440 --prop marginLeft=1440
+# Newspaper-style multi-column flow (columnSpace in twips; 720 = 0.5in):
+officecli set "$FILE" / --prop columns=2 --prop columnSpace=720
 ```
 
 ### Forcing page breaks — belt-and-suspenders
