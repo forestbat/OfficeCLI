@@ -603,6 +603,9 @@ public partial class PowerPointHandler
             var h = ParseHelpers.TryGetNamedColorHex(prstEl.Val!.InnerText);
             if (h != null) return ApplyColorTransforms(h, prstEl);
         }
+        var sysEl = gs.GetFirstChild<Drawing.SystemColor>();
+        if (sysEl != null && SysColorHex(sysEl) is string sh)
+            return ApplyColorTransforms(sh, sysEl);
         return "transparent";
     }
 
@@ -650,7 +653,10 @@ public partial class PowerPointHandler
                         // transparent, blanking the whole gradient fill.
                         var prstEl = gs.GetFirstChild<Drawing.PresetColor>();
                         var ph = prstEl?.Val?.HasValue == true ? ParseHelpers.TryGetNamedColorHex(prstEl.Val!.InnerText) : null;
-                        color = ph != null ? ApplyColorTransforms(ph, prstEl!) : "transparent";
+                        var sysEl = gs.GetFirstChild<Drawing.SystemColor>();
+                        color = ph != null ? ApplyColorTransforms(ph, prstEl!)
+                            : sysEl != null && SysColorHex(sysEl) is string sh ? ApplyColorTransforms(sh, sysEl)
+                            : "transparent";
                     }
                 }
             }
@@ -2808,6 +2814,25 @@ public partial class PowerPointHandler
             }
         }
 
+        // System color (<a:sysClr>): resolve via lastClr/standard slot, then transforms+alpha.
+        var sysColor = solidFill.GetFirstChild<Drawing.SystemColor>();
+        if (sysColor != null)
+        {
+            var sysHex = SysColorHex(sysColor);
+            if (sysHex != null)
+            {
+                var transformed = ApplyColorTransforms(sysHex, sysColor);
+                var solid = transformed.StartsWith('#') ? transformed[1..] : transformed;
+                var alpha = sysColor.GetFirstChild<Drawing.Alpha>()?.Val?.Value;
+                if (alpha.HasValue && alpha.Value < 100000)
+                {
+                    var (r, g, b) = ColorMath.HexToRgb(solid);
+                    return $"rgba({r},{g},{b},{alpha.Value / 100000.0:0.##})";
+                }
+                return $"#{solid}";
+            }
+        }
+
         return null;
     }
 
@@ -2854,7 +2879,21 @@ public partial class PowerPointHandler
             if (hex != null) return ApplyColorTransforms(hex, prstColor);
         }
 
+        var sysColor = buClr.GetFirstChild<Drawing.SystemColor>();
+        if (sysColor != null && SysColorHex(sysColor) is string sh)
+            return ApplyColorTransforms(sh, sysColor);
+
         return null;
+    }
+
+    // System color (<a:sysClr val="windowText" lastClr="RRGGBB"/>): a renderer that cannot
+    // query the OS uses the cached lastClr (what PowerPoint last rendered); for the two common
+    // system slots fall back to their standard values when lastClr is absent. Returns bare hex.
+    private static string? SysColorHex(Drawing.SystemColor sys)
+    {
+        var last = sys.LastColor?.Value;
+        if (last != null && last.Length == 6 && last.All(char.IsAsciiHexDigit)) return last;
+        return sys.Val?.InnerText switch { "windowText" => "000000", "window" => "FFFFFF", _ => null };
     }
 
     private static string ApplyColorTransforms(string hex, Drawing.SchemeColor schemeColor)
