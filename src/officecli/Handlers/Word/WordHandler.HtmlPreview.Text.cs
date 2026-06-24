@@ -425,13 +425,70 @@ public partial class WordHandler
                     var instr = run.GetFirstChild<FieldCode>()?.Text;
                     if (!string.IsNullOrEmpty(instr) && fieldStack.Count > 0)
                     {
-                        int kind = ClassifyPageFieldInstruction(instr);
-                        if (kind != 0)
+                        // MACROBUTTON: Word renders the field's DISPLAY text (the
+                        // tokens after "MACROBUTTON <macroname> ") as visible,
+                        // clickable body content — it is NOT a hidden field
+                        // instruction. The display can span several instrText
+                        // runs, each with its own rPr (e.g. a bold word). Word
+                        // also typically writes NO separate/result, so there is
+                        // no cached result run to fall back on; the instrText
+                        // text IS the rendered content. Tag the field kind so
+                        // the instrText runs below render their FieldCode text
+                        // (minus the leading "MACROBUTTON <macroname> " on the
+                        // first run) instead of being swallowed as a hidden
+                        // instruction. kind 3 = MACROBUTTON.
+                        if (instr.TrimStart().StartsWith("MACROBUTTON", StringComparison.OrdinalIgnoreCase))
                         {
-                            var top = fieldStack.Pop();
-                            fieldStack.Push((kind, top.inResult));
+                            var topM = fieldStack.Pop();
+                            fieldStack.Push((3, topM.inResult));
+                        }
+                        else
+                        {
+                            int kind = ClassifyPageFieldInstruction(instr);
+                            if (kind != 0)
+                            {
+                                var top = fieldStack.Pop();
+                                fieldStack.Push((kind, top.inResult));
+                            }
                         }
                     }
+                    // Render the MACROBUTTON display text from this instrText run.
+                    // The instrText is a <w:fldChar>-scoped FieldCode, so the
+                    // normal RenderRunHtml path (which only renders <w:t>) skips
+                    // it. Build a throwaway <w:r><w:t> carrying the SAME rPr so
+                    // bold / font formatting is preserved, then reuse
+                    // RenderRunHtml for CSS. Strip the "MACROBUTTON <macro> "
+                    // prefix from the first run only (the run that actually
+                    // begins with the keyword).
+                    if (fieldStack.Count > 0 && fieldStack.Peek().kind == 3)
+                    {
+                        var fieldCode = run.GetFirstChild<FieldCode>();
+                        var displayText = fieldCode?.Text ?? "";
+                        // Strip "MACROBUTTON" + macro name + one trailing space.
+                        // Note the sample uses two spaces ("MACROBUTTON  DoFieldClick [");
+                        // \s+ after the keyword and after the macro name absorbs
+                        // any extra whitespace, leaving the display ("[") intact.
+                        displayText = Regex.Replace(
+                            displayText,
+                            @"^\s*MACROBUTTON\s+\S+\s?",
+                            "",
+                            RegexOptions.IgnoreCase);
+                        if (!string.IsNullOrEmpty(displayText))
+                        {
+                            var displayRun = new Run();
+                            var rPr = run.RunProperties;
+                            if (rPr != null)
+                                displayRun.RunProperties = (RunProperties)rPr.CloneNode(true);
+                            displayRun.AppendChild(new Text(displayText) { Space = SpaceProcessingModeValues.Preserve });
+                            RenderRunHtml(sb, displayRun, para);
+                        }
+                    }
+                    // MACROBUTTON instrText runs are fully handled above; never
+                    // fall through to the result-run RenderRunHtml below (it
+                    // would render nothing, but skip it for clarity + to avoid
+                    // accidental page-field tagging on a kind-3 field).
+                    if (fieldStack.Count > 0 && fieldStack.Peek().kind == 3)
+                        continue;
                 }
                 // Find drawing (direct child or inside mc:AlternateContent Choice)
                 // SDK's Descendants<Drawing>() naturally skips mc:Fallback (VML w:pict)
