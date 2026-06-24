@@ -206,10 +206,18 @@ public partial class PowerPointHandler
                         HasBandedRows: hasBandRow, HasBandedCols: hasBandCol),
                     themeColors);
 
-                if (!hasExplicitFill && resolved != null)
+                // An explicit cell fill overrides only the table-style BACKGROUND.
+                // The style's text color must still apply (PowerPoint keeps the
+                // header row's white text when you override just the cell fill —
+                // verified against real PowerPoint). Splitting the gate: Fill stays
+                // suppressed by hasExplicitFill, TextColor does not. An explicit run
+                // color is emitted on the run span and still wins by specificity.
+                if (resolved != null)
                 {
-                    if (resolved.Fill != null) cellStyles.Add($"background:{resolved.Fill}");
-                    if (resolved.TextColor != null) cellStyles.Add($"color:{resolved.TextColor}");
+                    if (!hasExplicitFill && resolved.Fill != null)
+                        cellStyles.Add($"background:{resolved.Fill}");
+                    if (resolved.TextColor != null)
+                        cellStyles.Add($"color:{resolved.TextColor}");
                 }
 
                 // Vertical alignment
