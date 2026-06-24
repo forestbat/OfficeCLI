@@ -2849,7 +2849,7 @@ internal partial class ChartSvgRenderer
 
     public void RenderStockChartSvg(StringBuilder sb, PlotArea plotArea,
         List<(string name, double[] values)> series, string[] categories, List<string> colors,
-        int ox, int oy, int pw, int ph)
+        int ox, int oy, int pw, int ph, string? upBarColor = null, string? downBarColor = null)
     {
         var allValues = series.SelectMany(s => s.values).ToArray();
         if (allValues.Length == 0) return;
@@ -2858,17 +2858,14 @@ internal partial class ChartSvgRenderer
         var range = maxVal - minVal;
         var catCount = Math.Max(categories.Length, series.Max(s => s.values.Length));
 
-        var upColor = "#FFFFFF"; var downColor = "#000000"; // OOXML spec defaults
-        var stockChart = plotArea.GetFirstChild<StockChart>();
-        if (stockChart != null)
-        {
-            var upFill = stockChart.Descendants<OpenXmlCompositeElement>().FirstOrDefault(e => e.LocalName == "upBars")
-                ?.Descendants<Drawing.SolidFill>().FirstOrDefault()?.GetFirstChild<Drawing.RgbColorModelHex>()?.Val?.Value;
-            if (upFill != null) upColor = $"#{upFill}";
-            var downFill = stockChart.Descendants<OpenXmlCompositeElement>().FirstOrDefault(e => e.LocalName == "downBars")
-                ?.Descendants<Drawing.SolidFill>().FirstOrDefault()?.GetFirstChild<Drawing.RgbColorModelHex>()?.Val?.Value;
-            if (downFill != null) downColor = $"#{downFill}";
-        }
+        // Use the already-resolved up/down bar colors (ExtractFillColor + themeColors, so
+        // schemeClr/sysClr/prstClr all resolve), falling back to the OOXML stock-candlestick
+        // defaults (white up / black down) when the bars carry no fill. The previous inline
+        // read only handled srgbClr, so a themed candlestick rendered white/black.
+        string Hashed(string? c, string fallback)
+            => string.IsNullOrEmpty(c) ? fallback : (c.StartsWith('#') ? c : "#" + c);
+        var upColor = Hashed(upBarColor, "#FFFFFF");
+        var downColor = Hashed(downBarColor, "#000000");
 
         sb.AppendLine($"        <line x1=\"{ox}\" y1=\"{oy}\" x2=\"{ox}\" y2=\"{oy + ph}\" stroke=\"{AxisLineColor}\" stroke-width=\"1\"/>");
         sb.AppendLine($"        <line x1=\"{ox}\" y1=\"{oy + ph}\" x2=\"{ox + pw}\" y2=\"{oy + ph}\" stroke=\"{AxisLineColor}\" stroke-width=\"1\"/>");
@@ -3913,8 +3910,11 @@ internal partial class ChartSvgRenderer
                     ?.Elements().FirstOrDefault(e => e.LocalName == "spPr");
                 var dnSpPr = upDownBars.Elements().FirstOrDefault(e => e.LocalName == "downBars")
                     ?.Elements().FirstOrDefault(e => e.LocalName == "spPr");
-                info.UpBarColor = ExtractFillColor(upSpPr, themeColors) ?? "4CAF50";
-                info.DownBarColor = ExtractFillColor(dnSpPr, themeColors) ?? "F44336";
+                // Leave null when the up/down bars carry no fill: each renderer applies its
+                // own default (line chart → green/red; stock candlestick → white/black per the
+                // OOXML spec). ExtractFillColor resolves srgbClr/schemeClr/sysClr/prstClr.
+                info.UpBarColor = ExtractFillColor(upSpPr, themeColors);
+                info.DownBarColor = ExtractFillColor(dnSpPr, themeColors);
             }
         }
 
@@ -4478,7 +4478,7 @@ internal partial class ChartSvgRenderer
         }
         else if (chartType == "stock")
         {
-            RenderStockChartSvg(sb, info.PlotArea!, info.Series, info.Categories, info.Colors, marginLeft, marginTop, plotW, plotH);
+            RenderStockChartSvg(sb, info.PlotArea!, info.Series, info.Categories, info.Colors, marginLeft, marginTop, plotW, plotH, info.UpBarColor, info.DownBarColor);
         }
         else if (chartType == "scatter" && info.PlotArea != null)
         {
