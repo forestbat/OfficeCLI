@@ -3337,8 +3337,15 @@ internal partial class ChartSvgRenderer
             ?? plotArea.Descendants().FirstOrDefault(e => e.LocalName == "dLbls");
         if (dLbls != null)
         {
+            // CT_Boolean's val attribute defaults to true, so a bare <c:showVal/> (no val)
+            // means ON — PowerPoint emits this form when labels are enabled via the UI.
+            // The old `== "1"` check treated bare/`true` as OFF, suppressing all labels.
             bool IsOn(string name) => dLbls.Elements().Any(e =>
-                e.LocalName == name && e.GetAttributes().FirstOrDefault(a => a.LocalName == "val").Value == "1");
+            {
+                if (e.LocalName != name) return false;
+                var v = e.GetAttributes().FirstOrDefault(a => a.LocalName == "val").Value;
+                return v is null or "" or "1" or "true";
+            });
             info.ShowDataLabelVal = IsOn("showVal");
             info.ShowDataLabelPercent = IsOn("showPercent");
             info.ShowDataLabelCatName = IsOn("showCatName");
