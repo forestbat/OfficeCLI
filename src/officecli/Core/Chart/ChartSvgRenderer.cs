@@ -3921,6 +3921,30 @@ internal partial class ChartSvgRenderer
             var gsSrgb = firstGs?.Elements().FirstOrDefault(e => e.LocalName == "srgbClr");
             v = gsSrgb?.GetAttributes().FirstOrDefault(a => a.LocalName == "val").Value;
         }
+        // pattFill fallback: a pattern-filled series (Format Data Series -> Pattern Fill)
+        // has no solidFill. SVG bar fills are flat, so approximate with the pattern's
+        // FOREGROUND color (same flat-approximation as the gradFill case above) instead of
+        // dropping to the wrong fallback accent. The stripe texture itself is not rendered
+        // (would need SVG <pattern> defs) — surfacing the fg color is the consistent
+        // approximation. Resolve fg srgbClr, else schemeClr via the theme map.
+        if (v == null)
+        {
+            var pattFill = container.Elements().FirstOrDefault(e => e.LocalName == "pattFill");
+            var fgClr = pattFill?.Elements().FirstOrDefault(e => e.LocalName == "fgClr");
+            v = fgClr?.Elements().FirstOrDefault(e => e.LocalName == "srgbClr")?
+                .GetAttributes().FirstOrDefault(a => a.LocalName == "val").Value;
+            if (v == null && fgClr != null && themeColors != null)
+            {
+                var sName = fgClr.Elements().FirstOrDefault(e => e.LocalName == "schemeClr")?
+                    .GetAttributes().FirstOrDefault(a => a.LocalName == "val").Value;
+                if (!string.IsNullOrEmpty(sName))
+                {
+                    var canon = ParseHelpers.NormalizeSchemeColorName(sName) ?? sName;
+                    if (themeColors.TryGetValue(canon, out var hx) || themeColors.TryGetValue(sName, out hx))
+                        v = hx;
+                }
+            }
+        }
         // Reject non-hex values — the return flows into $"#{...}" inline SVG
         // fill/style attributes. Same XSS class as w:color / w:shd / border.
         if (v == null) return null;
