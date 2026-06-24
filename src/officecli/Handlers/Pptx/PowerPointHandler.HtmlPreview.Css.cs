@@ -2771,6 +2771,29 @@ public partial class PowerPointHandler
             return null; // Unknown scheme color
         }
 
+        // Preset/named color (<a:prstClr val="red"/>): a valid CT_Color choice that other
+        // tools (and hand-authored files) use. ResolveFillColor handled only srgbClr and
+        // schemeClr, so a prstClr fill fell through to null and the shape/run rendered with
+        // no fill (PowerPoint paints the named color). OOXML preset names are lowercase CSS
+        // color names, which TryGetNamedColorHex maps to hex.
+        var prstColor = solidFill.GetFirstChild<Drawing.PresetColor>();
+        if (prstColor?.Val?.HasValue == true)
+        {
+            var hex = ParseHelpers.TryGetNamedColorHex(prstColor.Val!.InnerText);
+            if (hex != null)
+            {
+                var transformed = ApplyColorTransforms(hex, prstColor);
+                var solid = transformed.StartsWith('#') ? transformed[1..] : transformed;
+                var alpha = prstColor.GetFirstChild<Drawing.Alpha>()?.Val?.Value;
+                if (alpha.HasValue && alpha.Value < 100000)
+                {
+                    var (r, g, b) = ColorMath.HexToRgb(solid);
+                    return $"rgba({r},{g},{b},{alpha.Value / 100000.0:0.##})";
+                }
+                return $"#{solid}";
+            }
+        }
+
         return null;
     }
 
