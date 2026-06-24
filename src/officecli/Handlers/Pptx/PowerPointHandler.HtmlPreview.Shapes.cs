@@ -1479,11 +1479,22 @@ public partial class PowerPointHandler
 
         // Border
         var outline = pic.ShapeProperties?.GetFirstChild<Drawing.Outline>();
+        // Parse once so a non-solid dash (dot/dashDot/lgDash...) can be rendered as an
+        // accurate SVG stroke-dasharray overlay below — exactly as RenderShape does.
+        // OutlineToCss collapses every non-solid dash to a generic CSS border-style
+        // (dashed/dotted) that cannot express e.g. dashDot, so a picture border looked
+        // wrong vs PowerPoint (and vs a sibling shape with the same a:ln).
+        var parsedPicOutline = outline != null ? ParseOutline(outline, themeColors) : null;
         if (outline != null)
         {
-            var borderCss = OutlineToCss(outline, themeColors);
-            if (!string.IsNullOrEmpty(borderCss))
-                styles.Add(borderCss);
+            // Solid (or unparseable) → CSS border as before. Non-solid is deferred to
+            // the SVG overlay appended just before the picture's closing </div>.
+            if (parsedPicOutline == null || parsedPicOutline.Value.dashType == "solid")
+            {
+                var borderCss = OutlineToCss(outline, themeColors);
+                if (!string.IsNullOrEmpty(borderCss))
+                    styles.Add(borderCss);
+            }
         }
         else
         {
@@ -1817,6 +1828,22 @@ public partial class PowerPointHandler
             // emit a grey "Linked image" surface so the shape is visible rather than an
             // empty div. We deliberately do NOT resolve/download the external target.
             sb.Append("<div style=\"width:100%;height:100%;background:rgba(128,128,128,0.15);display:flex;align-items:center;justify-content:center;color:rgba(128,128,128,0.5);font-size:12px\">Linked image</div>");
+        }
+
+        // Non-solid outline (dash/dot/dashDot/lgDash...) → accurate SVG stroke-dasharray
+        // overlay, mirroring RenderShape's plain-rect branch. A picture is always a plain
+        // rectangle, so only that branch is needed. The stroke is inset by bw/2 so it sits
+        // inside the content box (matching the solid CSS-border path's visual weight).
+        if (parsedPicOutline != null && parsedPicOutline.Value.dashType != "solid")
+        {
+            var (bw, dt, bc, cap, _, join) = parsedPicOutline.Value;
+            var dashArr = DashTypeToSvgDasharray(dt, bw);
+            var dashAttr = !string.IsNullOrEmpty(dashArr) ? $" stroke-dasharray=\"{dashArr}\"" : "";
+            var linecap = CapToSvgLinecap(cap);
+            var safeColor = CssSanitizeColor(bc);
+            sb.Append("<svg style=\"position:absolute;inset:0;width:100%;height:100%;overflow:visible\">");
+            sb.Append($"<rect x=\"{bw / 2:0.##}pt\" y=\"{bw / 2:0.##}pt\" width=\"calc(100% - {bw:0.##}pt)\" height=\"calc(100% - {bw:0.##}pt)\" fill=\"none\" stroke=\"{safeColor}\" stroke-width=\"{bw:0.##}pt\" stroke-linecap=\"{linecap}\" stroke-linejoin=\"{join}\"{dashAttr}/>");
+            sb.Append("</svg>");
         }
 
         sb.AppendLine("</div>");
