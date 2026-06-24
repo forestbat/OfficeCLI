@@ -31,6 +31,8 @@ public static class ModernFunctionQualifier
         "CONCAT", "TEXTJOIN",
         "STOCKHISTORY",
         "TEXTBEFORE", "TEXTAFTER", "TEXTSPLIT",
+        "REGEXTEST", "REGEXEXTRACT", "REGEXREPLACE",
+        "ISFORMULA",
         "TAKE", "DROP",
         "CHOOSECOLS", "CHOOSEROWS",
         "ARRAYTOTEXT", "VALUETOTEXT",

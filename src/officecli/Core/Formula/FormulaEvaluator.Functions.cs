@@ -118,6 +118,11 @@ internal partial class FormulaEvaluator
             "EXACT" => FR_B(str(0) == str(1)),
             "VALUE" => double.TryParse(str(0), NumberStyles.Any, CultureInfo.InvariantCulture, out var pv) ? FR(pv) : FormulaResult.Error("#VALUE!"),
             "TEXT" => EvalText(args),
+            "TEXTBEFORE" => EvalTextBeforeAfter(args, before: true),
+            "TEXTAFTER" => EvalTextBeforeAfter(args, before: false),
+            "REGEXTEST" => EvalRegexTest(args),
+            "REGEXEXTRACT" => EvalRegexExtract(args),
+            "REGEXREPLACE" => EvalRegexReplace(args),
             "T" => arg(0) is { IsString: true } ? arg(0) : FR_S(""),
             "N" => FR(num(0)),
             "FIXED" => EvalFixed(args),
@@ -166,6 +171,8 @@ internal partial class FormulaEvaluator
             "ISLOGICAL" => FR_B(arg(0)?.IsBool == true),
             "ISEVEN" => FR_B((int)num(0) % 2 == 0), "ISODD" => FR_B((int)num(0) % 2 != 0),
             "ISNONTEXT" => FR_B(arg(0)?.IsString != true),
+            "ISREF" => EvalIsRef(args),
+            "ISFORMULA" => EvalIsFormula(args),
             "TYPE" => FR(arg(0) switch { { IsNumeric: true } => 1, { IsString: true } => 2, { IsBool: true } => 4, { IsError: true } => 16, _ => 1 }),
             "NA" => FormulaResult.Error("#N/A"),
             "ERROR_TYPE" => FR(arg(0)?.ErrorValue switch { "#NULL!" => 1, "#DIV/0!" => 2, "#VALUE!" => 3, "#REF!" => 4, "#NAME?" => 5, "#NUM!" => 6, "#N/A" => 7, _ => 0 }),
@@ -316,6 +323,127 @@ internal partial class FormulaEvaluator
             return FR_S(s[..idx] + neo + s[(idx + old.Length)..]);
         }
         return FR_S(s.Replace(old, neo));
+    }
+
+    // TEXTBEFORE / TEXTAFTER(text, delimiter, [instance_num=1], [match_mode=0],
+    // [match_end=0], [if_not_found=#N/A]). instance_num<0 counts from the end;
+    // match_mode=1 is case-insensitive; match_end=1 lets the start/end of text
+    // act as a match when the instance runs past the delimiters.
+    private FormulaResult? EvalTextBeforeAfter(List<object> args, bool before)
+    {
+        if (args.Count < 2) return null;
+        string text = args[0] is FormulaResult t ? t.AsString() : "";
+        string delim = args[1] is FormulaResult d ? d.AsString() : "";
+        int instance = args.Count > 2 && args[2] is FormulaResult i ? (int)i.AsNumber() : 1;
+        bool ci = args.Count > 3 && args[3] is FormulaResult m && m.AsNumber() != 0;
+        bool matchEnd = args.Count > 4 && args[4] is FormulaResult e && e.AsNumber() != 0;
+        bool hasNotFound = args.Count > 5 && args[5] is FormulaResult;
+        FormulaResult notFound = hasNotFound ? (FormulaResult)args[5] : FormulaResult.Error("#N/A");
+
+        if (instance == 0) return FormulaResult.Error("#VALUE!");
+        if (delim.Length == 0)
+            // empty delimiter: split point is the very start (before) / end (after).
+            return FR_S(before ? "" : text);
+
+        var cmp = ci ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
+        // Collect delimiter positions in order. match_end=1 also lets the very
+        // end of the text act as a zero-length delimiter, so an instance count
+        // can reach the text boundary.
+        var hits = new List<(int pos, int len)>();
+        for (int k = 0; (k = text.IndexOf(delim, k, cmp)) >= 0; k += delim.Length)
+            hits.Add((k, delim.Length));
+        if (matchEnd) hits.Add((text.Length, 0));
+
+        // instance_num is 1-based; negative counts from the last delimiter.
+        int chosen = instance > 0 ? instance - 1 : hits.Count + instance;
+        if (chosen < 0 || chosen >= hits.Count) return notFound;
+
+        var (pos, len) = hits[chosen];
+        return FR_S(before ? text[..pos] : text[(pos + len)..]);
+    }
+
+    private static System.Text.RegularExpressions.Regex BuildExcelRegex(string pattern, bool ci)
+        => new(pattern, ci ? RegexOptions.IgnoreCase : RegexOptions.None);
+
+    // REGEXTEST(text, pattern, [case_sensitivity=0]) — 1=case-insensitive.
+    private FormulaResult? EvalRegexTest(List<object> args)
+    {
+        if (args.Count < 2) return null;
+        string text = args[0] is FormulaResult t ? t.AsString() : "";
+        string pat = args[1] is FormulaResult p ? p.AsString() : "";
+        bool ci = args.Count > 2 && args[2] is FormulaResult c && c.AsNumber() != 0;
+        try { return FR_B(BuildExcelRegex(pat, ci).IsMatch(text)); }
+        catch (ArgumentException) { return FormulaResult.Error("#VALUE!"); }
+    }
+
+    // REGEXEXTRACT(text, pattern, [return_mode=0], [case_sensitivity=0]).
+    // return_mode 0 = first whole match (scalar). Modes 1 (all matches) and 2
+    // (capture groups) spill an array — deferred to the dynamic-array wave; we
+    // return the first match for mode 0 and #VALUE! for the array modes so the
+    // cache is never silently mispredicted.
+    private FormulaResult? EvalRegexExtract(List<object> args)
+    {
+        if (args.Count < 2) return null;
+        string text = args[0] is FormulaResult t ? t.AsString() : "";
+        string pat = args[1] is FormulaResult p ? p.AsString() : "";
+        int mode = args.Count > 2 && args[2] is FormulaResult mm ? (int)mm.AsNumber() : 0;
+        bool ci = args.Count > 3 && args[3] is FormulaResult c && c.AsNumber() != 0;
+        if (mode != 0) return null;   // array modes spill — not yet supported
+        try
+        {
+            var m = BuildExcelRegex(pat, ci).Match(text);
+            return m.Success ? FR_S(m.Value) : FormulaResult.Error("#N/A");
+        }
+        catch (ArgumentException) { return FormulaResult.Error("#VALUE!"); }
+    }
+
+    // REGEXREPLACE(text, pattern, replacement, [occurrence=0], [case_sensitivity=0]).
+    // occurrence 0 = replace all; n>0 = replace only the nth match.
+    private FormulaResult? EvalRegexReplace(List<object> args)
+    {
+        if (args.Count < 3) return null;
+        string text = args[0] is FormulaResult t ? t.AsString() : "";
+        string pat = args[1] is FormulaResult p ? p.AsString() : "";
+        string rep = args[2] is FormulaResult r ? r.AsString() : "";
+        int occ = args.Count > 3 && args[3] is FormulaResult o ? (int)o.AsNumber() : 0;
+        bool ci = args.Count > 4 && args[4] is FormulaResult c && c.AsNumber() != 0;
+        try
+        {
+            var rx = BuildExcelRegex(pat, ci);
+            if (occ <= 0) return FR_S(rx.Replace(text, rep));
+            int n = 0;
+            return FR_S(rx.Replace(text, mtch => (++n == occ) ? mtch.Result(rep) : mtch.Value));
+        }
+        catch (ArgumentException) { return FormulaResult.Error("#VALUE!"); }
+    }
+
+    // ISREF(value) — TRUE when the argument is a reference. The parser hands a
+    // bare ref token through as a RefArg; OFFSET/INDIRECT resolve to an Area
+    // whose RangeData carries a workbook origin (BaseRow>0).
+    private static FormulaResult EvalIsRef(List<object> args)
+    {
+        if (args.Count == 0) return FR_B(false);
+        if (args[0] is RefArg) return FR_B(true);
+        if (args[0] is FormulaResult { IsRange: true } fr) return FR_B(fr.RangeValue!.BaseRow > 0);
+        return FR_B(false);
+    }
+
+    // ISFORMULA(reference) — TRUE when the referenced cell holds a formula.
+    // Same-sheet only; a cross-sheet reference (RefArg.Sheet set) yields #N/A
+    // rather than a wrong answer, since the evaluator probes the current sheet.
+    private FormulaResult EvalIsFormula(List<object> args)
+    {
+        string? sheet; int col, row;
+        switch (args.Count > 0 ? args[0] : null)
+        {
+            case RefArg ra: sheet = ra.Sheet; col = ra.Col; row = ra.Row; break;
+            case FormulaResult { IsRange: true } fr when fr.RangeValue!.BaseRow > 0:
+                sheet = fr.RangeValue.BaseSheet; col = fr.RangeValue.BaseCol; row = fr.RangeValue.BaseRow; break;
+            default: return FormulaResult.Error("#VALUE!");
+        }
+        if (!string.IsNullOrEmpty(sheet)) return FormulaResult.Error("#N/A");
+        var cell = FindCell($"{IndexToCol(col)}{row}");
+        return FR_B(cell?.CellFormula?.Text != null);
     }
 
     private FormulaResult? EvalText(List<object> args)

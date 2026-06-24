@@ -821,7 +821,8 @@ internal partial class FormulaEvaluator
                 // treats omitted args as 0 for numeric-arg functions like OFFSET.
                 if (p < t.Count && (t[p].Type == TT.Comma || t[p].Type == TT.RParen))
                 { args.Add(FormulaResult.Number(0)); }
-                else if (argIdx == 0 && name == "OFFSET" && TryParseRefArg(t, ref p) is { } refArg)
+                else if (argIdx == 0 && name is "OFFSET" or "ISREF" or "ISFORMULA"
+                         && TryParseRefArg(t, ref p) is { } refArg)
                 { args.Add(refArg); }
                 else if (p < t.Count && t[p].Type is TT.Range or TT.SheetRange
                          && (p + 1 >= t.Count || t[p + 1].Type is TT.Comma or TT.RParen))
