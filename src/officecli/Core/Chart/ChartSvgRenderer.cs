@@ -2265,7 +2265,8 @@ internal partial class ChartSvgRenderer
         List<bool>? smooth = null, List<TrendlineInfo?>? trendlines = null, List<ErrorBarInfo?>? errorBars = null,
         List<string?>? markerFillColors = null, List<string?>? markerLineColors = null,
         string? dataLabelNumFmt = null,
-        bool showVal = true, bool showSerName = false, bool showCatName = false)
+        bool showVal = true, bool showSerName = false, bool showCatName = false,
+        List<bool>? lineHide = null)
     {
         var scatterSeries = plotArea.Descendants<OpenXmlCompositeElement>()
             .Where(e => e.LocalName == "ser" && e.Parent?.LocalName == "scatterChart").ToList();
@@ -2347,9 +2348,10 @@ internal partial class ChartSvgRenderer
                 pts.Add((MapX(xVals[i]), MapY(yVals[i]), xVals[i], yVals[i]));
 
             // Connecting line — drawn for lineMarker/smoothMarker scatter styles,
-            // suppressed when scatterStyle is marker/none (markersOnly). A smooth
+            // suppressed when scatterStyle is marker/none (markersOnly) OR when this
+            // series has a:ln/a:noFill (PowerPoint "No line" — markers only). A smooth
             // series uses a Catmull-Rom path (same primitive as the line renderer).
-            if (!markersOnly && pts.Count >= 2)
+            if (!markersOnly && !(lineHide != null && s < lineHide.Count && lineHide[s]) && pts.Count >= 2)
             {
                 var lw = lineWidths != null && s < lineWidths.Count ? lineWidths[s] : 2;
                 var dashName = lineDashes != null && s < lineDashes.Count ? lineDashes[s] : "solid";
@@ -4207,7 +4209,8 @@ internal partial class ChartSvgRenderer
                 info.Smooth, info.Trendlines, info.ErrorBars,
                 info.MarkerFillColors, info.MarkerLineColors,
                 info.DataLabelsNumFmt,
-                info.ShowDataLabelVal, info.ShowDataLabelSerName, info.ShowDataLabelCatName);
+                info.ShowDataLabelVal, info.ShowDataLabelSerName, info.ShowDataLabelCatName,
+                info.SeriesLineHide);
         }
         else if (chartType.Contains("line") || chartType == "scatter")
         {
