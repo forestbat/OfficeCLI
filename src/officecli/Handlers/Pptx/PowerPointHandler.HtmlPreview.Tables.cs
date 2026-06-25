@@ -356,19 +356,13 @@ public partial class PowerPointHandler
                 var pL = Units.EmuToPt(marL ?? 91440);
                 cellStyles.Add($"padding:{pT}pt {pR}pt {pB}pt {pL}pt");
 
-                // Paragraph alignment
-                var firstPara = cell.TextBody?.Elements<Drawing.Paragraph>().FirstOrDefault();
-                if (firstPara?.ParagraphProperties?.Alignment?.HasValue == true)
-                {
-                    var align = firstPara.ParagraphProperties.Alignment.InnerText switch
-                    {
-                        "ctr" => "center",
-                        "r" => "right",
-                        "just" => "justify",
-                        _ => "left"
-                    };
-                    cellStyles.Add($"text-align:{align}");
-                }
+                // Paragraph alignment is emitted PER-PARAGRAPH by RenderTextBody
+                // (each <div class="para"> carries its own text-align). We must NOT
+                // set a cell-level text-align from the first paragraph: CSS
+                // text-align inherits, so a right-aligned first paragraph would
+                // bleed onto subsequent paragraphs that have no explicit alignment
+                // (PowerPoint renders those left/default). Leave the <td> without a
+                // text-align so unaligned paragraphs fall back to the default.
 
                 // Render the cell's paragraphs through the same path shape text
                 // bodies use (RenderTextBody → one <div class="para"> per
