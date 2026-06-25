@@ -157,6 +157,30 @@ internal partial class ChartSvgRenderer
     // CONSISTENCY(html-encode): shared plain entity-encoder lives in Core/HtmlPreviewHelper.
     public static string HtmlEncode(string text) => HtmlPreviewHelper.HtmlEncode(text);
 
+    /// <summary>Build the inner HTML for a chart title. When the title has per-run
+    /// formatting (<see cref="ChartInfo.TitleRuns"/>), emit one styled &lt;span&gt;
+    /// per run so a mixed-format title (bold word + normal word, per-run colors)
+    /// renders like PowerPoint instead of collapsing to the first run's style.
+    /// Otherwise returns the plain encoded title text. <paramref name="defaultColor"/>
+    /// is the title's fallback color (a run without its own color inherits it),
+    /// <paramref name="defaultBold"/> the fallback weight, <paramref name="defaultSizePt"/>
+    /// the fallback font size in points.</summary>
+    public static string BuildTitleInnerHtml(ChartInfo info, string defaultColor, bool defaultBold, double defaultSizePt)
+    {
+        if (info.TitleRuns == null || info.TitleRuns.Count == 0)
+            return HtmlEncode(info.Title ?? "");
+        var sb = new System.Text.StringBuilder();
+        foreach (var run in info.TitleRuns)
+        {
+            var weight = (run.Bold ?? defaultBold) ? "bold" : "normal";
+            var color = run.Color ?? defaultColor;
+            var size = run.FontSizePt ?? defaultSizePt;
+            var extra = (run.Italic ? "font-style:italic;" : "") + (run.Underline ? "text-decoration:underline;" : "");
+            sb.Append($"<span style=\"font-weight:{weight};color:{color};font-size:{size:0.##}pt;{extra}\">{HtmlEncode(run.Text)}</span>");
+        }
+        return sb.ToString();
+    }
+
     /// <summary>Emit a bottom (horizontal) axis tick label &lt;text&gt;, applying an
     /// SVG rotate transform when <paramref name="rotationDeg"/> is non-null/non-zero
     /// (degrees, OOXML <c:txPr><a:bodyPr rot> already divided by 60000).
@@ -2991,6 +3015,13 @@ internal partial class ChartSvgRenderer
         public string? Title { get; set; }
         public string TitleFontSize { get; set; } = "10pt";
         public bool TitleBold { get; set; } = true;   // chart titles default to bold
+        // Per-run title formatting. PowerPoint renders a chart title with mixed
+        // per-run bold/color/size (e.g. one bold-red word + a normal-black word);
+        // the single Title/TitleBold/TitleFontColor fields only capture the first
+        // run. When the title has runs with differing formatting, TitleRuns holds
+        // each run so the render sites can emit styled <span>s. Null/single-run =
+        // fall back to the uniform Title string.
+        public List<TitleRunInfo>? TitleRuns { get; set; }
         public bool ShowDataLabels { get; set; }
         public bool ShowDataLabelVal { get; set; }
         public bool ShowDataLabelPercent { get; set; }
@@ -3177,6 +3208,18 @@ internal partial class ChartSvgRenderer
         public List<ErrorBarInfo?> ErrorBars { get; set; } = [];
     }
 
+    /// <summary>One run of a chart title's rich text, for per-run styled rendering.</summary>
+    public class TitleRunInfo
+    {
+        public string Text { get; set; } = "";
+        public bool? Bold { get; set; }
+        public bool Italic { get; set; }
+        public bool Underline { get; set; }
+        /// <summary>'#'-prefixed CSS color, or null to inherit the title default.</summary>
+        public string? Color { get; set; }
+        public double? FontSizePt { get; set; }
+    }
+
     /// <summary>Trendline metadata extracted from OOXML for SVG rendering.</summary>
     public class TrendlineInfo
     {
@@ -3326,10 +3369,29 @@ internal partial class ChartSvgRenderer
         var titleEl = chart?.Elements().FirstOrDefault(e => e.LocalName == "title");
         if (titleEl != null)
         {
-            var titleRuns = titleEl.Descendants<Drawing.Run>()
-                .Select(r => r.GetFirstChild<Drawing.Text>()?.Text)
-                .Where(t => t != null);
-            info.Title = string.Join("", titleRuns);
+            var runEls = titleEl.Descendants<Drawing.Run>().ToList();
+            info.Title = string.Join("", runEls.Select(r => r.GetFirstChild<Drawing.Text>()?.Text).Where(t => t != null));
+            // Capture per-run formatting so a mixed-format title (e.g. a bold word
+            // + a normal word) renders with per-run <span>s instead of collapsing
+            // to the first run's style. Only kept when >1 run carries text.
+            var perRun = new List<TitleRunInfo>();
+            foreach (var r in runEls)
+            {
+                var txt = r.GetFirstChild<Drawing.Text>()?.Text;
+                if (txt == null) continue;
+                var rp = r.GetFirstChild<Drawing.RunProperties>();
+                var c = ExtractFontColor(rp, themeColors);
+                perRun.Add(new TitleRunInfo
+                {
+                    Text = txt,
+                    Bold = rp?.Bold?.HasValue == true ? rp.Bold.Value : null,
+                    Italic = rp?.Italic?.Value == true,
+                    Underline = rp?.Underline?.HasValue == true && rp.Underline.Value != Drawing.TextUnderlineValues.None,
+                    Color = c != null ? CssHexColor(c) : null,
+                    FontSizePt = rp?.FontSize?.HasValue == true ? rp.FontSize.Value / 100.0 : null,
+                });
+            }
+            if (perRun.Count > 1) info.TitleRuns = perRun;
             var titleRPr = titleEl.Descendants<Drawing.RunProperties>().FirstOrDefault();
             if (titleRPr?.FontSize?.HasValue == true)
                 info.TitleFontSize = $"{titleRPr.FontSize.Value / 100.0:0.##}pt";

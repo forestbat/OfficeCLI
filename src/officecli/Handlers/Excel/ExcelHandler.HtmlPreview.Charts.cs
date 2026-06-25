@@ -232,7 +232,7 @@ public partial class ExcelHandler
 
         var titleColor = info.TitleFontColor != null ? ChartSvgRenderer.CssHexColor(info.TitleFontColor) : "#333";
         if (!string.IsNullOrEmpty(info.Title))
-            sb.AppendLine($"  <div style=\"flex-shrink:0;text-align:center;font-size:{info.TitleFontSize};font-weight:bold;padding:6px 0;color:{titleColor}\">{HtmlEncode(info.Title)}</div>");
+            sb.AppendLine($"  <div style=\"flex-shrink:0;text-align:center;font-size:{info.TitleFontSize};font-weight:bold;padding:6px 0;color:{titleColor}\">{ChartSvgRenderer.BuildTitleInnerHtml(info, titleColor, info.TitleBold, titleFontPt)}</div>");
 
         var legendColor = info.LegendFontColor != null ? ChartSvgRenderer.CssHexColor(info.LegendFontColor) : "#555";
 
@@ -531,7 +531,7 @@ public partial class ExcelHandler
 
         var titleColor = info.TitleFontColor != null ? ChartSvgRenderer.CssHexColor(info.TitleFontColor) : "#333";
         if (!string.IsNullOrEmpty(info.Title))
-            sb.AppendLine($"  <div style=\"text-align:center;font-size:{info.TitleFontSize};font-weight:bold;padding:6px 0;color:{titleColor}\">{HtmlEncode(info.Title)}</div>");
+            sb.AppendLine($"  <div style=\"text-align:center;font-size:{info.TitleFontSize};font-weight:bold;padding:6px 0;color:{titleColor}\">{ChartSvgRenderer.BuildTitleInnerHtml(info, titleColor, info.TitleBold, titleFontPt)}</div>");
 
         sb.AppendLine($"  <svg viewBox=\"0 0 {svgW} {chartSvgH}\" style=\"width:100%;height:auto\" preserveAspectRatio=\"xMidYMin meet\">");
         renderer.RenderChartSvgContent(sb, info, svgW, chartSvgH);
