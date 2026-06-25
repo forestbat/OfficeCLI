@@ -364,6 +364,20 @@ internal partial class ChartSvgRenderer
                 tickStep = ooxmlMajorUnit.Value;
                 nTicks = (int)Math.Round(niceMax / tickStep);
             }
+            else if (ooxmlMajorUnit.HasValue && ooxmlMajorUnit.Value > 0
+                     && !(ooxmlMin.HasValue && ooxmlMin.Value > 0))
+            {
+                // majorUnit set without an explicit max: PowerPoint keeps the
+                // entered tick spacing and rounds the auto-scaled top UP to the
+                // next multiple of it (e.g. data max 40, majorUnit 20 -> top 60,
+                // ticks 0/20/40/60). Previously majorUnit was honored ONLY when a
+                // max was also present, so the axis fell back to the every-N
+                // nice scale and ignored the entered unit.
+                tickStep = ooxmlMajorUnit.Value;
+                var autoTop = ComputeNiceAxis(maxVal).niceMax;
+                niceMax = Math.Ceiling(autoTop / tickStep) * tickStep;
+                nTicks = (int)Math.Round(niceMax / tickStep);
+            }
             else
             {
                 // Min-aware nice axis (parity with line/area path): explicit
@@ -3087,6 +3101,9 @@ internal partial class ChartSvgRenderer
         public double? AxisMax { get; set; }
         public double? AxisMin { get; set; }
         public double? MajorUnit { get; set; }
+        /// <summary>Value-axis &lt;c:minorUnit&gt;. Drives the minor-gridline count
+        /// (majorUnit / minorUnit sub-intervals); null = renderer default.</summary>
+        public double? MinorUnit { get; set; }
         public int? GapWidth { get; set; }
         public int? Overlap { get; set; }
         public string? ValAxisTitle { get; set; }
@@ -3587,6 +3604,9 @@ internal partial class ChartSvgRenderer
             var majorUnit = valAxis.Elements().FirstOrDefault(e => e.LocalName == "majorUnit");
             if (majorUnit != null && double.TryParse(majorUnit.GetAttributes().FirstOrDefault(a => a.LocalName == "val").Value, out var mu))
                 info.MajorUnit = mu;
+            var minorUnit = valAxis.Elements().FirstOrDefault(e => e.LocalName == "minorUnit");
+            if (minorUnit != null && double.TryParse(minorUnit.GetAttributes().FirstOrDefault(a => a.LocalName == "val").Value, out var mnu) && mnu > 0)
+                info.MinorUnit = mnu;
 
             // Display units (<c:dispUnits><c:builtInUnit val="millions"/>): PowerPoint
             // divides every value-axis tick by the unit and (when <c:dispUnitsLbl> is
@@ -4529,6 +4549,11 @@ internal partial class ChartSvgRenderer
         PerPointDeletedLabels = info.PerPointDeletedLabels;
         if (info.AxisLineColor != null) AxisLineColor = CssHexColor(info.AxisLineColor);
         DataLabelFontPx = info.DataLabelFontPx;
+        // Minor-gridline count from <c:minorUnit> / <c:majorUnit> (sub-intervals
+        // per major band). PowerPoint draws (majorUnit/minorUnit - 1) lines per
+        // band; the renderer's loops divide the band into MinorGridlineCount parts.
+        if (info.MinorUnit is > 0 && info.MajorUnit is > 0)
+            MinorGridlineCount = Math.Max(1, (int)Math.Round(info.MajorUnit.Value / info.MinorUnit.Value));
         if (info.DataLabelFontColor != null) DataLabelColor = CssHexColor(info.DataLabelFontColor);
         DataLabelBold = info.DataLabelBold;
         DataLabelItalic = info.DataLabelItalic;
