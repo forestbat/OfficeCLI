@@ -33,6 +33,10 @@ public static class ModernFunctionQualifier
         "TEXTBEFORE", "TEXTAFTER", "TEXTSPLIT",
         "REGEXTEST", "REGEXEXTRACT", "REGEXREPLACE",
         "ISFORMULA", "SHEET", "SHEETS",
+        // Engineering functions added in Excel 2013 (2007 IM* / DELTA / GESTEP
+        // are bare).
+        "IMCOSH", "IMCOT", "IMCSC", "IMCSCH", "IMSEC", "IMSECH", "IMSINH", "IMTAN",
+        "BITAND", "BITOR", "BITXOR", "BITLSHIFT", "BITRSHIFT",
         "TAKE", "DROP",
         "CHOOSECOLS", "CHOOSEROWS",
         "ARRAYTOTEXT", "VALUETOTEXT",

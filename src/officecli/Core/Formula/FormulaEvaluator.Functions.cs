@@ -214,8 +214,68 @@ internal partial class FormulaEvaluator
             "OCT2BIN" => FR_S(Convert.ToString(Convert.ToInt64(str(0), 8), 2)),
             "OCT2HEX" => FR_S(Convert.ToString(Convert.ToInt64(str(0), 8), 16).ToUpperInvariant()),
 
+            // ===== Engineering: complex numbers =====
+            "COMPLEX" => EvalComplex(args),
+            "IMABS" => ImScalar(args, c => c.Magnitude),
+            "IMREAL" => ImScalar(args, c => c.Real),
+            "IMAGINARY" => ImScalar(args, c => c.Imaginary),
+            "IMARGUMENT" => args.Count >= 1 && ArgComplex(args[0], out var ca, out _) && ca == System.Numerics.Complex.Zero
+                ? FormulaResult.Error("#DIV/0!") : ImScalar(args, c => c.Phase),
+            "IMCONJUGATE" => ImUnary(args, System.Numerics.Complex.Conjugate),
+            "IMSUM" => ImFold(args, System.Numerics.Complex.Zero, (a, b) => a + b),
+            "IMSUB" => ImBinary(args, (a, b) => a - b),
+            "IMPRODUCT" => ImFold(args, System.Numerics.Complex.One, (a, b) => a * b),
+            "IMDIV" => ImBinary(args, (a, b) => a / b),
+            "IMPOWER" => ImUnary(args, c => System.Numerics.Complex.Pow(c, args.Count > 1 && args[1] is FormulaResult pw ? pw.AsNumber() : 0)),
+            "IMSQRT" => ImUnary(args, System.Numerics.Complex.Sqrt),
+            "IMEXP" => ImUnary(args, System.Numerics.Complex.Exp),
+            "IMLN" => ImUnary(args, System.Numerics.Complex.Log),
+            "IMLOG10" => ImUnary(args, c => System.Numerics.Complex.Log10(c)),
+            "IMLOG2" => ImUnary(args, c => System.Numerics.Complex.Log(c) / Math.Log(2)),
+            "IMSIN" => ImUnary(args, System.Numerics.Complex.Sin),
+            "IMCOS" => ImUnary(args, System.Numerics.Complex.Cos),
+            "IMTAN" => ImUnary(args, System.Numerics.Complex.Tan),
+            "IMSINH" => ImUnary(args, System.Numerics.Complex.Sinh),
+            "IMCOSH" => ImUnary(args, System.Numerics.Complex.Cosh),
+            "IMSEC" => ImUnary(args, c => System.Numerics.Complex.One / System.Numerics.Complex.Cos(c)),
+            "IMCSC" => ImUnary(args, c => System.Numerics.Complex.One / System.Numerics.Complex.Sin(c)),
+            "IMCOT" => ImUnary(args, c => System.Numerics.Complex.Cos(c) / System.Numerics.Complex.Sin(c)),
+            "IMSECH" => ImUnary(args, c => System.Numerics.Complex.One / System.Numerics.Complex.Cosh(c)),
+            "IMCSCH" => ImUnary(args, c => System.Numerics.Complex.One / System.Numerics.Complex.Sinh(c)),
+
+            // ===== Engineering: bit operations & step =====
+            "BITAND" => BitOp(args, (a, b) => a & b),
+            "BITOR" => BitOp(args, (a, b) => a | b),
+            "BITXOR" => BitOp(args, (a, b) => a ^ b),
+            "BITLSHIFT" => BitShift(args, left: true),
+            "BITRSHIFT" => BitShift(args, left: false),
+            "DELTA" => FR_B(num(0) == (args.Count > 1 ? num(1) : 0)),
+            "GESTEP" => FR_B(num(0) >= (args.Count > 1 ? num(1) : 0)),
+
             _ => null
         };
+    }
+
+    // BITAND/BITOR/BITXOR — operands are non-negative integers below 2^48.
+    private static FormulaResult? BitOp(List<object> args, Func<long, long, long> op)
+    {
+        if (args.Count < 2) return null;
+        double a = args[0] is FormulaResult x ? x.AsNumber() : 0, b = args[1] is FormulaResult y ? y.AsNumber() : 0;
+        if (a < 0 || b < 0 || a != Math.Floor(a) || b != Math.Floor(b) || a >= 281474976710656d || b >= 281474976710656d)
+            return FormulaResult.Error("#NUM!");
+        return FR(op((long)a, (long)b));
+    }
+
+    // BITLSHIFT(n, shift) / BITRSHIFT(n, shift). A negative shift reverses
+    // direction, as Excel defines it.
+    private static FormulaResult? BitShift(List<object> args, bool left)
+    {
+        if (args.Count < 2) return null;
+        double n = args[0] is FormulaResult x ? x.AsNumber() : 0, sh = args[1] is FormulaResult y ? y.AsNumber() : 0;
+        if (n < 0 || n != Math.Floor(n) || n >= 281474976710656d || Math.Abs(sh) > 53) return FormulaResult.Error("#NUM!");
+        int s = (int)sh * (left ? 1 : -1);
+        double result = s >= 0 ? (long)n << s : (long)n >> -s;
+        return FR(result);
     }
 
     // SUBTOTAL(function_num, ref1, ...): function_num 1-11 (and 101-111 = ignore-hidden, treated
