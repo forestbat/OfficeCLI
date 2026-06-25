@@ -63,8 +63,10 @@ internal partial class ChartSvgRenderer
     // respectively so the weight tracks the same axis as the color, orientation-independent.
     public bool CatTickLabelsBold { get; set; }
     public bool ValTickLabelsBold { get; set; }
-    private string CatTickWeightAttr => CatTickLabelsBold ? " font-weight=\"bold\"" : "";
-    private string ValTickWeightAttr => ValTickLabelsBold ? " font-weight=\"bold\"" : "";
+    public bool CatTickLabelsItalic { get; set; }
+    public bool ValTickLabelsItalic { get; set; }
+    private string CatTickWeightAttr => (CatTickLabelsBold ? " font-weight=\"bold\"" : "") + (CatTickLabelsItalic ? " font-style=\"italic\"" : "");
+    private string ValTickWeightAttr => (ValTickLabelsBold ? " font-weight=\"bold\"" : "") + (ValTickLabelsItalic ? " font-style=\"italic\"" : "");
     public string SecondaryAxisColor { get; set; } = "#aaa";
     public string GridColor { get; set; } = "#333";
     // Value-axis major-gridline dash name (<a:prstDash val="...">). Null/"solid"
@@ -3082,18 +3084,21 @@ internal partial class ChartSvgRenderer
         public string? ValAxisTitle { get; set; }
         public int ValAxisTitleFontPx { get; set; } = 9;
         public bool ValAxisTitleBold { get; set; }
+        public bool ValAxisTitleItalic { get; set; }
         // Explicit axis-title run color ('#'-prefixed CSS, or null = use AxisColor).
         // PowerPoint honors a solidFill on the axis-title run; previously dropped.
         public string? ValAxisTitleColor { get; set; }
         public string? CatAxisTitle { get; set; }
         public int CatAxisTitleFontPx { get; set; } = 9;
         public bool CatAxisTitleBold { get; set; }
+        public bool CatAxisTitleItalic { get; set; }
         public string? CatAxisTitleColor { get; set; }
         // Secondary value axis title (combo right-side axis; also the bubble/scatter
         // Y axis, which is the 2nd valAx rather than a catAx).
         public string? SecondaryValAxisTitle { get; set; }
         public int SecondaryValAxisTitleFontPx { get; set; } = 9;
         public bool SecondaryValAxisTitleBold { get; set; }
+        public bool SecondaryValAxisTitleItalic { get; set; }
         public string? SecondaryValAxisTitleColor { get; set; }
         public string? PlotFillColor { get; set; }
         public string? ChartFillColor { get; set; }
@@ -3122,9 +3127,11 @@ internal partial class ChartSvgRenderer
         public int ValFontPx { get; set; } = 9;
         public string? ValFontColor { get; set; }
         public bool ValFontBold { get; set; }
+        public bool ValFontItalic { get; set; }
         public int CatFontPx { get; set; } = 9;
         public string? CatFontColor { get; set; }
         public bool CatFontBold { get; set; }
+        public bool CatFontItalic { get; set; }
         /// <summary>Category-axis tick-label rotation in degrees, read from
         /// &lt;c:catAx&gt;&lt;c:txPr&gt;&lt;a:bodyPr rot="..."/&gt; (OOXML rot is
         /// 1/60000 degree). Null = no rotation (labels horizontal, default).</summary>
@@ -3540,6 +3547,8 @@ internal partial class ChartSvgRenderer
                 info.SecondaryValAxisTitleFontPx = (int)(secTitleRPr.FontSize.Value / 100.0);
             if (secTitleRPr?.Bold?.Value == true)
                 info.SecondaryValAxisTitleBold = true;
+            if (secTitleRPr?.Italic?.Value == true)
+                info.SecondaryValAxisTitleItalic = true;
             var secTitleColor = ExtractFontColor(secTitleRPr, themeColors);
             if (secTitleColor != null) info.SecondaryValAxisTitleColor = CssHexColor(secTitleColor);
         }
@@ -3553,6 +3562,8 @@ internal partial class ChartSvgRenderer
                 info.ValAxisTitleFontPx = (int)(valTitleRPr.FontSize.Value / 100.0);
             if (valTitleRPr?.Bold?.Value == true)
                 info.ValAxisTitleBold = true;
+            if (valTitleRPr?.Italic?.Value == true)
+                info.ValAxisTitleItalic = true;
             var valTitleColor = ExtractFontColor(valTitleRPr, themeColors);
             if (valTitleColor != null) info.ValAxisTitleColor = CssHexColor(valTitleColor);
             var scaling = valAxis.Elements().FirstOrDefault(e => e.LocalName == "scaling");
@@ -3617,6 +3628,7 @@ internal partial class ChartSvgRenderer
                 info.ValFontPx = (int)(valDefRPr.FontSize.Value / 100.0);
             info.ValFontColor = ExtractFontColor(valDefRPr, themeColors);
             if (valDefRPr?.Bold?.HasValue == true) info.ValFontBold = valDefRPr.Bold.Value;
+            if (valDefRPr?.Italic?.HasValue == true) info.ValFontItalic = valDefRPr.Italic.Value;
             info.ValAxisLabelRotationDeg = ExtractAxisLabelRotationDeg(valTxPr);
 
             // Gridline color
@@ -3710,6 +3722,8 @@ internal partial class ChartSvgRenderer
                 info.CatAxisTitleFontPx = (int)(catTitleRPr.FontSize.Value / 100.0);
             if (catTitleRPr?.Bold?.Value == true)
                 info.CatAxisTitleBold = true;
+            if (catTitleRPr?.Italic?.Value == true)
+                info.CatAxisTitleItalic = true;
             var catTitleColor = ExtractFontColor(catTitleRPr, themeColors);
             if (catTitleColor != null) info.CatAxisTitleColor = CssHexColor(catTitleColor);
             // Use txPr > defRPr for tick label font (not title's RunProperties)
@@ -3719,6 +3733,7 @@ internal partial class ChartSvgRenderer
                 info.CatFontPx = (int)(catDefRPr.FontSize.Value / 100.0);
             info.CatFontColor = ExtractFontColor(catDefRPr, themeColors);
             if (catDefRPr?.Bold?.HasValue == true) info.CatFontBold = catDefRPr.Bold.Value;
+            if (catDefRPr?.Italic?.HasValue == true) info.CatFontItalic = catDefRPr.Italic.Value;
             info.CatAxisLabelRotationDeg = ExtractAxisLabelRotationDeg(catTxPr);
         }
 
@@ -4481,6 +4496,8 @@ internal partial class ChartSvgRenderer
         if (info.CatFontColor != null) CatColor = CssHexColor(info.CatFontColor);
         ValTickLabelsBold = info.ValFontBold;
         CatTickLabelsBold = info.CatFontBold;
+        ValTickLabelsItalic = info.ValFontItalic;
+        CatTickLabelsItalic = info.CatFontItalic;
         if (info.GridlineColor != null) GridColor = CssHexColor(info.GridlineColor);
         GridlineDash = info.GridlineDash;
         GridlineWidthPx = info.GridlineWidthEmu.HasValue ? EmuToStrokePx(info.GridlineWidthEmu) : 0.5;
@@ -4689,12 +4706,12 @@ internal partial class ChartSvgRenderer
         // Bubble/scatter have no category axis: the X axis is the primary value
         // axis and the Y axis is the secondary value axis.
         var isXY = chartType == "bubble" || chartType == "scatter";
-        string? bottomTitle; int bottomTitleFont; bool bottomTitleBold; string? bottomTitleColor;
-        string? leftTitle; int leftTitleFont; bool leftTitleBold; string? leftTitleColor;
+        string? bottomTitle; int bottomTitleFont; bool bottomTitleBold; string? bottomTitleColor; bool bottomTitleItalic;
+        string? leftTitle; int leftTitleFont; bool leftTitleBold; string? leftTitleColor; bool leftTitleItalic;
         if (isXY)
         {
-            bottomTitle = info.ValAxisTitle; bottomTitleFont = info.ValAxisTitleFontPx; bottomTitleBold = info.ValAxisTitleBold; bottomTitleColor = info.ValAxisTitleColor;
-            leftTitle = info.SecondaryValAxisTitle; leftTitleFont = info.SecondaryValAxisTitleFontPx; leftTitleBold = info.SecondaryValAxisTitleBold; leftTitleColor = info.SecondaryValAxisTitleColor;
+            bottomTitle = info.ValAxisTitle; bottomTitleFont = info.ValAxisTitleFontPx; bottomTitleBold = info.ValAxisTitleBold; bottomTitleColor = info.ValAxisTitleColor; bottomTitleItalic = info.ValAxisTitleItalic;
+            leftTitle = info.SecondaryValAxisTitle; leftTitleFont = info.SecondaryValAxisTitleFontPx; leftTitleBold = info.SecondaryValAxisTitleBold; leftTitleColor = info.SecondaryValAxisTitleColor; leftTitleItalic = info.SecondaryValAxisTitleItalic;
         }
         else
         {
@@ -4702,18 +4719,20 @@ internal partial class ChartSvgRenderer
             bottomTitleFont = isHorizBar ? info.ValAxisTitleFontPx : info.CatAxisTitleFontPx;
             bottomTitleBold = isHorizBar ? info.ValAxisTitleBold : info.CatAxisTitleBold;
             bottomTitleColor = isHorizBar ? info.ValAxisTitleColor : info.CatAxisTitleColor;
+            bottomTitleItalic = isHorizBar ? info.ValAxisTitleItalic : info.CatAxisTitleItalic;
             leftTitle = isHorizBar ? info.CatAxisTitle : info.ValAxisTitle;
             leftTitleFont = isHorizBar ? info.CatAxisTitleFontPx : info.ValAxisTitleFontPx;
             leftTitleBold = isHorizBar ? info.CatAxisTitleBold : info.ValAxisTitleBold;
             leftTitleColor = isHorizBar ? info.CatAxisTitleColor : info.ValAxisTitleColor;
+            leftTitleItalic = isHorizBar ? info.CatAxisTitleItalic : info.ValAxisTitleItalic;
         }
         if (!string.IsNullOrEmpty(leftTitle))
-            sb.AppendLine($"    <text x=\"10\" y=\"{svgH / 2}\" fill=\"{(leftTitleColor != null ? CssHexColor(leftTitleColor) : AxisColor)}\" font-size=\"{leftTitleFont}\"{(leftTitleBold ? " font-weight=\"bold\"" : "")} text-anchor=\"middle\" dominant-baseline=\"middle\" transform=\"rotate(-90,10,{svgH / 2})\">{HtmlEncode(leftTitle)}</text>");
+            sb.AppendLine($"    <text x=\"10\" y=\"{svgH / 2}\" fill=\"{(leftTitleColor != null ? CssHexColor(leftTitleColor) : AxisColor)}\" font-size=\"{leftTitleFont}\"{(leftTitleBold ? " font-weight=\"bold\"" : "")}{(leftTitleItalic ? " font-style=\"italic\"" : "")} text-anchor=\"middle\" dominant-baseline=\"middle\" transform=\"rotate(-90,10,{svgH / 2})\">{HtmlEncode(leftTitle)}</text>");
         if (!string.IsNullOrEmpty(bottomTitle))
-            sb.AppendLine($"    <text x=\"{svgW / 2}\" y=\"{svgH - 2}\" fill=\"{(bottomTitleColor != null ? CssHexColor(bottomTitleColor) : AxisColor)}\" font-size=\"{bottomTitleFont}\"{(bottomTitleBold ? " font-weight=\"bold\"" : "")} text-anchor=\"middle\">{HtmlEncode(bottomTitle)}</text>");
+            sb.AppendLine($"    <text x=\"{svgW / 2}\" y=\"{svgH - 2}\" fill=\"{(bottomTitleColor != null ? CssHexColor(bottomTitleColor) : AxisColor)}\" font-size=\"{bottomTitleFont}\"{(bottomTitleBold ? " font-weight=\"bold\"" : "")}{(bottomTitleItalic ? " font-style=\"italic\"" : "")} text-anchor=\"middle\">{HtmlEncode(bottomTitle)}</text>");
         // Combo charts (non-XY): the secondary value axis title sits on the right.
         if (!isXY && !string.IsNullOrEmpty(info.SecondaryValAxisTitle))
-            sb.AppendLine($"    <text x=\"{svgW - 10}\" y=\"{svgH / 2}\" fill=\"{(info.SecondaryValAxisTitleColor != null ? CssHexColor(info.SecondaryValAxisTitleColor) : SecondaryAxisColor)}\" font-size=\"{info.SecondaryValAxisTitleFontPx}\"{(info.SecondaryValAxisTitleBold ? " font-weight=\"bold\"" : "")} text-anchor=\"middle\" dominant-baseline=\"middle\" transform=\"rotate(90,{svgW - 10},{svgH / 2})\">{HtmlEncode(info.SecondaryValAxisTitle)}</text>");
+            sb.AppendLine($"    <text x=\"{svgW - 10}\" y=\"{svgH / 2}\" fill=\"{(info.SecondaryValAxisTitleColor != null ? CssHexColor(info.SecondaryValAxisTitleColor) : SecondaryAxisColor)}\" font-size=\"{info.SecondaryValAxisTitleFontPx}\"{(info.SecondaryValAxisTitleBold ? " font-weight=\"bold\"" : "")}{(info.SecondaryValAxisTitleItalic ? " font-style=\"italic\"" : "")} text-anchor=\"middle\" dominant-baseline=\"middle\" transform=\"rotate(90,{svgW - 10},{svgH / 2})\">{HtmlEncode(info.SecondaryValAxisTitle)}</text>");
 
         // Display-units annotation (<c:dispUnits><c:dispUnitsLbl>, e.g. "Millions").
         // PowerPoint draws it beside the value axis. For a vertical value axis it
