@@ -134,6 +134,23 @@ internal partial class FormulaEvaluator
             "LOGNORM_DIST" or "LOGNORMDIST" => EvalLognormDist(args),
             "LOGNORM_INV" or "LOGINV" => args.Count >= 3 ? FR(Math.Exp(num(1) + num(2) * InvNormCdf(num(0)))) : null,
             "HYPGEOM_DIST" or "HYPGEOMDIST" => EvalHypgeom(args),
+            // ----- descriptive & regression -----
+            "SKEW" => EvalSkew(args, population: false),
+            "SKEW_P" => EvalSkew(args, population: true),
+            "KURT" => EvalKurt(args),
+            "AVEDEV" => CheckRangeErrors(args) ?? (nums() is { Length: > 0 } ad ? FR(ad.Select(v => Math.Abs(v - ad.Average())).Average()) : FormulaResult.Error("#NUM!")),
+            "DEVSQ" => CheckRangeErrors(args) ?? (nums() is { Length: > 0 } ds ? FR(ds.Sum(v => (v - ds.Average()) * (v - ds.Average()))) : FR(0)),
+            "TRIMMEAN" => EvalTrimMean(args),
+            "PERMUTATIONA" => FR(Math.Pow((int)num(0), (int)num(1))),
+            "CORREL" or "PEARSON" => EvalCorrel(args),
+            "COVARIANCE_P" or "COVAR" => EvalCovar(args, sample: false),
+            "COVARIANCE_S" => EvalCovar(args, sample: true),
+            "SLOPE" => EvalSlope(args), "INTERCEPT" => EvalIntercept(args),
+            "RSQ" => EvalRsq(args), "STEYX" => EvalSteyx(args),
+            "FORECAST" or "FORECAST_LINEAR" => EvalForecast(args),
+            "QUARTILE" or "QUARTILE_INC" => EvalQuartile(args, exclusive: false),
+            "QUARTILE_EXC" => EvalQuartile(args, exclusive: true),
+            "PERCENTILE_EXC" => EvalPercentileExc(args),
 
             // ===== Logical =====
             "IF" => EvalIf(args), "IFS" => EvalIfs(args),
