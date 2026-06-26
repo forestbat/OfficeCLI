@@ -211,11 +211,11 @@ static partial class CommandBuilder
 
             using var handler = DocumentHandlerFactory.Open(file.FullName, editable: true);
 
-            var unsupported = handler.Set(path, properties);
-
             // Scope the unsupported-prop fuzzy-suggestion pool by handler type
             // so e.g. Excel pivot errors don't suggest PPTX-only keys like
-            // 'rotation' for an unknown 'location' prop (R2-4).
+            // 'rotation' for an unknown 'location' prop (R2-4). Kept local: the
+            // shared core computes its own copy, but the CLI warning / extra-path
+            // decoration below also needs it.
             string? suggestionScope = handler switch
             {
                 OfficeCli.Handlers.ExcelHandler => "excel",
@@ -224,45 +224,11 @@ static partial class CommandBuilder
                 _ => null,
             };
 
-            // Auto-correct: attempt to fix unsupported properties with Levenshtein distance == 1
-            var autoCorrected = new List<(string Original, string Corrected, string Value)>();
-            var stillUnsupported = new List<string>();
-            foreach (var u in unsupported)
-            {
-                var rawKey = u.Contains(' ') ? u[..u.IndexOf(' ')] : u;
-                if (properties.TryGetValue(rawKey, out var val))
-                {
-                    var (suggestion, dist, isUnique) = SuggestPropertyWithDistance(rawKey, suggestionScope);
-                    if (suggestion != null && dist == 1 && isUnique)
-                    {
-                        // Auto-correct: re-apply with corrected key
-                        var correctedProps = new Dictionary<string, string> { [suggestion] = val };
-                        var retryUnsupported = handler.Set(path, correctedProps);
-                        if (retryUnsupported.Count == 0)
-                        {
-                            autoCorrected.Add((rawKey, suggestion, val));
-                            continue;
-                        }
-                    }
-                }
-                stillUnsupported.Add(u);
-            }
-
-            // unsupported entries may contain help text like "key (valid props: ...)"
-            // or "key=value (reason)" (e.g. geometry=invalid_preset). Trim trailing
-            // help text on the first space, then split on '=' so the membership
-            // test matches the raw property key in `properties`.
-            var unsupportedKeys = stillUnsupported.Select(u =>
-            {
-                var head = u.Contains(' ') ? u[..u.IndexOf(' ')] : u;
-                var eq = head.IndexOf('=');
-                return eq >= 0 ? head[..eq] : head;
-            }).ToHashSet(StringComparer.OrdinalIgnoreCase);
-            var autoCorrectedKeys = autoCorrected.Select(ac => ac.Original).ToHashSet(StringComparer.OrdinalIgnoreCase);
-            var applied = properties.Where(kv => !unsupportedKeys.Contains(kv.Key) && !autoCorrectedKeys.Contains(kv.Key)).ToList();
-            // Include auto-corrected props in applied list with the corrected key name
-            foreach (var ac in autoCorrected)
-                applied.Add(new KeyValuePair<string, string>(ac.Corrected, ac.Value));
+            // Shared core: apply + prop-autocorrect + categorise (one copy for
+            // CLI / batch / MCP / resident; see ApplySetWithCorrection). The rich
+            // CLI envelope below — find-count, position overlap, --json warnings,
+            // exit codes — stays here.
+            var (applied, stillUnsupported, autoCorrected) = ApplySetWithCorrection(handler, path, properties);
 
             // Get find match count if applicable.
             // CONSISTENCY(find-match-count): mirrored in ResidentServer.ExecuteSet.
@@ -364,7 +330,10 @@ static partial class CommandBuilder
                         allWarnings.Add(new OfficeCli.Core.CliWarning { Message = w, Code = "advisory" });
                 }
                 var outputMsg = setSpatialLine != null ? $"{message}\n  {setSpatialLine}" : message;
-                bool allFailed = applied.Count == 0 && (stillUnsupported.Count > 0 || unsupported.Count > 0);
+                // applied==0 implies no key auto-corrected (corrections land in
+                // applied), so stillUnsupported already equals the raw set, and
+                // the old `|| unsupported.Count>0` term was redundant.
+                bool allFailed = applied.Count == 0 && stillUnsupported.Count > 0;
                 Console.WriteLine(allFailed
                     ? OutputFormatter.WrapEnvelopeError(outputMsg, allWarnings.Count > 0 ? allWarnings : null)
                     : OutputFormatter.WrapEnvelopeText(outputMsg, allWarnings.Count > 0 ? allWarnings : null, findMatchCount));

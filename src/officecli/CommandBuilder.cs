@@ -485,6 +485,70 @@ static partial class CommandBuilder
         return handler.Remove(path, props);
     }
 
+    /// <summary>Categorised result of <see cref="ApplySetWithCorrection"/>.</summary>
+    internal sealed record SetApplyOutcome(
+        List<KeyValuePair<string, string>> Applied,
+        List<string> Unsupported,
+        List<(string Original, string Corrected, string Value)> AutoCorrected);
+
+    /// <summary>
+    /// Apply a set's props, auto-correct any unsupported key that is a unique
+    /// Levenshtein-distance-1 typo of a real prop (e.g. colot→color), and
+    /// categorise the result into applied / still-unsupported / auto-corrected.
+    ///
+    /// This is the ONE shared core behind every set surface — the non-resident
+    /// CLI set, the batch executor, the MCP single-command, and the resident —
+    /// so the correction and categorisation cannot drift between them (they used
+    /// to be hand-mirrored copies, flagged with `// CONSISTENCY(...)` comments).
+    /// The boundary is deliberately narrow: the per-surface suggestion scope is
+    /// a trivial local switch, and each caller keeps its own output envelope
+    /// (CLI warnings/overlap, resident watch, batch verdict). Only the
+    /// drift-prone middle is shared.
+    /// </summary>
+    internal static SetApplyOutcome ApplySetWithCorrection(
+        OfficeCli.Core.IDocumentHandler handler, string path, Dictionary<string, string> props)
+    {
+        var raw = handler.Set(path, props);
+        string? scope = handler switch
+        {
+            OfficeCli.Handlers.ExcelHandler => "excel",
+            OfficeCli.Handlers.WordHandler => "word",
+            OfficeCli.Handlers.PowerPointHandler => "pptx",
+            _ => null,
+        };
+        var autoCorrected = new List<(string Original, string Corrected, string Value)>();
+        var unsupported = new List<string>();
+        foreach (var u in raw)
+        {
+            var rawKey = u.Contains(' ') ? u[..u.IndexOf(' ')] : u;
+            if (props.TryGetValue(rawKey, out var val))
+            {
+                var (suggestion, dist, isUnique) = SuggestPropertyWithDistance(rawKey, scope);
+                if (suggestion != null && dist == 1 && isUnique
+                    && handler.Set(path, new Dictionary<string, string> { [suggestion] = val }).Count == 0)
+                {
+                    autoCorrected.Add((rawKey, suggestion, val));
+                    continue;
+                }
+            }
+            unsupported.Add(u);
+        }
+        // unsupported entries may carry help text ("key (valid props: ...)") or a
+        // reason ("key=value (...)"); trim on the first space then split on '='
+        // so the membership test matches the raw prop key.
+        var unsupportedKeys = unsupported.Select(u =>
+        {
+            var head = u.Contains(' ') ? u[..u.IndexOf(' ')] : u;
+            var eq = head.IndexOf('=');
+            return eq >= 0 ? head[..eq] : head;
+        }).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var autoCorrectedKeys = autoCorrected.Select(ac => ac.Original).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var applied = props.Where(kv => !unsupportedKeys.Contains(kv.Key) && !autoCorrectedKeys.Contains(kv.Key)).ToList();
+        foreach (var ac in autoCorrected)
+            applied.Add(new KeyValuePair<string, string>(ac.Corrected, ac.Value));
+        return new SetApplyOutcome(applied, unsupported, autoCorrected);
+    }
+
     internal static string ExecuteBatchItem(OfficeCli.Core.IDocumentHandler handler, BatchItem item, bool json)
     {
         var format = json ? OfficeCli.Core.OutputFormat.Json : OfficeCli.Core.OutputFormat.Text;
@@ -561,57 +625,10 @@ static partial class CommandBuilder
                     throw new ArgumentException("'set' command requires 'props' field with at least one key=value. Got empty/missing props.");
                 var path = item.Path;
                 OfficeCli.Core.MutationSelectorGuard.EnsureScoped(path, "set");
-                var rawUnsupported = handler.Set(path, props);
-                // Auto-correct unsupported keys that are a unique
-                // Levenshtein-distance-1 typo of a real prop, then re-apply the
-                // corrected key. P1 of the executor unification: this used to
-                // live only in the non-resident CLI set (CommandBuilder.Set.cs),
-                // so the same `bold=ture` typo silently failed via batch/MCP but
-                // auto-corrected via the bare CLI. Hoisted into the shared
-                // executor so all three surfaces behave identically.
-                // CONSISTENCY(prop-autocorrect): canonical copy; Set.cs keeps its
-                // own richer envelope but the correction semantics match here.
-                string? acScope = handler switch
-                {
-                    OfficeCli.Handlers.ExcelHandler => "excel",
-                    OfficeCli.Handlers.WordHandler => "word",
-                    OfficeCli.Handlers.PowerPointHandler => "pptx",
-                    _ => null,
-                };
-                var autoCorrected = new List<(string Original, string Corrected, string Value)>();
-                var unsupported = new List<string>();
-                foreach (var u in rawUnsupported)
-                {
-                    var rawKey = u.Contains(' ') ? u[..u.IndexOf(' ')] : u;
-                    if (props.TryGetValue(rawKey, out var acVal))
-                    {
-                        var (suggestion, dist, isUnique) = SuggestPropertyWithDistance(rawKey, acScope);
-                        if (suggestion != null && dist == 1 && isUnique
-                            && handler.Set(path, new Dictionary<string, string> { [suggestion] = acVal }).Count == 0)
-                        {
-                            autoCorrected.Add((rawKey, suggestion, acVal));
-                            continue;
-                        }
-                    }
-                    unsupported.Add(u);
-                }
-                // Mirror standalone `set` (CommandBuilder.Set.cs): handler.Set
-                // may return entries with help text like "key (valid props ...)"
-                // or "key=value (reason)". Trim trailing text before the
-                // membership test so a rejected prop is not also counted as
-                // applied — without this, batch reported success=true with a
-                // warning, diverging from standalone set's exit-2 verdict.
-                var unsupportedKeys = unsupported.Select(u =>
-                {
-                    var head = u.Contains(' ') ? u[..u.IndexOf(' ')] : u;
-                    var eq = head.IndexOf('=');
-                    return eq >= 0 ? head[..eq] : head;
-                }).ToHashSet(StringComparer.OrdinalIgnoreCase);
-                var autoCorrectedKeys = autoCorrected.Select(ac => ac.Original).ToHashSet(StringComparer.OrdinalIgnoreCase);
-                var applied = props.Where(kv => !unsupportedKeys.Contains(kv.Key) && !autoCorrectedKeys.Contains(kv.Key))
-                    .Select(kv => (kv.Key, kv.Value)).ToList();
-                foreach (var ac in autoCorrected)
-                    applied.Add((ac.Corrected, ac.Value));
+                // Shared core: apply + prop-autocorrect + categorise. Identical
+                // across CLI / batch / MCP / resident; only the output below is
+                // batch-specific.
+                var (applied, unsupported, autoCorrected) = ApplySetWithCorrection(handler, path, props);
                 var parts = new List<string>();
                 if (autoCorrected.Count > 0)
                     parts.Add("Auto-corrected: " + string.Join(", ", autoCorrected.Select(ac => $"{ac.Original}→{ac.Corrected}")));
