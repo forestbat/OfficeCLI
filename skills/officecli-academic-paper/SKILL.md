@@ -188,7 +188,7 @@ QA: `officecli query "$FILE" 'footnote'` count ≥ body-paragraph citation count
 - Body is **two-column** (see §Multi-column below). Abstract is single-column above the fold, 10pt, 1.15x line spacing, typically 200-250 words.
 - First-line indent on body paragraphs = 0.2" (`firstLineIndent=288` twips ≈ 14pt). Smaller than APA's 0.5" because the 2-col width is narrower.
 - **Section headings: ALL CAPS with Roman numerals** — `I. INTRODUCTION`, `II. RELATED WORK`, `III. METHOD`. Sub-sections `A. Datasets`, `B. Baselines` in title case. Do NOT use `1. Introduction` (Arabic) for IEEE — that is Chicago style.
-- **Tables are numbered Roman**: `Table I`, `Table II`, `Table III`. Figures remain Arabic (`Fig. 1`, `Fig. 2`). The `SEQ Table` field emits Arabic cached values — for IEEE, patch the cached `<w:t>` to Roman manually (see §SEQ cached-value trap), or accept Arabic and note in the cover letter.
+- **Tables are numbered Roman**: `Table I`, `Table II`, `Table III`. Figures remain Arabic (`Fig. 1`, `Fig. 2`). `recalcFields=seq` writes Arabic cached values for both — for IEEE Roman tables, either patch the cached `<w:t>` to Roman manually after recalc, or accept Arabic and note it in the cover letter.
 
 ```bash
 # Body citing reference 1
@@ -234,9 +234,8 @@ If the body prose contains raw `lambda_1`, `x_{t+1}`, `\alpha` or similar plain-
 
 **LaTeX subset pitfalls** (non-negotiable):
 
-1. `\left(...\right)` / `\left[...\right]` + sub/superscript inside → **cast error crash**. Use plain `(`, `)`, `[`, `]` — OMML auto-sizes delimiters in display mode.
-2. `\mathcal{L}` → invalid OMML. Use `\mathit{L}` or plain uppercase letters.
-3. `move` on `/body/oMathPara[N]` does not reliably reposition. Workaround: `add` at target position, `remove` the original.
+1. `\left(...\right)` / `\left[...\right]` with a sub/superscript **inside** the delimiters → parse error (`Error: cast object … Subscript`). An OUTER script (`\left(x+y\right)^2`) is fine; plain `(`, `)`, `[`, `]` always work and OMML auto-sizes them in display mode.
+2. `move` on `/body/oMathPara[N]` does not reliably reposition — `--index` silently no-ops; `--before <path>` works but can leave a stray empty paragraph. Workaround: `add` at the target position, then `remove` the original.
 
 **Equation numbering** — no native `\eqno`. The journal-standard layout is **one line**: equation centered, number flush-right at the column edge (`Y = A(X) ⊗ X      (1)`). Build it with two paragraph **tab stops** — a `center` tab at the column mid-point and a `right` tab at the column right edge — then lay out `[tab] equation(inline) [tab] (1)` in a single paragraph. Do NOT use a centered display equation followed by a separate right-aligned `(1)` line — that splits the number onto its own line and is the most common reason agents fail to reproduce the expected look.
 
@@ -256,34 +255,23 @@ officecli add "$FILE" "/body/p[N]" --type run --prop text=$'\t(1)'             #
 
 For a two-column section just use the two-column tab positions (1895 / 3790); the same paragraph then centers the equation within its column with `(1)` at the column's right edge. Schema: `officecli help docx tab`.
 
-**Do NOT place `--type equation` directly in a table cell `tc[N]`** — it emits `oMathPara` as a direct `<w:tc>` child (illegal OOXML). Target `tc[N]/p[1]` with `mode=inline` if you need equations in cells.
+**Do NOT place `--type equation` directly on a table cell `tc[N]` path** — it is rejected with a guard error (`table cells only accept paragraphs, tables, or SDTs`), so no bad XML is written. Target `tc[N]/p[1]` with `mode=inline` if you need equations in cells.
 
 Full equation schema: `officecli help docx equation`.
 
 ## Figures, tables, and cross-references (SEQ + PAGEREF)
 
-Two primitives, both **native fieldTypes** (verified against `officecli help docx field` v1.0.63): `seq` for auto-numbered caption counters, `pageref` for "see Fig. 2 on page 7" back-references. Native fields insert correctly, but their **cached rendered values** need a one-shot raw-set patch per field (see §SEQ cached-value trap below) — otherwise downstream viewers that don't recompute cached fields will show every figure as "Fig. 1".
+Two primitives, both **native fieldTypes** (`officecli help docx field` for the enum): `seq` for auto-numbered caption counters, `pageref` for "see Fig. 2 on page 7" back-references. Native fields insert with an unevaluated cached result; a single `set "$FILE" / --prop recalcFields=seq` (see §SEQ numbering below) fills the real numbers in document order — no per-field patching.
 
 ### SEQ auto-numbering — figures and tables
 
 A SEQ field is a counter with a name (`identifier`). Every `SEQ Figure` increments the Figure counter on **recalc**; every `SEQ Table` increments the Table counter.
 
-**⚠️ SEQ cached-value trap (verified on v1.0.63).** The CLI emits every SEQ field with cached result `1` — so a document with 3 Figure captions readbacks as `Figure 1 / Figure 1 / Figure 1` via `view text` or `query field[fieldType=seq]`, and any downstream viewer that doesn't recompute cached fields will display the same `Figure 1 / Figure 1 / Figure 1`. Word and WPS recompute on open when `w:updateFields=true` is set in settings. **Two must-do steps per paper with multiple figures/tables:**
-
-1. Flip `updateFields=true` in settings once per document (right after `create`). **Position matters** — OOXML `CT_Settings` schema rejects `<w:updateFields>` as the first child; insert it *before* `<w:compat>`:
-   ```bash
-   officecli raw-set "$FILE" /settings --xpath '//w:compat' --action insertbefore \
-     --xml '<w:updateFields xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" w:val="true"/>'
-   ```
-2. **Patch the cached `<w:t>` after each SEQ field** so the artifact reads correctly in every viewer:
-   ```bash
-   # After adding the Nth SEQ Figure caption, override cached "1" to the real number N:
-   officecli raw-set "$FILE" /document \
-     --xpath "(//w:p[.//w:instrText[contains(text(),'SEQ Figure')]])[N]//w:fldChar[@w:fldCharType='separate']/following::w:t[1]" \
-     --action replace \
-     --xml '<w:t xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xml:space="preserve">N</w:t>'
-   ```
-   Repeat for N = 1, 2, 3, ... for every figure; same pattern with `SEQ Table` for tables. After patching, `officecli view "$FILE" text` will show `Figure 1 / Figure 2 / Figure 3` — and downstream viewers will too.
+**SEQ cached values — one command, after all captions are added.** A freshly-added SEQ field has no evaluated cached number; `view text` shows the `#OCLI_NOTEVAL!{SEQ Figure}` sentinel (and `Format["evaluated"]=false`) until you recalc. **Do NOT patch each field by hand.** Once every figure/table caption is in place, run once:
+```bash
+officecli set "$FILE" / --prop recalcFields=seq
+```
+It counts `SEQ Figure` / `SEQ Table` fields in body document order and writes the real cached values (`Figure 1 / Figure 2 / Figure 3`), flipping `evaluated` true. Re-run it after inserting a caption mid-document so the numbers stay in sync. (Heading-relative `\s` and SEQ inside headers/footers defer to Word's own recompute — see `help docx document`.) Verify: `officecli view "$FILE" text` shows distinct ascending numbers.
 
 ```bash
 # Figure with caption BELOW the image. Caption = "Figure <seq>: title" + optional bookmark for cross-ref.
@@ -295,10 +283,7 @@ officecli add "$FILE" "/body/p[last()]" --type field --prop fieldType=seq --prop
 officecli add "$FILE" "/body/p[last()]" --type run --prop text=": Attention-based anomaly detection model."
 # Bookmark the caption so other paragraphs can PAGEREF it
 officecli add "$FILE" /body --type bookmark --prop name=fig_arch
-# Patch cached value — this is Figure 1 (first SEQ Figure in doc)
-officecli raw-set "$FILE" /document \
-  --xpath "(//w:p[.//w:instrText[contains(text(),'SEQ Figure')]])[1]//w:fldChar[@w:fldCharType='separate']/following::w:t[1]" \
-  --action replace --xml '<w:t xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xml:space="preserve">1</w:t>'
+# (Numbers are filled later by a single `set / --prop recalcFields=seq`, after all captions exist.)
 ```
 
 ### PAGEREF — cross-reference by bookmark
@@ -384,7 +369,7 @@ officecli add "$FILE" /body --type paragraph --prop text="Abstract" --prop align
 officecli add "$FILE" /body --type paragraph --prop text="We present an attention-based model for detecting anomalies in industrial sensor time series..." --prop size=10pt --prop lineSpacing=1.15x --prop spaceAfter=12pt
 
 # 3. Section break + two-column from here on
-#    CRITICAL: `/section[last()]` is REJECTED on v1.0.63 (cast-error). Count sections first, use explicit /section[N].
+#    CRITICAL: `/section[last()]` does not resolve (not_found) — the last()/index axis is not supported on the section path. Count sections first, use an explicit /section[N].
 officecli add "$FILE" /body --type section --prop type=continuous
 SECTION_COUNT=$(officecli query "$FILE" section --json | jq '.data.results | length')
 # After the add, SECTION_COUNT should be 2 — [1] is pre-break, [2] is post-break (2-col body area).
@@ -426,7 +411,7 @@ officecli add "$FILE" "/body/p[last()]" --type run --prop text="2" --prop supers
 officecli add "$FILE" / --type header --prop type=default --prop align=right --prop size=9pt --prop text="Short Running Title"
 ```
 
-**Nature-family 2-col abstract** is rare — if required, open a `section type=continuous columns=2` BEFORE the abstract heading; short abstracts (<100 words) leave ragged columns. **Mirrored odd/even headers** need `<w:evenAndOddHeaders/>` in settings via `raw-set` — not exposed by high-level API on 1.0.63; deliver without mirroring or inject the flag manually. Full header schema: `officecli help docx header`.
+**Nature-family 2-col abstract** is rare — if required, open a `section type=continuous columns=2` BEFORE the abstract heading; short abstracts (<100 words) leave ragged columns. **Mirrored odd/even headers** are exposed by the high-level API: `officecli set "$FILE" /settings --prop evenAndOddHeaders=true`, then add the even header with `--type header --prop type=even`. Full header schema: `officecli help docx header`.
 
 ## QA — Delivery Gate (executable)
 
@@ -461,10 +446,10 @@ if [ "$VISIBLE_FIG" -gt 0 ] && [ "$SEQ_COUNT" -eq 0 ]; then
   echo "REJECT Gate 5a: $VISIBLE_FIG visible Figure/Table labels but 0 SEQ fields."
   exit 1
 fi
-# Cached values must be distinct (CLI emits "1" per field by default → all three would show "Figure 1").
-# After the raw-set patches in §SEQ, view text should show Figure 1 / Figure 2 / Figure 3:
+# Cached values must be distinct. Run `set / --prop recalcFields=seq` once after all captions exist;
+# before recalc the fields render the #OCLI_NOTEVAL! sentinel, after recalc Figure 1 / Figure 2 / Figure 3:
 DISTINCT=$(officecli view "$FILE" text | grep -oE '(Figure|Table) [0-9]+' | sort -u | wc -l)
-[ "$SEQ_COUNT" -le "$DISTINCT" ] && echo "Gate 5a OK (SEQ=$SEQ_COUNT, distinct=$DISTINCT)" || { echo "REJECT Gate 5a: $SEQ_COUNT SEQ fields but only $DISTINCT distinct rendered labels — patch cached <w:t> after each SEQ field"; exit 1; }
+[ "$SEQ_COUNT" -le "$DISTINCT" ] && echo "Gate 5a OK (SEQ=$SEQ_COUNT, distinct=$DISTINCT)" || { echo "REJECT Gate 5a: $SEQ_COUNT SEQ fields but only $DISTINCT distinct rendered labels — run 'set \"$FILE\" / --prop recalcFields=seq'"; exit 1; }
 ```
 
 ### Gate 5b — Visual audit via HTML preview (MANDATORY, not optional)
@@ -496,18 +481,18 @@ Report every instance. If even one defect is present → REJECT; do not deliver 
 
 Academic-specific:
 
-- **`\left(...\right)` / `\left[...\right]` + sub/superscript crashes.** Cast error. Use plain `(`, `)`, `[`, `]` — OMML auto-sizes in display mode.
-- **`\mathcal{L}` emits invalid OMML.** Use `\mathit{L}` or plain uppercase. `\mathbf`, `\mathit`, `\mathbb` work; `\mathcal` does not.
-- **`move` on `/body/oMathPara[N]` not reliable.** Do not rely on `move` to reposition display equations. Workaround: `add` at the target position, `remove` the original.
+- **`\left(...\right)` / `\left[...\right]` with a sub/superscript INSIDE the delimiters → parse error** (`cast object … Subscript`). An outer script (`\left(x+y\right)^2`) is fine. Use plain `(`, `)`, `[`, `]` — OMML auto-sizes in display mode.
+- **`move` on `/body/oMathPara[N]` not reliable.** `--index` silently no-ops; `--before <path>` repositions but can leave a stray empty paragraph. Workaround: `add` at the target position, `remove` the original.
 - **Section break +1 paragraph offset.** Each `add /body --type section` inserts one empty paragraph into `/body`. All `p[N]` indices after the break shift by +1. Plan breaks; after any `add section`, `officecli get "$FILE" /body --depth 1` to re-index.
-- **`/section[last()]` is REJECTED on v1.0.63** (cast-error, same family as pptx's `/slide[last()]`). Always resolve to an explicit `/section[N]`:
+- **`/section[last()]` does not resolve** (`not_found` — the last()/index axis is unsupported on the section path; `p[last()]` works, section does not). Always resolve to an explicit `/section[N]`:
   ```bash
   SECTION_COUNT=$(officecli query "$FILE" section --json | jq '.data.results | length')
   # then use /section[2], /section[3], ..., NEVER /section[last()]
   ```
   Each `add /body --type section` increments the count. Re-query after every break.
 - **Multi-column does NOT auto-revert.** After a `columns=2` section, you must add another section break and explicitly set `columns=1` on the new `/section[N]` (N = post-revert count) — otherwise the rest of the document, including references, renders as two columns. Verify with `officecli get "$FILE" "/section[N]"` for each N.
-- **`--type equation` targeting a `tc[N]` path emits illegal OOXML.** Inside a table cell, target `tc[N]/p[1]` with `--prop mode=inline` instead. Display equations (`oMathPara`) are not legal as direct `<w:tc>` children.
+- **`--type equation` on a `tc[N]` cell path is rejected with a guard error** (`table cells only accept paragraphs, tables, or SDTs`) — no bad XML is written. Inside a table cell, target `tc[N]/p[1]` with `--prop mode=inline` instead.
+- **SEQ caption numbers are filled by `set / --prop recalcFields=seq`** (run once after all captions exist), not by per-field raw-set patching. A pre-recalc SEQ field shows the `#OCLI_NOTEVAL!` sentinel in `view text`.
 - **Hanging-indent canonical form is `indent=720 hangingIndent=720`.** Not `ind.firstLine=-720`. The dotted form emits `<w:ind>` after `<w:jc>` and fails schema on emit.
 - **Footnote reference runs show as empty strings in `view annotated`.** The `<w:footnoteReference>` XML element has no visible text on the reference side; the note body lives in `/footnotes/footnote[N]`. Confirm with `officecli query "$FILE" 'footnote'`, not by eyeballing `view text`.
 - **Caption placement:** Table caption ABOVE the table; Figure caption BELOW the figure. Every major style (APA, Chicago, IEEE, MLA) agrees. Putting a Table caption below the table is an academic-style error, not a rendering issue — `validate` will not catch it.
