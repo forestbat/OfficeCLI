@@ -57,6 +57,15 @@
       "readback": "not surfaced by Get",
       "enforcement": "report"
     },
+    "numberformat": {
+      "type": "string",
+      "description": "Excel format code applied to the whole column via a style ref on col@s (number, date, percentage, currency, text @). Mirrors the cell-level numberformat; resolved back through the column's style index on Get.",
+      "aliases": ["numfmt", "format"],
+      "add": false, "set": true, "get": true,
+      "examples": ["--prop numberformat=\"#,##0.00\"", "--prop numberformat=0.00%", "--prop numberformat=yyyy-mm-dd"],
+      "readback": "format string as stored (via col style index)",
+      "enforcement": "report"
+    },
     "customWidth": {
       "type": "bool",
       "description": "Get-only readback. True when the column has an explicit width set (i.e. width is not the sheet default). Mirrors OOXML col@customWidth.",
