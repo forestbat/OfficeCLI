@@ -526,67 +526,48 @@ public static class McpServer
                 return OutputFormatter.FormatNodes(results, OutputFormat.Json);
             }
             case "set":
-            {
-                var file = Arg("file");
-                var path = Arg("path");
-                var props = ParseProps(ArgStringArray("props"));
-                OfficeCli.Core.MutationSelectorGuard.EnsureScoped(path, "set");
-                using var handler = DocumentHandlerFactory.Open(file, editable: true);
-                var unsupported = handler.Set(path, props);
-                var applied = props.Where(kv => !unsupported.Contains(kv.Key)).ToList();
-                var msg = applied.Count > 0
-                    ? $"Updated {path}: {string.Join(", ", applied.Select(kv => $"{kv.Key}={kv.Value}"))}"
-                    : $"No properties applied to {path}";
-                if (unsupported.Count > 0)
-                    msg += $"\nUnsupported: {string.Join(", ", unsupported)}";
-                return msg;
-            }
+                return ExecuteMutation(Arg("file"), new BatchItem
+                {
+                    Command = "set",
+                    Path = Arg("path"),
+                    Props = ParseProps(ArgStringArray("props")),
+                });
             case "add":
             {
-                var file = Arg("file");
-                var parent = Arg("parent");
-                var type = Arg("type");
-                var index = ArgIntOpt("index");
-                var after = Arg("after"); if (string.IsNullOrEmpty(after)) after = null;
-                var before = Arg("before"); if (string.IsNullOrEmpty(before)) before = null;
-                var position = index.HasValue ? InsertPosition.AtIndex(index.Value)
-                    : after != null ? InsertPosition.AfterElement(after)
-                    : before != null ? InsertPosition.BeforeElement(before)
-                    : null;
-                var props = ParseProps(ArgStringArray("props"));
-                using var handler = DocumentHandlerFactory.Open(file, editable: true);
-                var resultPath = handler.Add(parent, type, position, props);
-                return $"Added {type} at {resultPath}";
+                var after = Arg("after");
+                var before = Arg("before");
+                return ExecuteMutation(Arg("file"), new BatchItem
+                {
+                    Command = "add",
+                    Parent = Arg("parent"),
+                    Type = Arg("type"),
+                    Index = ArgIntOpt("index"),
+                    After = string.IsNullOrEmpty(after) ? null : after,
+                    Before = string.IsNullOrEmpty(before) ? null : before,
+                    Props = ParseProps(ArgStringArray("props")),
+                });
             }
             case "remove":
-            {
-                var file = Arg("file");
-                var path = Arg("path");
-                // Forward props so remove options reach the handler (e.g.
-                // shift=left|up for an Excel cell delete). The CLI `remove`
-                // (--shift) and batch remove already pass these; without it the
-                // MCP single-command remove silently could not express them.
-                var props = ParseProps(ArgStringArray("props"));
-                OfficeCli.Core.MutationSelectorGuard.EnsureScoped(path, "remove");
-                using var handler = DocumentHandlerFactory.Open(file, editable: true);
-                var warning = CommandBuilder.RemoveWithShiftSupport(handler, path, props.Count > 0 ? props : null);
-                return warning != null ? $"Removed {path}\n{warning}" : $"Removed {path}";
-            }
+                return ExecuteMutation(Arg("file"), new BatchItem
+                {
+                    Command = "remove",
+                    Path = Arg("path"),
+                    Props = ParseProps(ArgStringArray("props")),
+                });
             case "move":
             {
-                var file = Arg("file");
-                var path = Arg("path");
-                var to = Arg("to"); if (string.IsNullOrEmpty(to)) to = null;
-                var index = ArgIntOpt("index");
-                var mvAfter = Arg("after"); if (string.IsNullOrEmpty(mvAfter)) mvAfter = null;
-                var mvBefore = Arg("before"); if (string.IsNullOrEmpty(mvBefore)) mvBefore = null;
-                var mvPosition = index.HasValue ? InsertPosition.AtIndex(index.Value)
-                    : mvAfter != null ? InsertPosition.AfterElement(mvAfter)
-                    : mvBefore != null ? InsertPosition.BeforeElement(mvBefore)
-                    : null;
-                using var handler = DocumentHandlerFactory.Open(file, editable: true);
-                var resultPath = handler.Move(path, to, mvPosition);
-                return $"Moved to {resultPath}";
+                var to = Arg("to");
+                var mvAfter = Arg("after");
+                var mvBefore = Arg("before");
+                return ExecuteMutation(Arg("file"), new BatchItem
+                {
+                    Command = "move",
+                    Path = Arg("path"),
+                    To = string.IsNullOrEmpty(to) ? null : to,
+                    Index = ArgIntOpt("index"),
+                    After = string.IsNullOrEmpty(mvAfter) ? null : mvAfter,
+                    Before = string.IsNullOrEmpty(mvBefore) ? null : mvBefore,
+                });
             }
             case "validate":
             {
@@ -628,20 +609,12 @@ public static class McpServer
                 return sw.ToString().Trim();
             }
             case "swap":
-            {
-                var file = Arg("file");
-                var path = Arg("path");
-                var path2 = Arg("path2");
-                using var handler = DocumentHandlerFactory.Open(file, editable: true);
-                var (p1, p2) = handler switch
+                return ExecuteMutation(Arg("file"), new BatchItem
                 {
-                    Handlers.PowerPointHandler ppt => ppt.Swap(path, path2),
-                    Handlers.WordHandler word => word.Swap(path, path2),
-                    Handlers.ExcelHandler excel => excel.Swap(path, path2),
-                    _ => throw new InvalidOperationException("swap not supported for this document type")
-                };
-                return $"Swapped {p1} <-> {p2}";
-            }
+                    Command = "swap",
+                    Path = Arg("path"),
+                    Path2 = Arg("path2"),
+                });
             case "raw":
             {
                 var file = Arg("file");
@@ -749,6 +722,22 @@ public static class McpServer
                 // response amplification (echo arbitrary-length input back unchanged).
                 throw new ArgumentException($"Unknown tool: {OfficeCli.Help.SchemaHelpLoader.TruncateForError(name, 64)}");
         }
+    }
+
+    // Single-command mutations (set/add/remove/move/swap) build a BatchItem and
+    // run it through the one shared executor (CommandBuilder.ExecuteBatchItem)
+    // instead of re-implementing the handler dispatch here. This is what keeps
+    // the MCP surface from drifting from batch/CLI on argument shape or verdict
+    // semantics — the props-array, swap-path2 and remove-shift bugs were all
+    // this surface re-deriving the contract and getting it slightly different.
+    // The executor also applies the richer verdicts (unsupported_property,
+    // empty-props rejection, NUL-byte guard, Word add-prop warnings) the
+    // hand-written cases lacked. json:false → human-readable text, matching the
+    // strings the old cases returned.
+    private static string ExecuteMutation(string file, BatchItem item)
+    {
+        using var handler = DocumentHandlerFactory.Open(file, editable: true);
+        return CommandBuilder.ExecuteBatchItem(handler, item, json: false);
     }
 
     private static Dictionary<string, string> ParseProps(string[] propStrs)
