@@ -2411,13 +2411,18 @@ public partial class PowerPointHandler
                     ? $"morph-{option}"
                     : "morph";
 
-                // Also extract speed/advance from the transition element inside mc:Choice
+                // Also extract speed/duration/advance from the transition element
+                // inside mc:Choice. Duration is the p14:dur attribute (the typed
+                // SDK getter only sees the bare <p:transition> child, so for the
+                // mc-wrapped morph variant it must be read from the XML here).
                 var transInMc = System.Text.RegularExpressions.Regex.Match(mcInner, @"<p:transition([^>]*?)(?:/>|>)");
                 if (transInMc.Success)
                 {
                     var transAttrs = transInMc.Groups[1].Value;
                     var spdM = System.Text.RegularExpressions.Regex.Match(transAttrs, @"spd=""(\w+)""");
                     if (spdM.Success) node.Format["transitionSpeed"] = spdM.Groups[1].Value;
+                    var durM = System.Text.RegularExpressions.Regex.Match(transAttrs, @"(?:p14:)?dur=""(\d+)""");
+                    if (durM.Success) node.Format["transitionDuration"] = durM.Groups[1].Value;
                     var advM = System.Text.RegularExpressions.Regex.Match(transAttrs, @"advTm=""(\d+)""");
                     if (advM.Success) node.Format["advanceTime"] = advM.Groups[1].Value;
                     var clickM = System.Text.RegularExpressions.Regex.Match(transAttrs, @"advClick=""(\d+)""");
@@ -2457,6 +2462,8 @@ public partial class PowerPointHandler
                         var transAttrs = transInMc.Groups[1].Value;
                         var spdM = System.Text.RegularExpressions.Regex.Match(transAttrs, @"spd=""(\w+)""");
                         if (spdM.Success) node.Format["transitionSpeed"] = spdM.Groups[1].Value;
+                        var durM = System.Text.RegularExpressions.Regex.Match(transAttrs, @"(?:p14:)?dur=""(\d+)""");
+                        if (durM.Success) node.Format["transitionDuration"] = durM.Groups[1].Value;
                         var advM = System.Text.RegularExpressions.Regex.Match(transAttrs, @"advTm=""(\d+)""");
                         if (advM.Success) node.Format["advanceTime"] = advM.Groups[1].Value;
                         var clickM = System.Text.RegularExpressions.Regex.Match(transAttrs, @"advClick=""(\d+)""");
