@@ -98,9 +98,27 @@ def _dotnet_tempdir():
     return os.environ.get("TMPDIR") or "/tmp"
 
 
+def _canonical_path(file_path):
+    """Match the path officecli's resident hashes into the pipe name. On Windows
+    it uses the file's CANONICAL path, with 8.3 short components (RUNNER~1, or any
+    user name > 8 chars under %TEMP%) expanded to their long form. os.path.abspath
+    does NOT expand 8.3, so a short path hashes to a different pipe and every
+    connect fails with ENOENT. realpath needs the file to exist; fall back to the
+    abspath when it doesn't. Windows only — on unix officecli uses GetFullPath
+    (no symlink resolution), so realpath would diverge (e.g. /tmp -> /private/tmp
+    on macOS)."""
+    resolved = os.path.abspath(file_path)
+    if _IS_WIN:
+        try:
+            return os.path.realpath(resolved)
+        except OSError:
+            pass
+    return resolved
+
+
 def pipe_paths(file_path):
     """(main, ping) pipe addresses for a document path. Exposed for debugging."""
-    full = os.path.abspath(file_path)
+    full = _canonical_path(file_path)
     if _IS_MAC or _IS_WIN:
         full = full.upper()                       # Linux: case-sensitive, no upper
     h = hashlib.sha256(full.encode("utf-8")).hexdigest().upper()[:16]
@@ -304,7 +322,9 @@ def _run_cli(binary, argv):
 # ---------------------------------------------------------------- the shell
 class Document:
     def __init__(self, path, binary="officecli", timeout=30.0):
-        self.path = os.path.abspath(path)
+        # Canonical (Windows 8.3-expanded) so the pipe name AND the _serves()
+        # path comparison both match what the resident reports.
+        self.path = _canonical_path(path)
         self.bin = _resolve_binary(binary)
         self.timeout = timeout          # connect timeout (s); the reply read blocks
         self._main, self._ping = pipe_paths(self.path)

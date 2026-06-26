@@ -92,9 +92,25 @@ function dotnetTempDir() {
   return process.env.TMPDIR || '/tmp';
 }
 
+// Match the path officecli's resident hashes into the pipe name. On Windows it
+// derives the name from the file's CANONICAL path, with 8.3 short components
+// (e.g. RUNNER~1, or any user name > 8 chars under %TEMP%) expanded to their
+// long form. path.resolve does NOT expand 8.3, so a short path would hash to a
+// different pipe and every connect fails with ENOENT. realpath needs the file to
+// exist; fall back to the resolved path when it doesn't (e.g. pre-create). Only
+// on Windows — on Linux/macOS officecli uses GetFullPath (no symlink resolution),
+// so realpath would diverge (e.g. /tmp → /private/tmp on macOS).
+function canonicalPath(filePath) {
+  const resolved = path.resolve(filePath);
+  if (IS_WIN) {
+    try { return fs.realpathSync.native(resolved); } catch (_) { /* not there yet */ }
+  }
+  return resolved;
+}
+
 /** [main, ping] pipe addresses for a document path. Exposed for debugging. */
 function pipePaths(filePath) {
-  let full = path.resolve(filePath);
+  let full = canonicalPath(filePath);
   if (IS_MAC || IS_WIN) full = full.toUpperCase(); // Linux: case-sensitive, no upper
   const h = crypto.createHash('sha256').update(full, 'utf8').digest('hex').toUpperCase().slice(0, 16);
   const name = `officecli-${h}`;
@@ -372,7 +388,9 @@ function runCli(binary, argv) {
 // ---------------------------------------------------------------- the shell
 class Document {
   constructor(filePath, binary = 'officecli', timeoutMs = 30000) {
-    this.path = path.resolve(filePath);
+    // Canonical (Windows 8.3-expanded) so the pipe name AND the serves() path
+    // comparison both match what the resident reports.
+    this.path = canonicalPath(filePath);
     this.bin = resolveBinary(binary);
     this.timeout = timeoutMs; // connect timeout (ms); the reply read blocks
     const [main, ping] = pipePaths(this.path);

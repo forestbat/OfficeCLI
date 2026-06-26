@@ -43,11 +43,6 @@ jobs:
         with:
           python-version: '3.12'
 
-      - name: Windows pipe diagnostic (temp)
-        if: runner.os == 'Windows'
-        continue-on-error: true
-        run: node sdk/node/_debug_win.js
-
       - name: Node SDK auto-install + round-trip
         run: node sdk/node/smoke.js
 
