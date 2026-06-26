@@ -488,6 +488,16 @@ public partial class ExcelHandler
                     if (col.OutlineLevel?.HasValue == true && col.OutlineLevel.Value > 0)
                         colNode.Format["outlineLevel"] = (int)col.OutlineLevel.Value;
                     if (col.Collapsed?.Value == true) colNode.Format["collapsed"] = true;
+                    // Resolve a column-level number format (col @s -> cellXf ->
+                    // numFmt) so `set col[A] --prop numFmt=...` round-trips as the
+                    // canonical `numberformat` key, mirroring the cell reader.
+                    if (col.Style?.Value is uint colStyleIdx && colStyleIdx != 0)
+                    {
+                        var (colNumFmtId, colFmtCode) = ExcelDataFormatter.GetCellFormat(
+                            new Cell { StyleIndex = colStyleIdx }, _doc.WorkbookPart);
+                        if (colNumFmtId > 0 && !string.IsNullOrEmpty(colFmtCode))
+                            colNode.Format["numberformat"] = colFmtCode;
+                    }
                     // Long-tail CT_Col attributes (style, bestFit, phonetic, ...).
                     // Symmetric with column Set's case-preserving SetAttribute fallback.
                     FillUnknownAttrProps(col, colNode, "", CuratedColAttrs);

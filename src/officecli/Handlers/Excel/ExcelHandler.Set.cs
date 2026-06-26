@@ -2591,6 +2591,25 @@ public partial class ExcelHandler
                         col.CustomWidth = true;
                     }
                     break;
+                case "numfmt" or "numberformat" or "format":
+                {
+                    // A column number format is applied via a style reference
+                    // (<col s="N">), NOT a raw attribute — CT_Col has no numFmt
+                    // attribute, so writing one (the old default-case fallback)
+                    // produced schema-invalid XML that failed `validate`.
+                    // Register the format in the stylesheet and point the
+                    // column's style at the resulting cellXf.
+                    var colWorkbookPart = _doc.WorkbookPart
+                        ?? throw new InvalidOperationException("Workbook not found");
+                    var colStyleManager = new ExcelStyleManager(colWorkbookPart);
+                    var tempCell = new Cell { StyleIndex = col.Style };
+                    col.Style = colStyleManager.ApplyStyle(
+                        tempCell,
+                        new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase) { ["numberformat"] = value },
+                        unsupported);
+                    _dirtyStylesheet = true;
+                    break;
+                }
                 default:
                     // Long-tail Column attribute (CT_Col attrs beyond width/
                     // hidden/outlineLevel/collapsed/customWidth — e.g. style,
