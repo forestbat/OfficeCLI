@@ -34,6 +34,16 @@ public static class McpServer
         if (string.IsNullOrEmpty(Environment.GetEnvironmentVariable("OFFICECLI_NO_AUTO_RESIDENT")))
             Environment.SetEnvironmentVariable("OFFICECLI_NO_AUTO_RESIDENT", "1");
 
+        // The MCP process always has stdin redirected (it IS the JSON-RPC
+        // channel), so `batch --commands/--input` would emit the "stdin is also
+        // redirected; stdin will be ignored" warning on EVERY call — noise that
+        // also lands in the result text and breaks naive JSON parsing of the
+        // batch envelope. Under MCP that warning describes the transport, not a
+        // user mistake, so default its existing opt-out on (respect any explicit
+        // value).
+        if (string.IsNullOrEmpty(Environment.GetEnvironmentVariable("OFFICECLI_BATCH_ALLOW_STDIN_REDIRECT")))
+            Environment.SetEnvironmentVariable("OFFICECLI_BATCH_ALLOW_STDIN_REDIRECT", "1");
+
         // MCP server is a long-lived stdio process. The normal
         // per-invocation auto-upgrade path (Program.cs:112) is
         // short-circuited for `officecli mcp` because CheckInBackground
@@ -192,12 +202,17 @@ public static class McpServer
         var args = p.TryGetProperty("arguments", out var a) ? a : default;
         if (string.IsNullOrEmpty(name))
             return ErrorJson(id, -32602, "Missing tool name");
+        // This server advertises exactly one tool. A misrouted call must not
+        // silently execute (it would mutate files under a bogus tool name);
+        // reject anything else the way an unknown tool should fail.
+        if (name != "officecli")
+            return ErrorJson(id, -32602, $"Unknown tool: {name}. This server exposes a single tool: officecli.");
 
         try
         {
             // Thin shell: the officecli tool takes a CLI command line in
             // `command` and runs it through the shared System.CommandLine root.
-            var contents = ExecuteCommandLine(args);
+            var (contents, isError) = ExecuteCommandLine(args);
             return WriteJson(w =>
             {
                 w.WriteStartObject();
@@ -214,7 +229,7 @@ public static class McpServer
                     w.WriteEndObject();
                 }
                 w.WriteEndArray();
-                w.WriteBoolean("isError", false);
+                w.WriteBoolean("isError", isError);
                 w.WriteEndObject();
                 w.WriteEndObject();
             });
@@ -227,11 +242,12 @@ public static class McpServer
                 Rpc(w, id);
                 w.WriteStartObject("result");
                 w.WriteStartArray("content");
-                // A CliException already carrying a {success,data} envelope (the
-                // batch judgment path) is emitted verbatim so the per-step
-                // results survive; everything else gets the "Error: " prefix.
-                var errText = ex is OfficeCli.Core.CliException { Code: "batch_step_failed" }
-                    ? ex.Message : $"Error: {ex.Message}";
+                // Only PRE-handler failures reach here now — argv extraction and
+                // CLI parse/validation errors (the shared-grammar "free win"
+                // messages). A handler that ran and exited non-zero (batch /
+                // validate business verdicts) returns its stdout verbatim with
+                // isError=true from ExecuteCommandLine, not via this path.
+                var errText = $"Error: {ex.Message}";
                 w.WriteStartObject(); w.WriteString("type", "text"); w.WriteString("text", errText); w.WriteEndObject();
                 w.WriteEndArray();
                 w.WriteBoolean("isError", true);
@@ -257,7 +273,7 @@ public static class McpServer
     // means no argument can be silently dropped (every CLI flag works for free),
     // and the model writes exactly what the skills' CLI examples show.
 
-    private static IReadOnlyList<McpContent> ExecuteCommandLine(JsonElement args)
+    private static (IReadOnlyList<McpContent> Contents, bool IsError) ExecuteCommandLine(JsonElement args)
     {
         var argv = ExtractArgv(args);
         if (argv.Length == 0)
@@ -267,9 +283,9 @@ public static class McpServer
         // System.CommandLine root, so RunCliRaw can't reach them. Serve them
         // here from the same SkillInstaller the CLI uses.
         if (argv[0] is "load_skill" or "skill" or "skills")
-            return new[] { new McpContent("text", Text: HandleSkillCommand(argv)) };
+            return (new[] { new McpContent("text", Text: HandleSkillCommand(argv)) }, false);
         if (IsScreenshot(argv))
-            return RunScreenshotArgv(argv);
+            return (RunScreenshotArgv(argv), false);
         return SurfaceCliResult(RunCliRaw(argv));
     }
 
@@ -277,9 +293,24 @@ public static class McpServer
     {
         if (args.ValueKind != JsonValueKind.Object || !args.TryGetProperty("command", out var c))
             return Array.Empty<string>();
-        var argv = c.ValueKind == JsonValueKind.Array
-            ? c.EnumerateArray().Select(e => e.GetString() ?? "").Where(s => s.Length > 0).ToArray()
-            : Tokenize(c.GetString() ?? "");
+        string[] argv;
+        if (c.ValueKind == JsonValueKind.Array)
+            // Preserve empty-string elements: the array form is exactly how a
+            // caller delivers an intentionally-empty argument value (e.g.
+            // `--prop text=` to clear text), so dropping "" would silently
+            // diverge from the equivalent quoted "" in the string form. A
+            // non-string element (a bare number/bool) is rendered to its JSON
+            // text rather than throwing.
+            argv = c.EnumerateArray()
+                    .Select(e => e.ValueKind == JsonValueKind.String ? (e.GetString() ?? "") : e.GetRawText())
+                    .ToArray();
+        else if (c.ValueKind == JsonValueKind.String)
+            argv = Tokenize(c.GetString() ?? "");
+        else
+            // A non-string, non-array `command` (number, bool, object, null) is a
+            // client mistake — fall through to the empty-argv friendly guidance
+            // rather than letting JsonElement.GetString() throw a raw .NET message.
+            return Array.Empty<string>();
         // A model copying a skill example may include the leading binary name.
         if (argv.Length > 0 && (argv[0] == "officecli" || argv[0] == "officecli.exe"
             || argv[0].EndsWith("/officecli", StringComparison.Ordinal)))
@@ -344,8 +375,9 @@ public static class McpServer
         var list = argv.ToList();
         int oi = list.FindIndex(a => a == "-o" || a == "--out");
         string outPath;
+        string? autoTemp = null;
         if (oi >= 0 && oi + 1 < list.Count) outPath = list[oi + 1];
-        else { outPath = Path.Combine(Path.GetTempPath(), $"officecli_mcp_shot_{Guid.NewGuid():N}.png"); list.Add("-o"); list.Add(outPath); }
+        else { outPath = Path.Combine(Path.GetTempPath(), $"officecli_mcp_shot_{Guid.NewGuid():N}.png"); autoTemp = outPath; list.Add("-o"); list.Add(outPath); }
         var r = RunCliRaw(list.ToArray());
         if (r.Exit != 0)
             throw new ArgumentException(StripErrPrefix(FirstNonEmpty(r.Stderr.Trim(), r.Stdout.Trim())));
@@ -357,9 +389,18 @@ public static class McpServer
         if (!File.Exists(outPath))
             return new[] { new McpContent("text", Text: r.Stdout.Trim().Length > 0 ? r.Stdout.Trim() : "Screenshot produced no image file.") };
         var b64 = Convert.ToBase64String(File.ReadAllBytes(outPath));
+        // The PNG is returned inline as base64; an auto-injected temp file has no
+        // further use, so don't leave it accumulating in the system temp dir. A
+        // caller-supplied -o is theirs to keep.
+        var caption = $"Screenshot saved to {outPath}";
+        if (autoTemp != null && outPath == autoTemp)
+        {
+            try { File.Delete(autoTemp); } catch { /* best effort — inline data already captured */ }
+            caption = "Screenshot rendered (returned inline).";
+        }
         return new[]
         {
-            new McpContent("text", Text: $"Screenshot saved to {outPath}"),
+            new McpContent("text", Text: caption),
             new McpContent("image", Data: b64, MimeType: "image/png"),
         };
     }
@@ -412,16 +453,26 @@ public static class McpServer
     // and only an unsupported property was dropped; surfacing that as a hard error
     // makes agents re-issue an op that already landed. Scripts still see exit 2
     // from the CLI itself — fail-fast is preserved there, not on the MCP surface.
-    private static IReadOnlyList<McpContent> SurfaceCliResult(CliResult r)
+    private static (IReadOnlyList<McpContent> Contents, bool IsError) SurfaceCliResult(CliResult r)
     {
         var stdout = r.Stdout.TrimEnd('\n', '\r');
         var stderr = r.Stderr.Trim();
         var combined = stdout.Length > 0 && stderr.Length > 0 ? $"{stdout}\n{stderr}"
                      : stdout.Length > 0 ? stdout : stderr;
-        bool hardError = r.Exit != 0 && !(r.Exit == 2 && stdout.Length > 0);
-        if (hardError)
-            throw new ArgumentException(StripErrPrefix(combined.Length > 0 ? combined : "Command failed."));
-        return new[] { new McpContent("text", Text: combined.Length == 0 ? "(ok)" : combined) };
+        // exit 2 with stdout = "applied with caveats" (element added, only an
+        // unsupported property dropped) — the op landed, so it is NOT an error.
+        bool appliedWithCaveats = r.Exit == 2 && stdout.Length > 0;
+        bool isError = r.Exit != 0 && !appliedWithCaveats;
+        // Surface the CLI output VERBATIM — exit mirrors envelope.success, so a
+        // non-zero *business* verdict (batch with a failed step, validate
+        // failure) still wrote its {success:false} envelope to stdout; prefixing
+        // or munging it would break JSON parsing. A genuine process error has no
+        // stdout and its handler-written stderr already carries its own "Error: "
+        // prefix, so it too is surfaced as-is (no doubled prefix). The pass/fail
+        // bit rides on isError, not on the text — exactly like a terminal user
+        // reading stdout plus the exit code.
+        var text = combined.Length == 0 ? (isError ? "Command failed." : "(ok)") : combined;
+        return (new[] { new McpContent("text", Text: text) }, isError);
     }
 
     private static string FirstNonEmpty(params string[] xs) =>
@@ -457,7 +508,7 @@ Paths are 1-based: /slide[1]/shape[2], /body/p[3], /Sheet1/A1. Props are key=val
 Delivery gate (before reporting a document finished — any failure = fix and re-check, do NOT deliver; validate passing is NOT delivery, 'looks like a real document' is):
 1. Schema: `validate <file>` -> clean, no errors.
 2. Content: `view <file> issues` -> no overflow/format/structure issues; and scan `view <file> text` for leftover placeholders (xxxx, lorem/ipsum, <TODO>, {{...}}, $VAR$, empty ()/[]).
-3. Visual audit: `view <file> screenshot --page N` renders the page/slide and returns it as an image shown to you (or --grid auto for a whole-doc contact sheet). Judge it adversarially (assume problems exist) for overlap, text overflow, off-slide shapes, dark-on-dark, misalignment; fix positions/sizes (`set <file> <path> --prop x=.. --prop y=..`) and re-screenshot until right; with no headless browser, say 'not visually verified'. Whether this audit is mandatory is format-specific (slide decks need it most — absolute-positioned shapes overlap invisibly to text modes), so run `load_skill pptx` (or word / excel) for the authoritative gate. The per-format SKILL.md, not this blurb, is the source of truth for what 'done' requires.";
+3. Visual audit: `view <file> screenshot --page N` renders the page/slide and returns it as an image shown to you (or --grid auto for a whole-doc contact sheet). Judge it adversarially (assume problems exist) for overlap, text overflow, off-slide shapes, dark-on-dark, misalignment; fix positions/sizes (`set <file> <path> --prop x=.. --prop y=..`) and re-screenshot until right; if the screenshot can't render, say 'not visually verified'. Whether this audit is mandatory is format-specific (slide decks need it most — absolute-positioned shapes overlap invisibly to text modes), so run `load_skill pptx` (or word / excel) for the authoritative gate. The per-format SKILL.md, not this blurb, is the source of truth for what 'done' requires.";
 
     private static void WriteToolDefinitions(Utf8JsonWriter w)
     {
