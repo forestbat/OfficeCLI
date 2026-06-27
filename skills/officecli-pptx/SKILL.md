@@ -552,7 +552,7 @@ REJECT with `slide N: <issue>` lines, else "Gate 3 PASS" (HTML-text fallback add
 
 **Fix-verify (mandatory, max 3 cycles).** Fix → re-run Gate 3 → repeat until zero new issues; one fix often surfaces another. After 3 rounds without convergence, **stop** — likely seesaw, template-level cause, or agent misread. Report `slide N: <issue> — attempted: <fixes> — likely root: <template|design-conflict|ambiguous>` and let the user decide.
 
-**Then close (part of the gate).** Once Gate 3 converges, `officecli close "<file>"` is the final command before you report the deck done — not optional. Always safe: flushes to disk, never errors or loses work.
+**Then flush (part of the gate).** Once Gate 3 converges, end with `officecli save "<file>"` or `officecli close "<file>"` — this guarantees your edits are written to disk before delivery. Required final step, not optional. Always safe: never errors or loses work.
 
 ## Common Pitfalls
 

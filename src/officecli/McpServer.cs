@@ -530,7 +530,7 @@ Delivery gate (before reporting a document finished — any failure = fix and re
 1. Schema: `validate <file>` -> clean, no errors.
 2. Content: `view <file> issues` -> no overflow/format/structure issues; and scan `view <file> text` for leftover placeholders (xxxx, lorem/ipsum, <TODO>, {{...}}, $VAR$, empty ()/[]).
 3. Visual audit: `view <file> screenshot --page N` renders the page/slide and returns it as an image shown to you (or --grid auto for a whole-doc contact sheet). Judge it adversarially (assume problems exist) for overlap, text overflow, off-slide shapes, dark-on-dark, misalignment; fix positions/sizes (`set <file> <path> --prop x=.. --prop y=..`) and re-screenshot until right; if the screenshot can't render, say 'not visually verified'. Whether this audit is mandatory is format-specific (slide decks need it most — absolute-positioned shapes overlap invisibly to text modes), so run `load_skill pptx` (or word / excel) for the authoritative gate. The per-format SKILL.md, not this blurb, is the source of truth for what 'done' requires.
-4. Close: `close <file>` is the final command before reporting done — part of the gate, not optional (always safe — never errors or loses work).";
+4. Flush to disk: end with `save <file>` or `close <file>` (close also ends the session) — this guarantees your edits are written to disk before you hand the file off. Required final step, not optional (always safe — never errors or loses work).";
 
     private static void WriteToolDefinitions(Utf8JsonWriter w)
     {
