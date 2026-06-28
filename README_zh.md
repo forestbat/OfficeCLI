@@ -310,14 +310,13 @@ officecli batch deck.pptx --input updates.json --force --json
 ```
 
 > **要用其他工具读这个文件?先落盘。**
-> 常驻进程存活期间,编辑(`set`/`add`/`remove`/`batch`)会作用到**内存中**的文档并返回成功,但磁盘上的 **`.docx`/`.xlsx`/`.pptx` 只在 `officecli save` / `officecli close`(或空闲超时)时才被重写。** 经由 OfficeCLI 的命令会立刻看到改动;而**直接打开文件的第三方读取器**(python-docx、PizZip、openpyxl、pandas、Microsoft Word 等)在落盘前看到的是*编辑前*的文件。所以在交给任何外部读取器之前:
+> OfficeCLI 自己的读(`get`/`query`/`view`)永远能看到最新改动,所以在 officecli 内部无需操心保存。但常驻进程会延迟写盘,因此**在非-officecli 程序读取该文件之前**——python-docx/openpyxl、Microsoft Word、渲染器、交付/上传——先落盘:
 > ```bash
 > officecli set report.docx /body/p[1] --prop bold=true
-> officecli save report.docx           # ← 落盘, 但保留常驻进程(后续命令仍然快)
+> officecli save report.docx           # 落盘, 保留常驻进程(或 `close` = 落盘 + 释放)
 > python my_reader.py report.docx      # 此时才能看到改动
-> officecli close report.docx          # 全部做完后: 再落盘 + 停掉常驻进程
 > ```
-> 中途落盘用 `save`(后面还要继续改),做完用 `close`。或设置 `OFFICECLI_NO_AUTO_RESIDENT=1` 完全跳过常驻进程——此时每条命令都"打开一次、保存一次",磁盘文件始终是最新的(代价是每条命令都有文件 I/O)。
+> 常驻进程闲置约 10s 后也会自动落盘一次。完整落盘模型(auto-save / auto-close / save / close、环境变量调节):[wiki → open / close](https://github.com/iOfficeAI/OfficeCLI/wiki/command-open#when-the-file-on-disk-is-refreshed)。
 
 ### 三层架构
 

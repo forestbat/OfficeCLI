@@ -2079,12 +2079,13 @@ public partial class WordHandler : IDocumentHandler, Rendering.IRenderModelHost
     // file first (_doc + _backingStream closed) — this runs from Dispose,
     // after _doc.Dispose(). Clears the staging map after writing.
     //
-    // Resident note: the resident's mid-session ExecuteSave calls handler.Save()
-    // while keeping the package open, so staged docProps land on disk only when
-    // the resident closes and the handler Disposes — consistent with the
-    // existing "resident sessions flush only on save/close" model. dump→batch
-    // rebuilds run non-resident (OFFICECLI_NO_AUTO_RESIDENT=1), so this gap does
-    // not affect the round-trip path.
+    // Resident note: a mid-session flush (the `save` command or the idle-autosave)
+    // calls handler.Save() while keeping the package open, so staged docProps land
+    // on disk only when the resident closes and the handler Disposes — a narrower
+    // rule than the general "resident flushes on save/close/idle-autosave" model
+    // (ordinary edits do flush mid-session; only these staged whole-parts wait for
+    // close). dump→batch rebuilds run non-resident (OFFICECLI_NO_AUTO_RESIDENT=1),
+    // so this gap does not affect the round-trip path.
     private void FlushPendingWholeParts()
     {
         if (_pendingWholeParts == null || _pendingWholeParts.Count == 0) return;

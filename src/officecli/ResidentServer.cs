@@ -20,6 +20,12 @@ public class ResidentServer : IDisposable
     // subsequent reopen sites (view-screenshot, page-count, refresh) use
     // the promoted mode rather than reverting to the ctor's editable=false.
     private bool _editable;
+    // True when in-memory mutations have not yet been flushed to disk.
+    // PromoteToEditable() (the shared prelude of every mutating command and
+    // of batch) latches it true; ExecuteSave() and the idle-autosave clear it
+    // after a successful _handler.Save(). The idle-autosave watchdog uses it
+    // to skip flushing when nothing changed since the last save.
+    private volatile bool _dirty;
     // Stderr captured during DocumentHandlerFactory.Open (i.e. while the
     // constructor was building _handler). At that point there's no
     // per-command Console.SetError scope, so warnings written by plugin
@@ -54,6 +60,17 @@ public class ResidentServer : IDisposable
     private long _idleTimeoutTicks = ResolveIdleTimeout().Ticks;
     private TimeSpan CurrentIdleTimeout => TimeSpan.FromTicks(Volatile.Read(ref _idleTimeoutTicks));
     private CancellationTokenSource _idleCts = new();
+    // Two independent idle timers, both reset by command activity (ResetIdleTimer):
+    //   - _idleCts (CurrentIdleTimeout, default 12min / 60s auto-start): on
+    //     elapse the resident shuts down — flush + release the file ("close").
+    //   - _autosaveCts (AutosaveInterval, default 10s): on elapse, if the DOM is
+    //     dirty, flush to disk but KEEP the resident running ("save"). This makes
+    //     edits visible to third-party readers within ~10s of going idle without
+    //     paying the O(n) reopen cost a shutdown+restart would incur.
+    // The shorter autosave fires first; if the session stays idle the longer
+    // idle-shutdown follows. Autosave firing does NOT reset the shutdown timer,
+    // so the resident still exits the configured time after the last command.
+    private CancellationTokenSource _autosaveCts = new();
     private bool _disposed;
 
     // Safe stderr logging: the parent process may have redirected our stderr
@@ -88,6 +105,32 @@ public class ResidentServer : IDisposable
             return TimeSpan.FromSeconds(secs);
         }
         return DefaultIdleTimeout;
+    }
+
+    // Idle-save interval: after this long with no command, a dirty document is
+    // flushed to disk while the resident keeps running, so a third-party tool
+    // that opens the file directly (python-docx, openpyxl, Word, a renderer)
+    // sees recent edits without an explicit `save`/`close`. Paired with
+    // OFFICECLI_RESIDENT_IDLE_SECONDS (idle→close): this is OFFICECLI_RESIDENT_IDLE_SAVE_SECONDS
+    // (idle→save), bounded the same way; set it to 0 (or "off") to disable and
+    // flush only on save/close/shutdown. Returns null when disabled. Default 10s.
+    private static readonly TimeSpan DefaultAutosaveInterval = TimeSpan.FromSeconds(10);
+    private static readonly TimeSpan? AutosaveInterval = ResolveAutosaveInterval();
+    private static TimeSpan? ResolveAutosaveInterval()
+    {
+        var raw = Environment.GetEnvironmentVariable("OFFICECLI_RESIDENT_IDLE_SAVE_SECONDS");
+        if (!string.IsNullOrWhiteSpace(raw))
+        {
+            if (string.Equals(raw.Trim(), "off", StringComparison.OrdinalIgnoreCase))
+                return null;
+            if (int.TryParse(raw, out var secs))
+            {
+                if (secs <= 0) return null; // disabled
+                if (secs >= MinIdleSeconds && secs <= MaxIdleSeconds)
+                    return TimeSpan.FromSeconds(secs);
+            }
+        }
+        return DefaultAutosaveInterval;
     }
 
     // Runtime upgrade path for the idle timeout. Called from the ping
@@ -226,6 +269,12 @@ public class ResidentServer : IDisposable
         // Start idle watchdog
         var idleTask = RunIdleWatchdogAsync(pingToken);
 
+        // Start idle-autosave watchdog (flush-to-disk without shutdown). Skipped
+        // entirely when autosave is disabled (OFFICECLI_RESIDENT_IDLE_SAVE_SECONDS=0).
+        var autosaveTask = AutosaveInterval is null
+            ? Task.CompletedTask
+            : RunAutosaveWatchdogAsync(pingToken);
+
         // Main command loop - accept connections concurrently, serialize
         // command execution. CONSISTENCY(pipe-precreate): same pre-create
         // pattern as RunPingResponderAsync (see BUG-FUZZER-R6-B-01). Creating
@@ -281,6 +330,7 @@ public class ResidentServer : IDisposable
 
         try { await pingTask; } catch (OperationCanceledException) { }
         try { await idleTask; } catch (OperationCanceledException) { }
+        try { await autosaveTask; } catch (OperationCanceledException) { }
 
         AppDomain.CurrentDomain.ProcessExit -= OnProcessExit;
         foreach (var reg in signalRegs)
@@ -293,6 +343,10 @@ public class ResidentServer : IDisposable
         // RunIdleWatchdogAsync may race between Volatile.Read and .Token access.
         var oldCts = Interlocked.Exchange(ref _idleCts, new CancellationTokenSource());
         oldCts.Cancel();
+        // Command activity also restarts the idle-autosave countdown so autosave
+        // only fires when the session is genuinely idle, never mid-workflow.
+        var oldAuto = Interlocked.Exchange(ref _autosaveCts, new CancellationTokenSource());
+        oldAuto.Cancel();
     }
 
     private async Task RunIdleWatchdogAsync(CancellationToken token)
@@ -324,6 +378,65 @@ public class ResidentServer : IDisposable
             {
                 // _idleCts was cancelled (timer reset), loop and wait again
             }
+        }
+    }
+
+    // Idle-autosave watchdog: mirrors RunIdleWatchdogAsync but, instead of
+    // shutting the resident down, flushes a dirty DOM to disk and keeps running.
+    // Disabled (never started) when AutosaveInterval is null.
+    private async Task RunAutosaveWatchdogAsync(CancellationToken token)
+    {
+        var interval = AutosaveInterval!.Value;
+        while (!token.IsCancellationRequested)
+        {
+            try
+            {
+                var autoCts = Volatile.Read(ref _autosaveCts);
+                using var linked = CancellationTokenSource.CreateLinkedTokenSource(autoCts.Token, token);
+                await Task.Delay(interval, linked.Token);
+                // Reached here = idle for the autosave interval without a reset.
+                await TryAutosaveAsync(token);
+            }
+            catch (OperationCanceledException) when (!token.IsCancellationRequested)
+            {
+                // _autosaveCts was cancelled (command activity reset the timer);
+                // loop and wait again.
+            }
+        }
+    }
+
+    // Flush a dirty DOM to disk without stopping the resident. Serialized
+    // against commands via _commandLock so it never races a mutation. The
+    // under-lock _mainCts check makes it safe against shutdown: DoShutdownAsync
+    // cancels _mainCts BEFORE it drains the command lock, so if shutdown has
+    // begun we observe the cancellation here and skip the save (the shutdown
+    // Dispose flushes instead).
+    private async Task TryAutosaveAsync(CancellationToken token)
+    {
+        if (!_dirty || !_editable || _disposed) return;
+        SemaphoreSlim? acquired = null;
+        try
+        {
+            if (!await _commandLock.WaitAsync(TimeSpan.FromSeconds(5), token))
+                return; // a command is running; its exit resets the timer, retry next round
+            acquired = _commandLock;
+
+            if (_disposed || _mainCts.IsCancellationRequested) return;
+            if (!_dirty || !_editable) return;
+
+            _handler.Save();
+            _dirty = false;
+            LogStderr($"Autosaved {Path.GetFileName(_filePath)} (idle flush, resident still running).");
+        }
+        catch (OperationCanceledException) { }
+        catch (ObjectDisposedException) { /* shutdown disposed _mainCts/_commandLock under us */ }
+        catch (Exception ex)
+        {
+            LogStderr($"Autosave error: {ex.Message}");
+        }
+        finally
+        {
+            if (acquired != null) { try { acquired.Release(); } catch { } }
         }
     }
 
@@ -804,15 +917,20 @@ public class ResidentServer : IDisposable
             _handler = OfficeCli.Handlers.DocumentHandlerFactory.Open(_filePath, editable: true);
             _editable = true;
         }
-        // Resident keeps the document in memory and only flushes to disk on
-        // save/close, so per-mutation Document.Save() (an O(n) re-serialize
-        // each) is pure waste — and over a long editing session it compounds to
-        // O(n²). Defer it for the resident's whole life. save/close go through
-        // _doc.Save() directly, bypassing the flag, so they still flush. This is
+        // Resident keeps the document in memory and flushes to disk only on
+        // save/close/idle-autosave, so per-mutation Document.Save() (an O(n)
+        // re-serialize each) is pure waste — and over a long editing session it
+        // compounds to O(n²). Defer it for the resident's whole life. save/close
+        // and the idle-autosave go through _handler.Save() directly, bypassing
+        // the flag, so they still flush. This is
         // the shared prelude of every mutation command, so it also re-applies
         // after a handler reopen (screenshot / page-count / refresh reset
         // _handler). The non-resident batch path sets DeferSave on its own.
         if (_handler is OfficeCli.Handlers.WordHandler wh) wh.DeferSave = true;
+        // Mark the in-memory DOM as having unflushed changes. Cleared by the
+        // next save/close/idle-autosave. Set here (the shared mutation prelude)
+        // so single commands and batch alike are tracked.
+        _dirty = true;
     }
 
     private void ExecuteCommand(ResidentRequest request)
@@ -950,7 +1068,8 @@ public class ResidentServer : IDisposable
 
         // Document-protection gate, evaluated against the resident's in-memory
         // DOM (not the on-disk file, which may lag uncommitted protection
-        // changes — the resident flushes only on save/close). Mirrors the
+        // changes — the resident flushes only on save/close/idle-autosave).
+        // Mirrors the
         // non-resident batch path; honors --force. Throw so the command's
         // exception handler maps it to a non-zero exit with the message.
         if (!force && _handler is OfficeCli.Handlers.WordHandler)
@@ -965,8 +1084,8 @@ public class ResidentServer : IDisposable
         // the per-op Save was an O(N²) re-serialize of the growing part. Mirrors
         // the non-resident batch path. get/query inside the batch still read the
         // live in-memory DOM, so they observe every just-added element; the
-        // resident only flushes to disk on `save`/`close`, which go through
-        // _doc.Save() directly (bypassing the deferred SaveDoc()).
+        // resident flushes to disk only on `save`/`close`/idle-autosave, which
+        // go through _handler.Save() directly (bypassing the deferred SaveDoc()).
         //
         // Unlike the dispose-based CLI/MCP surfaces (which leave DeferSave on and
         // let Dispose finalize), the resident handler is long-lived: it must
@@ -2101,6 +2220,7 @@ public class ResidentServer : IDisposable
             return;
         }
         _handler.Save();
+        _dirty = false;
         Console.WriteLine($"Saved {Path.GetFileName(_filePath)}");
     }
 
@@ -2219,6 +2339,7 @@ public class ResidentServer : IDisposable
         try { _mainCts.Dispose(); } catch { }
         try { _pingCts.Dispose(); } catch { }
         try { _idleCts.Dispose(); } catch { }
+        try { _autosaveCts.Dispose(); } catch { }
     }
 
     /// <summary>

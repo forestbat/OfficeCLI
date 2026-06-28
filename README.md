@@ -313,14 +313,13 @@ officecli batch deck.pptx --input updates.json --force --json
 ```
 
 > **Reading the file with another tool? Flush to disk first.**
-> While a resident is alive, edits (`set`/`add`/`remove`/`batch`) are applied to the in‑memory document and reported as success, but the **`.docx`/`.xlsx`/`.pptx` on disk is only rewritten on `officecli save` / `officecli close` (or idle‑timeout).** Commands routed through OfficeCLI see the change immediately; a **third‑party reader that opens the file directly** (python‑docx, PizZip, openpyxl, pandas, Microsoft Word, …) sees the *pre‑edit* file until you flush. So before handing off to any external reader:
+> officecli's own reads (`get`/`query`/`view`) always see your latest edits, so within officecli you never need to save. But a live resident defers the disk write, so **before a non‑officecli program reads the file** — python‑docx/openpyxl, Microsoft Word, a renderer, delivery/upload — flush it:
 > ```bash
 > officecli set report.docx /body/p[1] --prop bold=true
-> officecli save report.docx           # ← flush to disk, KEEP the resident (stays fast)
+> officecli save report.docx           # flush, keep the resident warm (or `close` to flush + release)
 > python my_reader.py report.docx      # now sees the edit
-> officecli close report.docx          # final flush + stop the resident when done
 > ```
-> Use `save` for a mid‑session flush (more edits coming) and `close` when you are finished with the file. Or set `OFFICECLI_NO_AUTO_RESIDENT=1` to skip the resident entirely — every command then opens once and saves once, so the file on disk is always current (at the cost of per‑command file I/O).
+> A live resident also auto‑flushes ~10s after going idle. Full flush model (auto‑save / auto‑close / save / close, env tuning): [wiki → open / close](https://github.com/iOfficeAI/OfficeCLI/wiki/command-open#when-the-file-on-disk-is-refreshed).
 
 ### Three-Layer Architecture
 
