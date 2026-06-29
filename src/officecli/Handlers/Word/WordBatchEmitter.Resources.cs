@@ -3453,24 +3453,10 @@ public static partial class WordBatchEmitter
             // built-in ids the strict "already exists" check still
             // applies. Emit `add` uniformly so the wire format stays a
             // simple `add`-only stream regardless of style provenance.
-            items.Add(new BatchItem
-            {
-                Command = "add",
-                Parent = "/styles",
-                Type = "style",
-                Props = props
-            });
-            // BUG-X4-T1 / BUG-DUMP-STYLE-TABS: style tab stops are folded into the
-            // `tabs=` prop above (see comment at the seenStyleIds guard) — the old
-            // per-stop `add tab parent=/styles/<id>` emit failed to resolve and is
-            // retired for styles. (Paragraphs still use EmitTabStops via their own
-            // navigable /body/p[N] parent.)
-            // STYLE-RAW-FALLBACK: if this style is a table style whose verbatim
-            // XML we captured, replace the just-added <w:style> wholesale so
-            // its tblPr / tblStylePr / shd / trPr / tcPr survive. Keyed by the
-            // id the `add` actually used (emitId) so an id collision/suffix on
-            // the target still lands on the right element. The raw XML's
-            // w:styleId is normalized to emitId by BuildRawTableStyleMap.
+            // STYLE-RAW-FALLBACK: the verbatim <w:style> XML that the raw-set
+            // path replaces with — table styles' tblPr/tblStylePr/shd/trPr/tcPr
+            // and any rPr/pPr child the scalar emit drops. Keyed by emitId so an
+            // id collision/suffix still lands on the right element.
             // BUG-R18C: a duplicate styleId resolves (in Word) to its LAST
             // occurrence; prefer that verbatim definition over the table-style
             // map (first) and over the scalar emit (which read the first).
@@ -3481,18 +3467,173 @@ public static partial class WordBatchEmitter
             else if (!string.IsNullOrEmpty(emitId)
                 && rawStyleByMatchAttr.TryGetValue(emitId, out var rawStyleXml))
                 rawStyleReplace = rawStyleXml;
-            if (rawStyleReplace != null)
+
+            // RECURSIVE-STYLE-DECOMP (opt-in via OFFICECLI_RECURSIVE_STYLE_DECOMP):
+            // instead of a verbatim raw-set replace, decompose the <w:style>
+            // subtree into typed `add` ops — a shell `add style` (identity attrs
+            // + name child) plus one `add <child>` per descendant element. Falls
+            // back to the raw-set replace when the subtree carries content the
+            // typed path can't round-trip losslessly (external rel, unknown
+            // namespace, mixed text, pathological depth) — see
+            // TryDecomposeStyleChildren. The whole-element raw-set stays the
+            // safety net; this only shrinks it where decomposition is provably
+            // lossless. Relies on the generic add appending repeatable same-name
+            // children (e.g. multiple tblStylePr) rather than collapsing them.
+            List<BatchItem>? recursiveOps = null;
+            if (s_recursiveStyleDecomp && rawStyleReplace != null && !string.IsNullOrEmpty(emitId))
+                recursiveOps = TryDecomposeStyleChildren(rawStyleReplace, $"/styles/{emitId}");
+
+            if (recursiveOps != null)
+            {
+                // Shell add: only the style's identity + own attributes + name.
+                // Every other child (basedOn, uiPriority, pPr, rPr, tblPr,
+                // tblStylePr, …) is rebuilt by the recursive ops below, so the
+                // scalar formatting props are intentionally dropped here.
+                var shellProps = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+                foreach (var k in s_styleShellProps)
+                    if (props.TryGetValue(k, out var pv)) shellProps[k] = pv;
+                items.Add(new BatchItem
+                {
+                    Command = "add",
+                    Parent = "/styles",
+                    Type = "style",
+                    Props = shellProps
+                });
+                items.AddRange(recursiveOps);
+            }
+            else
             {
                 items.Add(new BatchItem
                 {
-                    Command = "raw-set",
-                    Part = "/styles",
-                    Xpath = $"/w:styles/w:style[@w:styleId='{emitId}']",
-                    Action = "replace",
-                    Xml = rawStyleReplace
+                    Command = "add",
+                    Parent = "/styles",
+                    Type = "style",
+                    Props = props
                 });
+                // BUG-X4-T1 / BUG-DUMP-STYLE-TABS: style tab stops are folded into
+                // the `tabs=` prop above — the old per-stop `add tab` emit failed
+                // to resolve and is retired for styles.
+                if (rawStyleReplace != null)
+                {
+                    items.Add(new BatchItem
+                    {
+                        Command = "raw-set",
+                        Part = "/styles",
+                        Xpath = $"/w:styles/w:style[@w:styleId='{emitId}']",
+                        Action = "replace",
+                        Xml = rawStyleReplace
+                    });
+                }
             }
         }
+    }
+
+    // Props copied onto the shell `add style` in RECURSIVE-STYLE-DECOMP mode:
+    // the style's identity + its own <w:style> attributes + the name child.
+    // All formatting children are rebuilt by the recursive child ops.
+    private static readonly string[] s_styleShellProps =
+        ["id", "styleId", "type", "name", "default", "customStyle"];
+
+    private static readonly bool s_recursiveStyleDecomp =
+        Environment.GetEnvironmentVariable("OFFICECLI_RECURSIVE_STYLE_DECOMP") == "1";
+
+    // Well-known OOXML namespace → canonical prefix, the inverse of the add
+    // path's CommonNamespaces. A namespace absent here is treated as residue
+    // (the generic add can't resolve an unknown prefix), so the caller raw-sets.
+    private static readonly Dictionary<string, string> s_nsToPrefix = new(StringComparer.Ordinal)
+    {
+        ["http://schemas.openxmlformats.org/wordprocessingml/2006/main"] = "w",
+        ["http://schemas.openxmlformats.org/officeDocument/2006/relationships"] = "r",
+        ["http://schemas.openxmlformats.org/drawingml/2006/main"] = "a",
+        ["http://schemas.openxmlformats.org/markup-compatibility/2006"] = "mc",
+        ["http://schemas.openxmlformats.org/officeDocument/2006/math"] = "m",
+    };
+
+    private const int StyleDecompMaxDepth = 40;
+
+    // Decompose a verbatim <w:style> element into typed `add` child ops under
+    // stylePath (the shell `add style` creates the element + its <w:name>).
+    // Returns null on any residue the typed path can't round-trip — the caller
+    // then emits the verbatim raw-set replace instead. The source tree is
+    // finite and acyclic; the depth cap guards pathological nesting / overflow.
+    private static List<BatchItem>? TryDecomposeStyleChildren(string styleXml, string stylePath)
+    {
+        if (string.IsNullOrEmpty(styleXml) || !styleXml.StartsWith("<")) return null;
+        System.Xml.Linq.XElement styleEl;
+        try { styleEl = System.Xml.Linq.XElement.Parse(styleXml); }
+        catch { return null; }
+        var wNs = "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
+        var ops = new List<BatchItem>();
+        var counts = new Dictionary<string, int>(StringComparer.Ordinal);
+        foreach (var child in styleEl.Elements())
+        {
+            // <w:name> is created by the shell `add style` (from the name prop);
+            // skip it so it isn't added twice. Its localName is unique, so the
+            // ordinals of the other children are unaffected.
+            if (child.Name.LocalName == "name" && child.Name.NamespaceName == wNs)
+                continue;
+            counts.TryGetValue(child.Name.LocalName, out var c);
+            counts[child.Name.LocalName] = c + 1;
+            var childPath = $"{stylePath}/{child.Name.LocalName}[{c + 1}]";
+            if (!TryEmitElementAdd(child, stylePath, childPath, ops, 0))
+                return null;
+        }
+        return ops;
+    }
+
+    // Emit `add <localName> parent=<parentPath>` for el (attributes as
+    // namespace-prefixed props), then recurse into its children. childPath is
+    // el's own resolved path (for addressing its children). Returns false on
+    // residue.
+    private static bool TryEmitElementAdd(
+        System.Xml.Linq.XElement el, string parentPath, string elPath,
+        List<BatchItem> ops, int depth)
+    {
+        if (depth > StyleDecompMaxDepth) return false;
+        if (!s_nsToPrefix.TryGetValue(el.Name.NamespaceName, out var prefix))
+            return false; // unknown element namespace → residue
+        // Direct (non-whitespace) text content has no typed `add` representation.
+        foreach (var node in el.Nodes())
+            if (node is System.Xml.Linq.XText t && !string.IsNullOrWhiteSpace(t.Value))
+                return false;
+        var props = new Dictionary<string, string>(StringComparer.Ordinal);
+        foreach (var a in el.Attributes())
+        {
+            if (a.IsNamespaceDeclaration) continue;
+            var ans = a.Name.NamespaceName;
+            string key;
+            if (string.IsNullOrEmpty(ans))
+            {
+                key = a.Name.LocalName; // unqualified attribute → bare key
+            }
+            else if (s_nsToPrefix.TryGetValue(ans, out var ap))
+            {
+                if (ap == "r") return false; // external relationship → would dangle
+                key = $"{ap}:{a.Name.LocalName}";
+            }
+            else
+            {
+                return false; // unknown attribute namespace → residue
+            }
+            props[key] = a.Value;
+        }
+        ops.Add(new BatchItem
+        {
+            Command = "add",
+            Parent = parentPath,
+            Type = $"{prefix}:{el.Name.LocalName}",
+            Props = props
+        });
+        var counts = new Dictionary<string, int>(StringComparer.Ordinal);
+        foreach (var child in el.Elements())
+        {
+            counts.TryGetValue(child.Name.LocalName, out var c);
+            counts[child.Name.LocalName] = c + 1;
+            var childPath = $"{elPath}/{child.Name.LocalName}[{c + 1}]";
+            if (!TryEmitElementAdd(child, elPath, childPath, ops, depth + 1))
+                return false;
+        }
+        return true;
     }
 
     // STYLE-RAW-FALLBACK helper: parse the source styles.xml once and return a
