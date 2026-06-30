@@ -595,7 +595,24 @@ public static partial class WordBatchEmitter
                 };
                 int idx = perNameIdx.TryGetValue(seg, out var c) ? c : 0;
                 perNameIdx[seg] = idx + 1;
-                map[$"{seg}[{idx + 1}]"] = rank++;
+                int thisRank = rank++;
+                map[$"{seg}[{idx + 1}]"] = thisRank;
+                // BUG-DUMP-INLINESDT-BMEND-RANK: Navigation builds a bookmarkEnd
+                // child's path as bookmarkEnd[@id=N] (id-keyed, not positional —
+                // BUG-DUMP-BMEND-IDPATH), so the positional map key alone misses in
+                // ChildDocRank → the run loop reads rank=int.MaxValue for the
+                // bookmarkEnd child and prematurely flushes a still-pending inline
+                // SDT before the run that precedes it. That silently reorders the
+                // run across the content control ("with [SDT]" -> "[SDT]with"),
+                // garbling text with no validate flag and no visible render change.
+                // Register an id-keyed alias at the SAME rank so the lookup hits and
+                // run<->inline-SDT document order round-trips.
+                if (seg == "bookmarkEnd")
+                {
+                    var idm = System.Text.RegularExpressions.Regex.Match(m.Value, "w:id=\"(\\d+)\"");
+                    if (idm.Success)
+                        map[$"bookmarkEnd[@id={idm.Groups[1].Value}]"] = thisRank;
+                }
             }
             if (!selfClose)
             {
