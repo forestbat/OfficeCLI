@@ -3122,7 +3122,15 @@ internal static class FormulaParser
         ("α", "\\alpha "), ("β", "\\beta "), ("γ", "\\gamma "), ("δ", "\\delta "),
         ("ϵ", "\\epsilon "), ("θ", "\\theta "), ("λ", "\\lambda "), ("μ", "\\mu "),
         ("π", "\\pi "), ("σ", "\\sigma "), ("ϕ", "\\phi "), ("ω", "\\omega "),
+        // Remaining Greek lowercase (forward-only in CommandToSymbol until now,
+        // so they round-tripped to bare Unicode instead of the command).
+        ("ζ", "\\zeta "), ("η", "\\eta "), ("ι", "\\iota "), ("κ", "\\kappa "),
+        ("ν", "\\nu "), ("ξ", "\\xi "), ("ρ", "\\rho "), ("τ", "\\tau "),
+        ("υ", "\\upsilon "), ("χ", "\\chi "), ("ψ", "\\psi "),
         ("Σ", "\\Sigma "), ("Π", "\\Pi "), ("Δ", "\\Delta "), ("Ω", "\\Omega "),
+        // Remaining Greek uppercase.
+        ("Γ", "\\Gamma "), ("Θ", "\\Theta "), ("Λ", "\\Lambda "), ("Ξ", "\\Xi "),
+        ("Φ", "\\Phi "), ("Ψ", "\\Psi "),
         // Variant Greek letters (distinct codepoints from the non-var forms above).
         ("ε", "\\varepsilon "), ("ϑ", "\\vartheta "), ("φ", "\\varphi "),
         ("ϱ", "\\varrho "), ("ϖ", "\\varpi "), ("ς", "\\varsigma "),
@@ -3158,6 +3166,22 @@ internal static class FormulaParser
         ("♠", "\\spadesuit "), ("†", "\\dagger "), ("‡", "\\ddagger "),
         ("≀", "\\wr "), ("⨿", "\\amalg "), ("⊎", "\\uplus "),
         ("⊔", "\\sqcup "), ("⊓", "\\sqcap "),
+        // Operators / logic that were forward-only (round-tripped to bare
+        // Unicode). Where two commands share a glyph, pick one canonical:
+        // ∧ → \wedge (not \land), ∨ → \vee (not \lor), ¬ → \neg (not \lnot).
+        ("∧", "\\wedge "), ("∨", "\\vee "), ("¬", "\\neg "), ("∼", "\\sim "),
+        ("⊂", "\\subset "), ("⊃", "\\supset "), ("∓", "\\mp "),
+        ("∗", "\\ast "), ("⋆", "\\star "), ("∘", "\\circ "),
+        ("⊕", "\\oplus "), ("⊖", "\\ominus "), ("⊗", "\\otimes "), ("⊙", "\\odot "),
+        ("∩", "\\cap "), ("∪", "\\cup "), ("∣", "\\mid "), ("∥", "\\parallel "),
+        // Standalone delimiters.
+        ("⟨", "\\langle "), ("⟩", "\\rangle "),
+        ("⌈", "\\lceil "), ("⌉", "\\rceil "),
+        ("⌊", "\\lfloor "), ("⌋", "\\rfloor "),
+        // Arrows that were forward-only. ↔ → \leftrightarrow, ⇔ →
+        // \Leftrightarrow (shares glyph with \iff/⟺ which is a distinct
+        // codepoint), ↦ → \mapsto.
+        ("↔", "\\leftrightarrow "), ("⇔", "\\Leftrightarrow "), ("↦", "\\mapsto "),
     };
 
     // ==================== Unicode subscript/superscript ====================
