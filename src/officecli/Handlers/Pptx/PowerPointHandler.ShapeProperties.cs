@@ -2241,7 +2241,9 @@ public partial class PowerPointHandler
                     var textBody = shape.TextBody;
                     if (textBody == null) { unsupported.Add(key); break; }
 
-                    var mathContent = FormulaParser.Parse(value, unrecognizedLatex);
+                    // R3-fuzz-1: lenient parse (warn + exit 2 + placeholder)
+                    // instead of throwing on a too-deep/unparseable formula.
+                    var mathContent = FormulaParser.ParseLenient(value, unrecognizedLatex);
                     M.OfficeMath oMath = mathContent is M.OfficeMath dm
                         ? dm : new M.OfficeMath(mathContent.CloneNode(true));
                     var mathPara = new M.Paragraph(oMath);

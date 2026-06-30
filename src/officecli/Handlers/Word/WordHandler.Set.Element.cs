@@ -666,7 +666,7 @@ public partial class WordHandler
                 case "formula":
                 {
                     // Replace this run with an inline oMath in the same position
-                    var mathContent = FormulaParser.Parse(value, LastUnrecognizedLatex);
+                    var mathContent = FormulaParser.ParseLenient(value, LastUnrecognizedLatex);
                     M.OfficeMath oMath = mathContent is M.OfficeMath dm
                         ? dm : new M.OfficeMath(mathContent.CloneNode(true));
                     run.InsertAfterSelf(oMath);
@@ -914,7 +914,7 @@ public partial class WordHandler
                     // Clear existing oMath children and rebuild from new formula
                     foreach (var child in mPara.ChildElements.ToList())
                         child.Remove();
-                    var mathContent = FormulaParser.Parse(value, LastUnrecognizedLatex);
+                    var mathContent = FormulaParser.ParseLenient(value, LastUnrecognizedLatex);
                     M.OfficeMath oMath = mathContent is M.OfficeMath dm
                         ? dm : new M.OfficeMath(mathContent.CloneNode(true));
                     mPara.AppendChild(oMath);
@@ -984,7 +984,7 @@ public partial class WordHandler
                     // it inline (mirrors the run-level formula set path).
                     foreach (var child in oMath.ChildElements.ToList())
                         child.Remove();
-                    var mathContent = FormulaParser.Parse(value, LastUnrecognizedLatex);
+                    var mathContent = FormulaParser.ParseLenient(value, LastUnrecognizedLatex);
                     if (mathContent is M.OfficeMath parsed)
                         foreach (var c in parsed.ChildElements.ToList())
                             oMath.AppendChild(c.CloneNode(true));
@@ -1176,7 +1176,7 @@ public partial class WordHandler
                     foreach (var child in para.ChildElements
                         .Where(c => c is not ParagraphProperties).ToList())
                         child.Remove();
-                    var mathContent = FormulaParser.Parse(value, LastUnrecognizedLatex);
+                    var mathContent = FormulaParser.ParseLenient(value, LastUnrecognizedLatex);
                     M.OfficeMath oMath = mathContent is M.OfficeMath dm
                         ? dm : new M.OfficeMath(mathContent.CloneNode(true));
                     para.AppendChild(new M.Paragraph(oMath));

@@ -36,8 +36,10 @@ public partial class PowerPointHandler
                 var eqShapeId = AcquireShapeId(eqShapeTree, properties);
                 var eqShapeName = properties.GetValueOrDefault("name", $"Equation {eqShapeTree.Elements<Shape>().Count() + 1}");
 
-                // Parse formula to OMML
-                var mathContent = FormulaParser.Parse(eqFormula, LastUnrecognizedLatex);
+                // Parse formula to OMML. R3-fuzz-1: lenient — a too-deep/
+                // unparseable formula records a warning (exit 2) and writes a
+                // placeholder instead of throwing (exit 1 / whole-batch failure).
+                var mathContent = FormulaParser.ParseLenient(eqFormula, LastUnrecognizedLatex);
                 M.OfficeMath oMath;
                 if (mathContent is M.OfficeMath directMath)
                     oMath = directMath;

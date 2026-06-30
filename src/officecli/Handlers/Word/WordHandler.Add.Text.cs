@@ -1820,7 +1820,10 @@ public partial class WordHandler
                     catch { /* malformed — fall through to the formula string */ }
                 }
             }
-            var parsed = FormulaParser.Parse(formula, LastUnrecognizedLatex);
+            // R3-fuzz-1: lenient parse — a too-deep/unparseable formula records
+            // a warning (exit 2) and writes a placeholder instead of throwing
+            // (exit 1 / whole-batch failure).
+            var parsed = FormulaParser.ParseLenient(formula, LastUnrecognizedLatex);
             return parsed as M.OfficeMath ?? new M.OfficeMath(parsed.CloneNode(true));
         }
 

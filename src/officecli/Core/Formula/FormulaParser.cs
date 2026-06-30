@@ -127,6 +127,41 @@ internal static class FormulaParser
     }
 
     /// <summary>
+    /// Lenient parse for the handler add/set paths. Behaves exactly like
+    /// <see cref="Parse(string, ICollection{string}?)"/> but, instead of
+    /// throwing a <see cref="FormulaParseException"/> (which would propagate to
+    /// exit 1 and, in a batch, fail the WHOLE batch), it RECORDS the failure on
+    /// the same diagnostics channel used for unrecognized commands and returns a
+    /// minimal valid placeholder <m:oMath> carrying the literal source text.
+    /// R3-fuzz-1: this makes a too-deep / unparseable equation consistent with
+    /// the unrecognized-command model — a visible warning + exit 2 + a graceful
+    /// lenient write — rather than an exit-1 hard failure that sinks the batch.
+    /// </summary>
+    public static OpenXmlElement ParseLenient(string latex, ICollection<string>? unrecognized)
+    {
+        try
+        {
+            return Parse(latex, unrecognized);
+        }
+        catch (FormulaParseException ex)
+        {
+            // Surface the failure through the unrecognized channel so the CLI/
+            // resident layer maps it to the unrecognized_latex_command warning
+            // + exit 2 (same UX as an unknown command). The message already
+            // carries the KaTeX hint.
+            unrecognized?.Add(ex.Message);
+            // Lenient write: a minimal valid <m:oMath> with one empty run. We do
+            // NOT echo the source text — an unparseable formula may be enormous
+            // (a depth-bomb) or contain XML-illegal control chars (e.g. 0x0C),
+            // which would make the saved part itself invalid and throw at save
+            // time (re-introducing the exit-1 failure this fix removes). An
+            // empty placeholder keeps the element present and the file valid.
+            return new M.OfficeMath(
+                new M.Run(new M.Text("") { Space = SpaceProcessingModeValues.Preserve }));
+        }
+    }
+
+    /// <summary>
     /// Fix double-escaped backslashes from AI/JSON over-escaping.
     /// Converts \\cmd → \cmd when \\ is directly followed by a letter sequence.
     /// Safe because \\letter is not valid LaTeX (line break immediately followed by
