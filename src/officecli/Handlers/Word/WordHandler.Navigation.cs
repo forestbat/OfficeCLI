@@ -5213,17 +5213,25 @@ public partial class WordHandler
                     // <w:hyperlink> get a hyperlink-scoped path so the
                     // emitter can place the equation INSIDE the hyperlink
                     // on replay.
+                    // R3-bt-1: emit the RESOLVABLE child segment `oMath[N]`, not
+                    // `equation[N]`. An inline equation is a bare <m:oMath>
+                    // (LocalName "oMath") inside the w:p/w:hyperlink, so the path
+                    // resolver matches it via LocalName == "oMath" — `equation`
+                    // matched no element and get/set/remove on the listed
+                    // `…/equation[1]` failed ("No equation found … Available:
+                    // oMath(1)"). This now agrees with what `query equation`
+                    // already returns (…/oMath[N]).
                     string eqPath;
                     if (entry.el.Parent is Hyperlink eqHl)
                     {
                         int hlIdx = paraHyperlinks.IndexOf(eqHl);
                         int hlEqIdx = eqHl.Elements<M.OfficeMath>()
                             .ToList().IndexOf((M.OfficeMath)entry.el);
-                        eqPath = $"{path}/hyperlink[{hlIdx + 1}]/equation[{hlEqIdx + 1}]";
+                        eqPath = $"{path}/hyperlink[{hlIdx + 1}]/oMath[{hlEqIdx + 1}]";
                     }
                     else
                     {
-                        eqPath = $"{path}/equation[{inlineEqIdx + 1}]";
+                        eqPath = $"{path}/oMath[{inlineEqIdx + 1}]";
                         inlineEqIdx++;
                     }
                     var eqNode = ElementToNode(entry.el, eqPath, depth - 1);

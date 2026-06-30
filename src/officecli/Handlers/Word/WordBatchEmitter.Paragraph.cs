@@ -2042,7 +2042,13 @@ public static partial class WordBatchEmitter
         var eqParent = paraTargetPath;
         if (!string.IsNullOrEmpty(run.Path))
         {
-            var idxEq = run.Path.LastIndexOf("/equation[", StringComparison.Ordinal);
+            // R3-bt-1: the NodeBuilder now emits the resolvable `/oMath[N]`
+            // segment for inline equations (was `/equation[N]`). Strip whichever
+            // is present so the derived hyperlink-parent logic keeps working for
+            // both the new paths and any legacy `/equation[` producer.
+            var idxEq = run.Path.LastIndexOf("/oMath[", StringComparison.Ordinal);
+            if (idxEq < 0)
+                idxEq = run.Path.LastIndexOf("/equation[", StringComparison.Ordinal);
             if (idxEq > 0)
             {
                 var derived = run.Path.Substring(0, idxEq);
