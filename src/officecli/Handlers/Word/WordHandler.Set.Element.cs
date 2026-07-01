@@ -933,7 +933,11 @@ public partial class WordHandler
                         if (hostPara != null && inner != null)
                         {
                             var clone = (M.OfficeMath)inner.CloneNode(true);
-                            hostPara.InsertBefore(clone, mPara);
+                            // Insert into mPara's ACTUAL parent — for a hyperlink-
+                            // nested equation that parent is the w:hyperlink, not
+                            // hostPara, so hostPara.InsertBefore threw "not a child
+                            // of this element". Non-hyperlink: Parent == hostPara.
+                            mPara.Parent!.InsertBefore(clone, mPara);
                             mPara.Remove();
                             // R4-bt-1: the equation MOVED (oMathPara → bare
                             // oMath). Report the new resolvable path so the CLI
