@@ -66,6 +66,7 @@ public partial class PowerPointHandler
             "series" => AddChartSeries(parentPath, properties ?? new()),
             "table" => AddTable(parentPath, index, properties),
             "equation" or "formula" or "math" => AddEquation(parentPath, index, properties),
+            "diagram" or "flowchart" => AddDiagram(parentPath, index, properties ?? new()),
             "notes" or "note" => AddNotes(parentPath, index, properties),
             "video" or "audio" or "media" => AddMedia(parentPath, index, properties, type),
             "connector" or "connection" => AddConnector(parentPath, index, properties),

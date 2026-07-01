@@ -20,7 +20,14 @@ internal static class HtmlScreenshot
     /// Run a chromium-family browser in dump-dom mode against the given HTML
     /// and parse the document title for "PAGES:N|MAP:anchor=p,anchor=p,...".
     /// The HTML must set the title from JS after layout settles.
-    public static PaginationResult? GetPaginationFromDom(string htmlPath, int timeoutMs = 60000)
+    /// <summary>
+    /// Render <paramref name="htmlPath"/> in a chrome-family browser with a
+    /// virtual-time budget (so async JS such as mermaid.js finishes) and return
+    /// the final serialized DOM, or null if no chrome-family browser is found or
+    /// the run fails. Callers extract whatever they need from the DOM (title,
+    /// a rendered &lt;svg&gt;, …).
+    /// </summary>
+    public static string? DumpDom(string htmlPath, int timeoutMs = 60000)
     {
         var url = new Uri(Path.GetFullPath(htmlPath)).AbsoluteUri + "#screenshot";
         var bin = FindChrome();
@@ -49,6 +56,52 @@ internal static class HtmlScreenshot
             if (p == null) return null;
             var stdout = p.StandardOutput.ReadToEnd();
             if (!p.WaitForExit(timeoutMs)) { try { p.Kill(true); } catch { } return null; }
+            return stdout;
+        }
+        catch { return null; }
+    }
+
+    /// <summary>True when a chrome-family browser (Chrome/Chromium/Edge) is available.</summary>
+    public static bool HasChromeFamily() => FindChrome() != null;
+
+    /// <summary>
+    /// Screenshot <paramref name="htmlPath"/> in a chrome-family browser at an exact
+    /// pixel window size, with a virtual-time budget (so async JS such as mermaid.js
+    /// finishes before capture) and a HiDPI scale factor for crisp raster output.
+    /// Returns true on a non-empty PNG at <paramref name="outPath"/>.
+    /// </summary>
+    public static bool CaptureChromeSized(string htmlPath, string outPath, int w, int h,
+                                          int scale = 2, int timeoutMs = 60000)
+    {
+        var bin = FindChrome();
+        if (bin == null) return false;
+        outPath = Path.GetFullPath(outPath);
+        var outDir = Path.GetDirectoryName(outPath);
+        if (!string.IsNullOrEmpty(outDir)) Directory.CreateDirectory(outDir);
+        var url = new Uri(Path.GetFullPath(htmlPath)).AbsoluteUri + "#screenshot";
+        var args = new[]
+        {
+            "--headless=new",
+            "--disable-gpu",
+            "--no-sandbox",
+            "--hide-scrollbars",
+            $"--force-device-scale-factor={scale}",
+            $"--window-size={w},{h}",
+            "--virtual-time-budget=15000",
+            "--default-background-color=00000000",
+            $"--screenshot={outPath}",
+            url,
+        };
+        var (ok, _) = RunBinary(bin, args);
+        return ok && File.Exists(outPath) && new FileInfo(outPath).Length > 0;
+    }
+
+    public static PaginationResult? GetPaginationFromDom(string htmlPath, int timeoutMs = 60000)
+    {
+        var stdout = DumpDom(htmlPath, timeoutMs);
+        if (stdout == null) return null;
+        try
+        {
             var m = System.Text.RegularExpressions.Regex.Match(stdout, @"<title>PAGES:(\d+)(?:\|MAP:([^<]*))?</title>");
             if (!m.Success || !int.TryParse(m.Groups[1].Value, out var n)) return null;
             var map = new Dictionary<string, int>();
@@ -239,6 +292,12 @@ internal static class HtmlScreenshot
     }
 
     // ----- Helpers -----------------------------------------------------------------------
+
+    /// <summary>Find the first of <paramref name="names"/> on PATH (honouring
+    /// Windows PATHEXT). Shared executable lookup — same mechanism used to detect
+    /// playwright/chrome/firefox, so callers like the mermaid renderer detect mmdc
+    /// identically.</summary>
+    public static string? Which(params string[] names) => WhichFirst(names);
 
     private static string? WhichFirst(params string[] names)
     {
