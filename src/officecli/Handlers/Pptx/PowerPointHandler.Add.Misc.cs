@@ -1402,12 +1402,20 @@ public partial class PowerPointHandler
                 var t = ph.Type?.Value;
                 if (isTitle)
                     return t == PlaceholderValues.Title || t == PlaceholderValues.CenteredTitle;
-                if (t != phType) return false;
-                // For non-title, when the slide placeholder has an idx, prefer the
-                // slot with the same idx; otherwise any same-type slot.
-                if (phIdx.HasValue && ph.Index?.Value is { } slotIdx)
-                    return slotIdx == phIdx.Value;
-                return true;
+                // Non-title: @idx is the authoritative binding key (ECMA-376
+                // §19.3.1.36). When the slide placeholder has an idx, match the
+                // layout slot with the SAME idx regardless of its @type — a
+                // layout slot may OMIT @type (it defaults to body/obj) yet still
+                // be the inheritance source (e.g. <p:ph sz="quarter" idx="13"/>
+                // carrying a custom off/ext). Requiring t == phType here missed
+                // such slots, so ResolveLayoutSlotGeometry returned null and
+                // AddPlaceholder stamped a generic default rectangle instead of
+                // the master/layout-inherited geometry — visibly shrinking and
+                // shifting the placeholder on round-trip.
+                if (phIdx.HasValue)
+                    return ph.Index?.Value == phIdx.Value;
+                // No idx on the slide placeholder: fall back to a same-type slot.
+                return t == phType;
             });
         }
 
