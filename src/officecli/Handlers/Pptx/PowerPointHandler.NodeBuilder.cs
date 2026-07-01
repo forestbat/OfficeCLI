@@ -913,6 +913,16 @@ public partial class PowerPointHandler
         // (whole-deck text re-styling). Mirrors the Query.cs placeholder builders,
         // which already store ph.Index.Value (uint) directly.
         if (phElemForNode?.Index?.Value is uint phIdx) node.Format["phIndex"] = phIdx;
+        // A truly BARE <p:ph/> (no type attribute AND no idx) must round-trip
+        // bare. FormatPlaceholderType(null) reports "body" for human-facing Get,
+        // but replaying it as type="body"+idx binds the shape to the layout's
+        // body slot and inherits its bullet/formatting — a bare ph inherits none
+        // of that (ECMA-376 default type is "obj", unbound). Source decks use a
+        // bare ph precisely to opt OUT of master styling (formatting-bullet-
+        // indent: "Object without master styling" gained a bullet on replay).
+        // Emit a round-trip marker; AddPlaceholder writes <p:ph/> verbatim.
+        if (isPlaceholder && phElemForNode?.Type?.Value == null && phElemForNode?.Index?.Value == null)
+            node.Format["phBare"] = "true";
 
         // CONSISTENCY(splocks-round-trip): <p:cNvSpPr><a:spLocks noGrp="1"/></p:cNvSpPr>
         // is the on-disk marker that the shape cannot be ungrouped (PowerPoint

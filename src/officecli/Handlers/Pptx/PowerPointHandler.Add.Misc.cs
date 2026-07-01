@@ -999,6 +999,50 @@ public partial class PowerPointHandler
         var phShapeTree = GetSlide(phSlidePart).CommonSlideData?.ShapeTree
             ?? throw new InvalidOperationException("Slide has no shape tree");
 
+        // Bare <p:ph/> round-trip: the source placeholder had NO type and NO idx
+        // (see NodeBuilder's phBare marker). It must replay bare so it stays
+        // UNBOUND to any layout slot — binding it (type="body"+idx) would
+        // inherit the slot's bullet/formatting the source deliberately opted out
+        // of (formatting-bullet-indent). Build a minimal shape carrying an empty
+        // <p:ph/> and forward the remaining props through Set exactly like the
+        // normal path.
+        if ((properties.TryGetValue("phBare", out var phBareVal) || properties.TryGetValue("phbare", out phBareVal))
+            && IsTruthy(phBareVal))
+        {
+            var bareId = AcquireShapeId(phShapeTree, properties);
+            var bareName = properties.GetValueOrDefault("name", $"Placeholder {bareId}");
+            var bareShape = new Shape
+            {
+                NonVisualShapeProperties = new NonVisualShapeProperties(
+                    new NonVisualDrawingProperties { Id = bareId, Name = bareName },
+                    new NonVisualShapeDrawingProperties(),
+                    new ApplicationNonVisualDrawingProperties(new PlaceholderShape())),
+                ShapeProperties = new ShapeProperties(),
+                TextBody = new TextBody(
+                    new Drawing.BodyProperties(),
+                    new Drawing.ListStyle(),
+                    new Drawing.Paragraph(new Drawing.EndParagraphRunProperties { Language = "en-US" })),
+            };
+            InsertAtPosition(phShapeTree, bareShape, index);
+            if (properties.TryGetValue("zorder", out var bz) || properties.TryGetValue("z-order", out bz)
+                || properties.TryGetValue("order", out bz))
+                ApplyZOrder(phSlidePart, bareShape, bz);
+            GetSlide(phSlidePart).Save();
+            var bareCount = phShapeTree.Elements<Shape>().Count();
+            var barePath = $"/slide[{phSlideIdx}]/shape[{bareCount}]";
+            var bareConsumed = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+            {
+                "phBare", "phbare", "phType", "phtype", "type", "phIndex", "phindex", "idx",
+                "name", "id", "zorder", "z-order", "order", "text", "isTitle", "istitle",
+                "geometry", "noGrp", "nogrp",
+            };
+            var barePass = properties
+                .Where(kv => !bareConsumed.Contains(kv.Key))
+                .ToDictionary(kv => kv.Key, kv => kv.Value, StringComparer.OrdinalIgnoreCase);
+            if (barePass.Count > 0) Set(barePath, barePass);
+            return barePath;
+        }
+
         if (!properties.TryGetValue("phType", out var phTypeStr)
             && !properties.TryGetValue("phtype", out phTypeStr)
             && !properties.TryGetValue("type", out phTypeStr))
