@@ -15,6 +15,7 @@ alias / tag / lock / placeholder; each variant then adds its own props:
   date      — date picker                  (format=, date.fullDate/calendar/lid/storeMappedDataAs=)
   picture   — image placeholder            (type=picture)
   group     — locked grouping wrapper       (type=group, lock=sdtContentLocked)
+  checkbox  — check-box toggle              (type=checkbox, checked=)
 
 The document models a small employee-intake form.
 
@@ -150,6 +151,17 @@ with officecli.create(FILE, "--force") as doc:
     ])
 
     # ----------------------------------------------------------------------
+    # 8. checkbox — the HR approval toggle (real Word check-box control).
+    #    checked=true → ☒ (2612) / false → ☐ (2610). Emits <w14:checkbox>.
+    # ----------------------------------------------------------------------
+    print("--- checkbox: HR approved ---")
+    doc.batch([
+        para("HR approved", style="Heading2"),
+        sdt(type="checkbox", alias="Approved", tag="hrApproved",
+            checked="true"),
+    ])
+
+    # ----------------------------------------------------------------------
     # Post-add tweak via `set` — alias / tag / lock / text are settable.
     # (Per-type props like dropDown.lastValue are add/get-only, not settable.)
     # ----------------------------------------------------------------------
@@ -163,11 +175,12 @@ with officecli.create(FILE, "--force") as doc:
     # Get round-trip: confirm each control's canonical props read back
     # ----------------------------------------------------------------------
     print("\n--- Round-trip readback (query sdt) ---")
-    for i in range(1, 8):
+    for i in range(1, 9):
         node = doc.send({"command": "get", "path": f"/body/sdt[{i}]"})
         fmt = node.get("data", {}).get("results", [{}])[0].get("format", {})
+        checked = f" checked={fmt['checked']}" if "checked" in fmt else ""
         print(f"  sdt[{i}] type={fmt.get('type')} alias={fmt.get('alias')!r} "
-              f"tag={fmt.get('tag')} lock={fmt.get('lock', 'unlocked')}")
+              f"tag={fmt.get('tag')} lock={fmt.get('lock', 'unlocked')}{checked}")
 
 print("\n--- Validate (fresh process, from disk) ---")
 r = subprocess.run(["officecli", "validate", FILE], capture_output=True, text=True)

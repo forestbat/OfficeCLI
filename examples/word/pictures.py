@@ -24,6 +24,7 @@ This script:
      - 5: square text wrap (text flows around a right-aligned float)
      - 6: absolute position (anchor + wrap=tight + hPosition/vPosition)
      - 7: clickable picture (link= external URL)
+     - 8: decorative picture (decorative=true — screen readers skip it)
 
 Requirements:
   pip install Pillow officecli-sdk          # plus the `officecli` binary on PATH
@@ -187,6 +188,18 @@ def main():
             src=BANNER, width="10cm", height="2.5cm",
             link="https://example.com",
             alt="Banner linking to example.com")
+
+        # ── 8. Decorative picture — mark as decorative for accessibility ──────
+        para(doc, "8. Decorative Picture (accessibility)", style="Heading1")
+        para(doc, "decorative=true marks the image as decorative: screen readers "
+                  "skip it entirely (no alt text is announced). Stored as an "
+                  "adec:decorative extension under the picture's docPr. Use it for "
+                  "purely ornamental images that carry no information.")
+        para(doc, "")
+        # Features: decorative=true (accessibility — screen readers skip the image)
+        add(doc, "/body/p[21]", "picture",
+            src=BANNER, width="10cm", height="2.5cm",
+            decorative="true")
 
         doc.send({"command": "save"})
     # context exit closes the resident, flushing the document to disk.

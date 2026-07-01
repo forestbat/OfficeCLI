@@ -154,6 +154,19 @@ $CLI add "$FILE" "/body/p[18]" --type picture \
   --prop link="https://example.com" \
   --prop alt="Banner linking to example.com"
 
+# ══════════════════════════════════════════════════════════════════════════════
+# 8. Decorative picture — mark as decorative for accessibility
+# ══════════════════════════════════════════════════════════════════════════════
+$CLI add "$FILE" /body --type paragraph --prop text="8. Decorative Picture (accessibility)" --prop style=Heading1
+$CLI add "$FILE" /body --type paragraph \
+  --prop text="decorative=true marks the image as decorative: screen readers skip it entirely (no alt text is announced). Stored as an adec:decorative extension under the picture's docPr. Use it for purely ornamental images that carry no information."
+$CLI add "$FILE" /body --type paragraph --prop text=""
+# Features: decorative=true (accessibility — screen readers skip the image)
+$CLI add "$FILE" "/body/p[21]" --type picture \
+  --prop src="$BANNER" \
+  --prop width=10cm --prop height=2.5cm \
+  --prop decorative=true
+
 $CLI close "$FILE"
 
 $CLI validate "$FILE"

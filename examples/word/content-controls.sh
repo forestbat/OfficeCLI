@@ -13,6 +13,7 @@
 #   date      — date picker                 (format=, date.fullDate/calendar/lid/storeMappedDataAs=)
 #   picture   — image placeholder
 #   group     — a locked grouping wrapper
+#   checkbox  — a check-box toggle          (checked=)
 # CLI twin of content-controls.py (officecli SDK); both produce an equivalent
 # content-controls.docx modelling a small employee-intake form.
 # NOTE: intentionally NO `set -e`. Like the SDK twin's doc.batch, this script
@@ -88,6 +89,14 @@ officecli add "$FILE" /body --type sdt --prop type=group \
   --prop alias="Approval Block" --prop tag=approval \
   --prop text="Approved by HR — signature on file." \
   --prop lock=sdtContentLocked
+
+# --- 8. checkbox — the HR approval toggle (real Word check-box control) ---
+# Features: type=checkbox, checked= (true → ☒ / false → ☐). Emits a <w14:checkbox>
+#           content control; Word renders a clickable box that flips 2612/2610.
+officecli add "$FILE" /body --type paragraph --prop text="HR approved" --prop style=Heading2
+officecli add "$FILE" /body --type sdt --prop type=checkbox \
+  --prop alias="Approved" --prop tag=hrApproved \
+  --prop checked=true
 
 # --- Post-add tweak via `set` (alias / tag / lock / text are settable) ---
 # Rename the department control's Word label and lock it against deletion.

@@ -21,10 +21,10 @@ officecli query file.docx sdt          # list every control with its props
 officecli get   file.docx /body/sdt[1] # read one control's property bag
 ```
 
-The control **type cannot be changed after creation**. Only
-`text`/`richtext`/`dropdown`/`combobox`/`date`/`picture`/`group` can be created
-at add-time — a `checkbox` control must be created in Word first, then edited
-via the CLI.
+The control **type cannot be changed after creation**.
+`text`/`richtext`/`dropdown`/`combobox`/`date`/`picture`/`group`/`checkbox` can
+all be created at add-time. (`buildingBlockGallery`/`repeatingSection` still
+require creating the control in Word first, then editing via the CLI.)
 
 Built on the [`officecli-sdk`](../../sdk/python) (one resident, writes shipped
 over the pipe); falls back to the in-repo SDK copy when the package isn't
@@ -50,6 +50,7 @@ python3 content-controls.py        # or: bash content-controls.sh
 | 5 | `picture` | Image-insert placeholder | — |
 | 6 | `richtext` | Formatted multi-run field | `text=` |
 | 7 | `group` | Locked grouping wrapper | — |
+| 8 | `checkbox` | Check-box toggle (☒/☐) | `checked=` (`true`/`false`) |
 
 ## Shared props (every control type)
 
@@ -128,6 +129,18 @@ officecli add file.docx /body --type sdt --prop type=group \
   --prop alias="Approval Block" --prop tag=approval \
   --prop text="Approved by HR — signature on file." \
   --prop lock=sdtContentLocked
+```
+
+### 8. checkbox — check-box toggle
+
+A real Word check-box content control. `checked=true` renders ☒ (2612),
+`checked=false` renders ☐ (2610); the state is stored as a `<w14:checkbox>`
+marker in the control's `sdtPr`. `get` reads `type=checkbox` and `checked`.
+
+```bash
+officecli add file.docx /body --type sdt --prop type=checkbox \
+  --prop alias="Approved" --prop tag=hrApproved \
+  --prop checked=true
 ```
 
 ## Modifying after creation (`set`)

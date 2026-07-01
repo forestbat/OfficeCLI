@@ -169,7 +169,8 @@ with officecli.create(FILE, "--force") as doc:
         para("6. Locked Fields", style="Heading1"),
         para("A locked PAGE field keeps its cached result even on Update "
              "Field:"),
-        # fldLock=true persists in OOXML; currently not surfaced on get.
+        # fldLock=true persists in OOXML and is surfaced on get (fldLock=true,
+        # only when the field is locked).
         field(fieldType="page", fldLock="true"),
     ])
 

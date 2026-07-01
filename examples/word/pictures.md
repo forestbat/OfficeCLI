@@ -150,6 +150,26 @@ officecli add pictures.docx '/body/p[18]' --type picture \
 
 ---
 
+### 8 — Decorative Picture (accessibility)
+
+`decorative=true` marks the image as decorative: screen readers skip it entirely
+(no alt text is announced). Stored as an `adec:decorative` extension under the
+picture's `<wp:docPr>`.
+
+```bash
+officecli add pictures.docx '/body/p[21]' --type picture \
+  --prop src=pictures-banner.png \
+  --prop width=10cm --prop height=2.5cm \
+  --prop decorative=true
+```
+
+`get` reports `decorative=true` (only when the flag is set). `decorative` also
+works via `set`. Use it for purely ornamental images that carry no information.
+
+**Features:** `decorative` (accessibility — screen readers skip the image)
+
+---
+
 ## Complete Feature Coverage
 
 | Feature | Section |
@@ -168,6 +188,7 @@ officecli add pictures.docx '/body/p[18]' --type picture \
 | **wrap=tight:** text hugs boundary | 6 |
 | **hPosition / vPosition:** absolute offset | 6 |
 | **link=:** clickable image hyperlink | 7 |
+| **decorative=true:** mark decorative (screen readers skip) | 8 |
 
 ## Inspect the Generated File
 
@@ -200,10 +221,3 @@ officecli get pictures.docx '/body/p[18]/r[2]'
 > **Note on paths:** the `/body/p[N]/r[2]` positional paths above assume a
 > freshly generated file. `officecli query pictures.docx picture` prints the
 > authoritative `@paraId` paths, which are stable across edits.
-
-## Dropped / unsupported
-
-- **`decorative`** — reported `UNSUPPORTED` by the docx picture handler
-  (`officecli add ... --prop decorative=true` → `unsupported_property`
-  warning). It is intentionally omitted here. Use `alt=` for accessibility;
-  a truly decorative image can simply carry empty/no alt text.

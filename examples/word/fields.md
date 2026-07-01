@@ -119,10 +119,10 @@ field on F9 / recalc — the cached result stays put:
 officecli add file.docx /body --type field --prop fieldType=page --prop fldLock=true
 ```
 
-> **Round-trip note:** `fldLock=true` is consumed by Add and **persists in the
-> OOXML** (`w:fldChar/@w:fldLock="true"` — verified in the generated file), but
-> it is currently **not surfaced on `get`** of a freshly-added complex field.
-> The lock is real in the document; only the readback is absent.
+> **Round-trip note:** `fldLock=true` is consumed by Add, **persists in the
+> OOXML** (`w:fldChar/@w:fldLock="true"`), and is **surfaced on `get`** —
+> `get`/`query` of the locked field reports `fldLock=true`. The key is emitted
+> only when the field is locked; an unlocked field has no `fldLock` key.
 
 ## Composite footer — "Page X of Y"
 
@@ -203,5 +203,5 @@ fields and the TOC back:
 ```
 
 `fieldType`, `instruction` (with all its switches and IF true/false text), and
-every TOC prop round-trip. `fldLock` persists in the OOXML but is not surfaced
-on `get` (see above).
+every TOC prop round-trip. `fldLock` persists in the OOXML and is surfaced on
+`get` (`fldLock=true`, only when the field is locked — see above).

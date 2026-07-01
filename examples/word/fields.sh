@@ -134,8 +134,8 @@ officecli add "$FILE" /body --type field --prop fieldType=title
 officecli add "$FILE" /body --type paragraph --prop text="6. Locked Fields" --prop style=Heading1
 officecli add "$FILE" /body --type paragraph --prop text="A locked PAGE field keeps its cached result even on Update Field:"
 # Features: PAGE field with fldLock=true — Word does NOT recalc it on F9; the
-#           cached result stays put. (fldLock persists in OOXML; it is currently
-#           not surfaced on get — see fields.md.)
+#           cached result stays put. fldLock persists in OOXML and is now
+#           reported on get (fldLock=true, only when the field is locked).
 officecli add "$FILE" /body --type field --prop fieldType=page --prop fldLock=true
 
 # ============================================================
