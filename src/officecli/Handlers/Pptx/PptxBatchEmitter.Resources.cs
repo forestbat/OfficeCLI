@@ -571,22 +571,22 @@ public static partial class PptxBatchEmitter
         // a deck-level default text style (gov_bja_template, …).
 
         // custShowLst — `<p:custShowLst><p:custShow><p:sldLst><p:sld r:id="…"/>`.
+        // MUST NOT be carried verbatim: each <p:sld r:id> points at a slide by
+        // relationship id, but replay's `add slide` mints FRESH rIds, so the
+        // carried rIds are stale — they resolve to the wrong slide or to no
+        // relationship at all, and PowerPoint then refuses the whole deck
+        // (0x80070570; sample03, sample08). There is no reliable way to remap
+        // the ids at emit time (the replay rIds don't exist yet). Dropping the
+        // custom-show list keeps the deck openable (the shows are lost, a minor
+        // feature) — strictly better than a corrupt package. Warn so the user
+        // knows the shows were not round-tripped.
         var custShow = doc.Root.Element(pNs + "custShowLst");
         if (custShow != null)
         {
-            var xml = CanonicalizeRawXml(custShow.ToString(System.Xml.Linq.SaveOptions.DisableFormatting));
-            items.Add(new BatchItem
-            {
-                Command = "raw-set",
-                Part = "/presentation",
-                Xpath = "/p:presentation",
-                Action = "append",
-                Xml = xml,
-            });
             ctx.Unsupported.Add(new UnsupportedWarning(
                 Element: "presentation.custShowLst",
                 SlidePath: "/presentation",
-                Reason: "Custom slide shows reference slides by relationship id; replay's `add slide` mints fresh rIds, so the custShow targets may point at stale relationships. Verify in PowerPoint before relying on the round-tripped show."));
+                Reason: "Custom slide shows reference slides by relationship id; replay mints fresh rIds so the references cannot be preserved. Dropped to keep the deck openable (carrying the stale ids makes PowerPoint reject the file). Recreate custom shows manually if needed."));
         }
 
         // photoAlbum — flags marking the deck as a photo album
