@@ -354,6 +354,19 @@ public partial class WordHandler
         var element = NavigateToElement(parts, out var ctx)
             ?? throw new ArgumentException($"Path not found: {path}" + (ctx != null ? $". {ctx}" : ""));
 
+        // A /body/group[N] path navigates to the inner <wpg:wgp>; removing just
+        // that element leaves an empty <w:drawing>/<wp:anchor> husk behind (a
+        // dangling floating anchor). Redirect the removal to the whole enclosing
+        // <w:drawing> so the group vanishes cleanly (mirrors the pptx group
+        // remove). The empty-wrapper-paragraph cleanup below then drops the
+        // now-empty carrier paragraph the diagram was emitted into.
+        if (element.LocalName == "wgp"
+            && element.NamespaceUri == "http://schemas.microsoft.com/office/word/2010/wordprocessingGroup")
+        {
+            var enclosingDrawing = element.Ancestors<Drawing>().FirstOrDefault();
+            if (enclosingDrawing != null) element = enclosingDrawing;
+        }
+
         // Clean up ImageParts referenced by any inline/anchor pictures in the element
         var mainPart2 = _doc.MainDocumentPart;
         if (mainPart2 != null)
@@ -598,6 +611,20 @@ public partial class WordHandler
         var wrapperPara = (element is M.Paragraph && element.Parent is Paragraph wp
             && wp.ChildElements.All(c => c == element || c is ParagraphProperties))
             ? wp : null;
+
+        // A floating diagram group is emitted into a dedicated <w:p><w:r><w:drawing/>.
+        // Once the drawing is removed, that run and paragraph hold nothing else —
+        // drop the wrapper paragraph too so no zombie empty paragraph is left
+        // where the diagram was. Only when the run and paragraph carry no other
+        // content (a diagram sharing a paragraph with text keeps the paragraph).
+        if (wrapperPara == null && element is Drawing wrapDraw
+            && wrapDraw.Parent is Run wrapRun
+            && wrapRun.Parent is Paragraph wrapPara
+            && wrapRun.ChildElements.All(c => c == wrapDraw || c is RunProperties)
+            && wrapPara.ChildElements.All(c => c == wrapRun || c is ParagraphProperties))
+        {
+            wrapperPara = wrapPara;
+        }
 
         // Refresh textId on parent paragraph if removing a child element (e.g. run)
         var parentPara = element.Ancestors<Paragraph>().FirstOrDefault();

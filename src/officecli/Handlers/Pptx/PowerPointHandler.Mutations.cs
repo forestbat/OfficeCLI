@@ -573,21 +573,38 @@ public partial class PowerPointHandler
         }
         else if (elementType == "group")
         {
-            // Ungroup: move children back to parent container (slide root or outer group),
-            // then remove group. `container` is the parent of the group being removed,
-            // so children naturally land at the right level — root-level ungroup keeps
-            // children at slide root; nested-group ungroup moves them up one level only.
+            // Delete the whole group and everything inside it. Mirrors Word's
+            // `remove /body/group[N]`, the diagram help ("remove deletes it"),
+            // and PowerPoint's own Delete on a selected group. (Previously this
+            // UNGROUPED — promoting children to the parent container — which
+            // silently scattered a removed diagram into loose shapes and
+            // diverged from the docx group.) Clean up parts / animation refs
+            // held by descendants so no orphaned ImageParts / ChartParts or
+            // dangling timing entries survive the delete.
             var groups = container.Elements<GroupShape>().ToList();
             if (elementIdx < 1 || elementIdx > groups.Count)
                 throw new ArgumentException($"Group {elementIdx} not found");
             var group = groups[elementIdx - 1];
-            var children = group.ChildElements
-                .Where(e => e is Shape or Picture or ConnectionShape or GraphicFrame or GroupShape)
-                .ToList();
-            foreach (var child in children)
+            var slide = GetSlide(slidePart);
+            foreach (var descPic in group.Descendants<Picture>().ToList())
             {
-                child.Remove();
-                container.AppendChild(child);
+                var pid = descPic.NonVisualPictureProperties?.NonVisualDrawingProperties?.Id?.Value ?? 0;
+                if (pid > 0) RemoveShapeAnimations(slide, (uint)pid);
+                RemovePictureWithCleanup(slidePart, shapeTree, descPic);
+            }
+            foreach (var descChart in group.Descendants<GraphicFrame>()
+                         .Where(gf => gf.Descendants<C.ChartReference>().Any()).ToList())
+            {
+                var chartRef = descChart.Descendants<C.ChartReference>().FirstOrDefault();
+                if (chartRef?.Id?.Value != null)
+                {
+                    try { slidePart.DeletePart(chartRef.Id.Value); } catch { }
+                }
+            }
+            foreach (var descShape in group.Descendants<Shape>().ToList())
+            {
+                var sid = descShape.NonVisualShapeProperties?.NonVisualDrawingProperties?.Id?.Value ?? 0;
+                if (sid > 0) RemoveShapeAnimations(slide, (uint)sid);
             }
             group.Remove();
         }
