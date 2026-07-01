@@ -751,7 +751,7 @@ public partial class PowerPointHandler
                         var cellFirstPProps = cellFirstPara?.ParagraphProperties;
                         if (cellFirstPProps != null)
                         {
-                            var cellLsPct = cellFirstPProps.GetFirstChild<Drawing.LineSpacing>()?.GetFirstChild<Drawing.SpacingPercent>()?.Val?.Value;
+                            var cellLsPct = cellFirstPProps.GetFirstChild<Drawing.LineSpacing>()?.GetFirstChild<Drawing.SpacingPercent>().PercentVal();
                             if (cellLsPct.HasValue) cellNode.Format["lineSpacing"] = SpacingConverter.FormatPptLineSpacingPercent(cellLsPct.Value);
                             var cellLsPts = cellFirstPProps.GetFirstChild<Drawing.LineSpacing>()?.GetFirstChild<Drawing.SpacingPoints>()?.Val?.Value;
                             if (cellLsPts.HasValue) cellNode.Format["lineSpacing"] = SpacingConverter.FormatPptLineSpacingPoints(cellLsPts.Value);
@@ -1980,7 +1980,7 @@ public partial class PowerPointHandler
         var pProps = firstPara?.ParagraphProperties;
         if (pProps != null)
         {
-            var lsPct = pProps.GetFirstChild<Drawing.LineSpacing>()?.GetFirstChild<Drawing.SpacingPercent>()?.Val?.Value;
+            var lsPct = pProps.GetFirstChild<Drawing.LineSpacing>()?.GetFirstChild<Drawing.SpacingPercent>().PercentVal();
             if (lsPct.HasValue) node.Format["lineSpacing"] = SpacingConverter.FormatPptLineSpacingPercent(lsPct.Value);
             var lsPts = pProps.GetFirstChild<Drawing.LineSpacing>()?.GetFirstChild<Drawing.SpacingPoints>()?.Val?.Value;
             if (lsPts.HasValue) node.Format["lineSpacing"] = SpacingConverter.FormatPptLineSpacingPoints(lsPts.Value);
@@ -2096,7 +2096,7 @@ public partial class PowerPointHandler
                     if (paraPProps?.RightToLeft?.HasValue == true)
                         paraNode.Format["direction"] = paraPProps.RightToLeft.Value ? "rtl" : "ltr";
                     EmitParagraphBreakProps(paraPProps, paraNode);
-                    var pLsPct = paraPProps?.GetFirstChild<Drawing.LineSpacing>()?.GetFirstChild<Drawing.SpacingPercent>()?.Val?.Value;
+                    var pLsPct = paraPProps?.GetFirstChild<Drawing.LineSpacing>()?.GetFirstChild<Drawing.SpacingPercent>().PercentVal();
                     if (pLsPct.HasValue) paraNode.Format["lineSpacing"] = SpacingConverter.FormatPptLineSpacingPercent(pLsPct.Value);
                     var pLsPts = paraPProps?.GetFirstChild<Drawing.LineSpacing>()?.GetFirstChild<Drawing.SpacingPoints>()?.Val?.Value;
                     if (pLsPts.HasValue) paraNode.Format["lineSpacing"] = SpacingConverter.FormatPptLineSpacingPoints(pLsPts.Value);

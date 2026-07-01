@@ -1240,7 +1240,7 @@ public partial class PowerPointHandler
             p => p.GetFirstChild<Drawing.LineSpacing>() != null);
         var lnSpc = lvlPpr?.GetFirstChild<Drawing.LineSpacing>();
         if (lnSpc == null) return null;
-        var pct = lnSpc.GetFirstChild<Drawing.SpacingPercent>()?.Val?.Value;
+        var pct = lnSpc.GetFirstChild<Drawing.SpacingPercent>().PercentVal();
         if (pct.HasValue) return $"line-height:{pct.Value / 100000.0:0.##}";
         var pts = lnSpc.GetFirstChild<Drawing.SpacingPoints>()?.Val?.Value;
         if (pts.HasValue) return $"line-height:{pts.Value / 100.0:0.##}pt";

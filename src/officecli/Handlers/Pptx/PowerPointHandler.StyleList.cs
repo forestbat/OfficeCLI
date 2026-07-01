@@ -274,7 +274,7 @@ public partial class PowerPointHandler
         var lineSp = pPr.GetFirstChild<Drawing.LineSpacing>();
         if (lineSp != null)
         {
-            var pct = lineSp.GetFirstChild<Drawing.SpacingPercent>()?.Val?.Value;
+            var pct = lineSp.GetFirstChild<Drawing.SpacingPercent>().PercentVal();
             if (pct.HasValue)
             {
                 r.LineSpacing = SpacingConverter.FormatPptLineSpacingPercent(pct.Value);

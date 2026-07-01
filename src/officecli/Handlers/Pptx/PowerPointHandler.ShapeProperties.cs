@@ -3787,7 +3787,7 @@ public partial class PowerPointHandler
         var lsEl = firstParaProps?.GetFirstChild<Drawing.LineSpacing>();
         if (lsEl != null)
         {
-            var pct = lsEl.GetFirstChild<Drawing.SpacingPercent>()?.Val?.Value;
+            var pct = lsEl.GetFirstChild<Drawing.SpacingPercent>().PercentVal();
             if (pct.HasValue)
                 lineSpacingMultiplier = pct.Value / 100000.0;
             var pts = lsEl.GetFirstChild<Drawing.SpacingPoints>()?.Val?.Value;

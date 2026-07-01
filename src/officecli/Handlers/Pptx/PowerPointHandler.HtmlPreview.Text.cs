@@ -170,7 +170,7 @@ public partial class PowerPointHandler
             {
                 // SpacingPercent fallback (parity with lineSpacing below). pct
                 // is /100000; multiply by the effective font pt to get the gap.
-                var sbPct = sbElem?.GetFirstChild<Drawing.SpacingPercent>()?.Val?.Value;
+                var sbPct = sbElem?.GetFirstChild<Drawing.SpacingPercent>().PercentVal();
                 if (sbPct.HasValue && !isFirstPara)
                     paraStyles.Add($"margin-top:{sbPct.Value / 100000.0 * (spcFontHundredths / 100.0):0.##}pt");
             }
@@ -180,7 +180,7 @@ public partial class PowerPointHandler
             if (saPts.HasValue && !isLastPara) paraStyles.Add($"margin-bottom:{saPts.Value / 100.0:0.##}pt");
             else if (!isLastPara)
             {
-                var saPct = saElem?.GetFirstChild<Drawing.SpacingPercent>()?.Val?.Value;
+                var saPct = saElem?.GetFirstChild<Drawing.SpacingPercent>().PercentVal();
                 if (saPct.HasValue)
                     paraStyles.Add($"margin-bottom:{saPct.Value / 100000.0 * (spcFontHundredths / 100.0):0.##}pt");
             }
@@ -188,7 +188,7 @@ public partial class PowerPointHandler
             // Line spacing. R10-1: scale percent/default line-heights by the
             // normAutofit lnSpcReduction factor (fixed-pt line-heights are absolute
             // and unaffected, matching PowerPoint).
-            var lsPct = pProps?.GetFirstChild<Drawing.LineSpacing>()?.GetFirstChild<Drawing.SpacingPercent>()?.Val?.Value;
+            var lsPct = pProps?.GetFirstChild<Drawing.LineSpacing>()?.GetFirstChild<Drawing.SpacingPercent>().PercentVal();
             if (lsPct.HasValue) paraStyles.Add($"line-height:{lsPct.Value / 100000.0 * lnSpcFactor:0.##}");
             var lsPts = pProps?.GetFirstChild<Drawing.LineSpacing>()?.GetFirstChild<Drawing.SpacingPoints>()?.Val?.Value;
             if (lsPts.HasValue) paraStyles.Add($"line-height:{lsPts.Value / 100.0:0.##}pt");

@@ -520,7 +520,7 @@ public partial class PowerPointHandler
                 var qParaTabs = ReadTabsFromPProps(qParaPProps);
                 if (qParaTabs != null) paraNode.Format["tabs"] = qParaTabs;
             }
-            var qLsPct = qParaPProps?.GetFirstChild<Drawing.LineSpacing>()?.GetFirstChild<Drawing.SpacingPercent>()?.Val?.Value;
+            var qLsPct = qParaPProps?.GetFirstChild<Drawing.LineSpacing>()?.GetFirstChild<Drawing.SpacingPercent>().PercentVal();
             if (qLsPct.HasValue) paraNode.Format["lineSpacing"] = SpacingConverter.FormatPptLineSpacingPercent(qLsPct.Value);
             var qLsPts = qParaPProps?.GetFirstChild<Drawing.LineSpacing>()?.GetFirstChild<Drawing.SpacingPoints>()?.Val?.Value;
             if (qLsPts.HasValue) paraNode.Format["lineSpacing"] = SpacingConverter.FormatPptLineSpacingPoints(qLsPts.Value);
@@ -627,7 +627,7 @@ public partial class PowerPointHandler
                 var phTabs = ReadTabsFromPProps(phPProps);
                 if (phTabs != null) phParaNode.Format["tabs"] = phTabs;
             }
-            var phLsPct = phPProps?.GetFirstChild<Drawing.LineSpacing>()?.GetFirstChild<Drawing.SpacingPercent>()?.Val?.Value;
+            var phLsPct = phPProps?.GetFirstChild<Drawing.LineSpacing>()?.GetFirstChild<Drawing.SpacingPercent>().PercentVal();
             if (phLsPct.HasValue) phParaNode.Format["lineSpacing"] = SpacingConverter.FormatPptLineSpacingPercent(phLsPct.Value);
             var phLsPts = phPProps?.GetFirstChild<Drawing.LineSpacing>()?.GetFirstChild<Drawing.SpacingPoints>()?.Val?.Value;
             if (phLsPts.HasValue) phParaNode.Format["lineSpacing"] = SpacingConverter.FormatPptLineSpacingPoints(phLsPts.Value);
@@ -881,7 +881,7 @@ public partial class PowerPointHandler
             var qCellFirstPProps = cellFirstPara?.ParagraphProperties;
             if (qCellFirstPProps != null)
             {
-                var qLsPct = qCellFirstPProps.GetFirstChild<Drawing.LineSpacing>()?.GetFirstChild<Drawing.SpacingPercent>()?.Val?.Value;
+                var qLsPct = qCellFirstPProps.GetFirstChild<Drawing.LineSpacing>()?.GetFirstChild<Drawing.SpacingPercent>().PercentVal();
                 if (qLsPct.HasValue) cellNode.Format["lineSpacing"] = OfficeCli.Core.SpacingConverter.FormatPptLineSpacingPercent(qLsPct.Value);
                 var qLsPts = qCellFirstPProps.GetFirstChild<Drawing.LineSpacing>()?.GetFirstChild<Drawing.SpacingPoints>()?.Val?.Value;
                 if (qLsPts.HasValue) cellNode.Format["lineSpacing"] = OfficeCli.Core.SpacingConverter.FormatPptLineSpacingPoints(qLsPts.Value);
