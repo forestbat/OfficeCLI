@@ -272,9 +272,70 @@ public partial class ExcelHandler
             using var writer = new System.IO.StreamWriter(vmlPart.GetStream());
             writer.Write("<xml xmlns:v=\"urn:schemas-microsoft-com:vml\" xmlns:o=\"urn:schemas-microsoft-com:office:office\" xmlns:x=\"urn:schemas-microsoft-com:office:excel\"><o:shapelayout v:ext=\"edit\"><o:idmap v:ext=\"edit\" data=\"1\"/></o:shapelayout><v:shapetype id=\"_x0000_t202\" coordsize=\"21600,21600\" o:spt=\"202\" path=\"m,l,21600r21600,l21600,xe\"><v:stroke joinstyle=\"miter\"/><v:path gradientshapeok=\"t\" o:connecttype=\"rect\"/></v:shapetype></xml>");
         }
+        // DATA-CORRUPTION(xlsx/comment-legacydrawing): a comment needs BOTH
+        // the worksheet-level <legacyDrawing r:id=.../> reference AND a
+        // per-comment <v:shape ObjectType="Note"> anchor inside the VML part.
+        // Without them, a lone comment happens to open (Excel tolerates the
+        // dangling VML rel + missing anchor), but the moment ANY <drawing>
+        // lands on the same sheet (chart, picture) Excel's stricter
+        // rel-consistency pass rejects the file with 0x800A03EC. Mirrors the
+        // OLE VML wiring in Add.Drawings.cs.
+        var cmtVmlPart = cmtWorksheet.VmlDrawingParts.First();
+        AppendCommentVmlShape(cmtVmlPart, cmtRef);
+        var cmtWsElement = GetSheet(cmtWorksheet);
+        if (cmtWsElement.GetFirstChild<LegacyDrawing>() == null)
+        {
+            var cmtVmlRelId = cmtWorksheet.GetIdOfPart(cmtVmlPart);
+            cmtWsElement.AppendChild(new LegacyDrawing { Id = cmtVmlRelId });
+            ReorderWorksheetChildren(cmtWsElement);
+            cmtWsElement.Save();
+        }
 
         var cmtIdx = commentList.Elements<Comment>().ToList().IndexOf(comment) + 1;
         return $"/{cmtSheetName}/comment[{cmtIdx}]";
+    }
+
+    /// <summary>
+    /// Append the per-comment VML anchor shape (ObjectType="Note") to the
+    /// sheet's VML drawing part. Excel resolves each comment's popup box via
+    /// this shape's x:Row/x:Column; see the DATA-CORRUPTION note at the call
+    /// site for why its absence corrupts the file once a drawing coexists.
+    /// </summary>
+    private void AppendCommentVmlShape(VmlDrawingPart vmlPart, string cellRef)
+    {
+        string xml;
+        using (var reader = new System.IO.StreamReader(vmlPart.GetStream(System.IO.FileMode.Open, System.IO.FileAccess.Read)))
+            xml = reader.ReadToEnd();
+        var closeIdx = xml.LastIndexOf("</xml>", StringComparison.OrdinalIgnoreCase);
+        if (closeIdx < 0) return; // malformed skeleton — leave untouched
+
+        var (colName, rowNum) = ParseCellReference(cellRef.ToUpperInvariant());
+        var col0 = ColumnNameToIndex(colName) - 1; // x:Column is 0-based
+        var row0 = rowNum - 1;
+        // 1025+N is Excel's conventional legacy-VML shape-id base (matches
+        // the OLE path); count existing Note shapes for N.
+        var shapeId = 1025 + System.Text.RegularExpressions.Regex.Matches(
+            xml, "ObjectType=\"Note\"").Count;
+        // Anchor: LeftCol,LeftOff,TopRow,TopOff,RightCol,RightOff,BottomRow,BottomOff —
+        // the standard "one column right, spanning ~3 rows" popup Excel writes.
+        var anchor = $"{col0 + 1}, 15, {row0}, 2, {col0 + 3}, 15, {row0 + 3}, 16";
+        var shape =
+            $"<v:shape id=\"_x0000_s{shapeId}\" type=\"#_x0000_t202\" " +
+            "style=\"position:absolute;margin-left:60pt;margin-top:2pt;width:96pt;height:56pt;z-index:1;visibility:hidden\" " +
+            "fillcolor=\"#ffffe1\" o:insetmode=\"auto\">" +
+            "<v:fill color2=\"#ffffe1\"/>" +
+            "<v:shadow on=\"t\" color=\"black\" obscured=\"t\"/>" +
+            "<v:path o:connecttype=\"none\"/>" +
+            "<v:textbox style=\"mso-direction-alt:auto\"/>" +
+            "<x:ClientData ObjectType=\"Note\">" +
+            "<x:MoveWithCells/><x:SizeWithCells/>" +
+            $"<x:Anchor>{anchor}</x:Anchor>" +
+            "<x:AutoFill>False</x:AutoFill>" +
+            $"<x:Row>{row0}</x:Row><x:Column>{col0}</x:Column>" +
+            "</x:ClientData></v:shape>";
+        xml = xml[..closeIdx] + shape + xml[closeIdx..];
+        using var writer = new System.IO.StreamWriter(vmlPart.GetStream(System.IO.FileMode.Create, System.IO.FileAccess.Write));
+        writer.Write(xml);
     }
 
     private string AddValidation(string parentPath, string type, InsertPosition? position, Dictionary<string, string> properties)

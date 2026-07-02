@@ -57,7 +57,7 @@ public static partial class ExcelBatchEmitter
     {
         "type", "formula", "cachedValue", "computedValue", "evaluated", "empty",
         "merge", "link", "tooltip", "arrayformula", "arrayref", "numFmtId",
-        "quotePrefix", "phonetic", "__raw", "__richtext",
+        "quotePrefix", "phonetic", "__raw", "__richruns",
     };
 
     // Sheet-level Format(Get) key → Set key mapping. Only pairs verified on
@@ -281,9 +281,6 @@ public static partial class ExcelBatchEmitter
                         linkProps["tooltip"] = tts;
                     styleRows.Add(new BatchItem { Command = "set", Path = cell.Path, Props = linkProps });
                 }
-                if (cell.Format.TryGetValue("__richtext", out _))
-                    warnings.Add(new UnsupportedWarning("richtext", cell.Path ?? sheetPath,
-                        "rich-text runs are flattened to plain text on dump"));
                 if (cell.Format.TryGetValue("phonetic", out _))
                     warnings.Add(new UnsupportedWarning("phonetic", cell.Path ?? sheetPath,
                         "phonetic (furigana) guides are not round-tripped by dump"));
@@ -338,7 +335,12 @@ public static partial class ExcelBatchEmitter
         // 7. Sheet-level settings (freeze/zoom/tab color/autofilter/print...).
         EmitSheetSettings(sheetNode, sheetPath, items, warnings);
 
-        // 8. Unsupported-content scan.
+        // 8. Structured elements: tables, conditional formats, validations,
+        // comments, charts, sparklines. After data + styles so referenced
+        // ranges are populated. See ExcelBatchEmitter.Elements.cs.
+        EmitSheetElements(xl, sheetName, items, warnings);
+
+        // 9. Unsupported-content scan.
         foreach (var (element, reason) in xl.GetDumpUnsupportedFeatures(sheetName))
             warnings.Add(new UnsupportedWarning(element, sheetPath, reason));
     }
@@ -491,6 +493,24 @@ public static partial class ExcelBatchEmitter
         var type = cell.Format.TryGetValue("type", out var tv) ? tv as string ?? "" : "";
         var formula = cell.Format.TryGetValue("formula", out var fv) ? fv as string : null;
         var quotePrefix = cell.Format.TryGetValue("quotePrefix", out var qp) && qp is bool qb && qb;
+
+        // Rich-text cells replay through the set type=richtext runs=<json>
+        // vocabulary (runs serialized by DumpSupport); the CSV baseline would
+        // flatten the per-run formatting.
+        if (cell.Format.TryGetValue("__richruns", out var rr) && rr is string runsJson && runsJson.Length > 2)
+        {
+            corrective.Add(new BatchItem
+            {
+                Command = "set",
+                Path = cell.Path,
+                Props = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+                {
+                    ["type"] = "richtext",
+                    ["runs"] = runsJson,
+                },
+            });
+            return null;
+        }
 
         // Array formulas replay through `set arrayformula=` on the anchor
         // cell only; interior cells of the array range carry the same formula

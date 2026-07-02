@@ -6,7 +6,7 @@ namespace OfficeCli.Handlers;
 public static partial class WordBatchEmitter
 {
 
-    private static Dictionary<string, string> BuildChartProps(ChartSpec spec)
+    internal static Dictionary<string, string> BuildChartProps(ChartSpec spec)
     {
         // AddChart ingests data series via a single `data="Name1:v1,v2;Name2:v1,v2"`
         // string. Reconstruct that string from the series children Get

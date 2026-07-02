@@ -1,0 +1,454 @@
+// Copyright 2026 OfficeCLI (https://OfficeCLI.AI)
+// SPDX-License-Identifier: Apache-2.0
+
+using OfficeCli.Core;
+
+namespace OfficeCli.Handlers;
+
+// PR2 element emits: tables, conditional formats, data validations, cell
+// comments, charts, sparklines. Each transcribes the indexed Get node
+// (/Sheet/table[N], /Sheet/cf[N], ...) into the matching `add` vocabulary.
+// All run AFTER the value baseline + style layer so referenced ranges hold
+// real data by the time the element replays.
+public static partial class ExcelBatchEmitter
+{
+    private static void EmitSheetElements(ExcelHandler xl, string sheetName,
+        List<BatchItem> items, List<UnsupportedWarning> warnings)
+    {
+        var sheetPath = "/" + sheetName;
+        var counts = xl.GetDumpElementCounts(sheetName);
+
+        EmitTables(xl, sheetPath, counts.Tables, items, warnings);
+        EmitConditionalFormats(xl, sheetPath, counts.Cfs, items, warnings);
+        EmitValidations(xl, sheetPath, counts.Validations, items, warnings);
+        EmitComments(xl, sheetPath, counts.Comments, items, warnings);
+        EmitCharts(xl, sheetPath, counts.Charts, items, warnings);
+        EmitSparklines(xl, sheetPath, counts.Sparklines, items, warnings);
+        var drawingCounts = xl.GetDumpDrawingCounts(sheetName);
+        EmitPictures(xl, sheetName, sheetPath, drawingCounts.Pictures, items, warnings);
+        EmitShapes(xl, sheetPath, drawingCounts.Shapes, items, warnings);
+        if (counts.HasExtendedChart)
+            warnings.Add(new UnsupportedWarning("chartex", sheetPath,
+                "extended (chartEx) charts have no add vocabulary and are not round-tripped"));
+    }
+
+    // ==================== Tables ====================
+
+    private static void EmitTables(ExcelHandler xl, string sheetPath, int count,
+        List<BatchItem> items, List<UnsupportedWarning> warnings)
+    {
+        for (int i = 1; i <= count; i++)
+        {
+            DocumentNode t;
+            try { t = xl.Get($"{sheetPath}/table[{i}]"); }
+            catch (Exception ex)
+            {
+                warnings.Add(new UnsupportedWarning("table", $"{sheetPath}/table[{i}]", ex.Message));
+                continue;
+            }
+            var props = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            CopyString(t, "ref", props, "ref");
+            CopyString(t, "name", props, "name");
+            CopyString(t, "displayName", props, "displayName");
+            CopyString(t, "style", props, "style");
+            // headerRow defaults true on Add; totalRow defaults false — emit
+            // only the non-default direction to keep round-trip idempotent.
+            if (t.Format.TryGetValue("headerRow", out var hr) && hr is bool hrB && !hrB)
+                props["headerRow"] = "false";
+            if (t.Format.TryGetValue("totalRow", out var tr) && tr is bool trB && trB)
+                props["totalRow"] = "true";
+            CopyBool(t, "bandedRows", props, "bandedRows");
+            CopyBool(t, "bandedCols", props, "bandedCols");
+            CopyBool(t, "firstCol", props, "firstCol");
+            CopyBool(t, "lastCol", props, "lastCol");
+            if (!props.ContainsKey("ref"))
+            {
+                warnings.Add(new UnsupportedWarning("table", t.Path ?? sheetPath, "table has no ref; skipped"));
+                continue;
+            }
+            items.Add(new BatchItem { Command = "add", Parent = sheetPath, Type = "table", Props = props });
+        }
+    }
+
+    // ==================== Conditional formats ====================
+
+    // Get canonical type → Add element type. Every entry's prop mapping is
+    // verified against ExcelHandler.Add.Cf.cs consumption sites.
+    private static void EmitConditionalFormats(ExcelHandler xl, string sheetPath, int count,
+        List<BatchItem> items, List<UnsupportedWarning> warnings)
+    {
+        for (int i = 1; i <= count; i++)
+        {
+            DocumentNode cf;
+            try { cf = xl.Get($"{sheetPath}/cf[{i}]"); }
+            catch (Exception ex)
+            {
+                warnings.Add(new UnsupportedWarning("conditionalformatting", $"{sheetPath}/cf[{i}]", ex.Message));
+                continue;
+            }
+            var type = cf.Format.TryGetValue("type", out var tv) ? tv as string ?? "" : "";
+            var props = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            CopyString(cf, "ref", props, "ref");
+            if (!props.ContainsKey("ref"))
+            {
+                warnings.Add(new UnsupportedWarning("conditionalformatting", cf.Path ?? sheetPath, "cf rule has no ref; skipped"));
+                continue;
+            }
+
+            string addType;
+            switch (type)
+            {
+                case "dataBar":
+                    addType = "databar";
+                    CopyString(cf, "color", props, "color");
+                    if (cf.Format.TryGetValue("showValue", out var sv) && sv is bool svB && !svB)
+                        props["showValue"] = "false";
+                    CopyValue(cf, "minLength", props, "minLength");
+                    CopyValue(cf, "maxLength", props, "maxLength");
+                    CopyString(cf, "direction", props, "direction");
+                    CopyString(cf, "negativeColor", props, "negativeColor");
+                    CopyString(cf, "axisColor", props, "axisColor");
+                    break;
+                case "colorScale":
+                    addType = "colorscale";
+                    CopyString(cf, "minColor", props, "mincolor");
+                    CopyString(cf, "maxColor", props, "maxcolor");
+                    CopyString(cf, "midColor", props, "midcolor");
+                    break;
+                case "iconSet":
+                    addType = "iconset";
+                    CopyString(cf, "iconset", props, "iconset");
+                    CopyBool(cf, "reverse", props, "reverse");
+                    if (cf.Format.TryGetValue("showValue", out var isv) && isv is bool isvB && !isvB)
+                        props["showvalue"] = "false";
+                    break;
+                case "formula":
+                    addType = "formulacf";
+                    CopyString(cf, "formula", props, "formula");
+                    CopyDxfStyle(cf, props);
+                    break;
+                case "cellIs":
+                    addType = "cellis";
+                    CopyString(cf, "operator", props, "operator");
+                    CopyString(cf, "value", props, "value");
+                    CopyString(cf, "value2", props, "value2");
+                    CopyDxfStyle(cf, props);
+                    break;
+                case "topN":
+                    addType = "topn";
+                    CopyValue(cf, "rank", props, "rank");
+                    CopyBool(cf, "percent", props, "percent");
+                    CopyBool(cf, "bottom", props, "bottom");
+                    CopyDxfStyle(cf, props);
+                    break;
+                case "aboveAverage":
+                    addType = "aboveaverage";
+                    if (cf.Format.TryGetValue("aboveAverage", out var aa) && aa is bool aaB && !aaB)
+                        props["above"] = "false";
+                    CopyDxfStyle(cf, props);
+                    break;
+                case "uniqueValues":
+                    addType = "uniquevalues";
+                    CopyDxfStyle(cf, props);
+                    break;
+                case "duplicateValues":
+                    addType = "duplicatevalues";
+                    CopyDxfStyle(cf, props);
+                    break;
+                case "containsText":
+                    addType = "containstext";
+                    CopyString(cf, "text", props, "text");
+                    CopyDxfStyle(cf, props);
+                    break;
+                case "timePeriod":
+                    addType = "dateoccurring";
+                    CopyString(cf, "period", props, "period");
+                    CopyDxfStyle(cf, props);
+                    break;
+                default:
+                    warnings.Add(new UnsupportedWarning("conditionalformatting", cf.Path ?? sheetPath,
+                        $"cf rule type '{type}' has no add vocabulary; skipped"));
+                    continue;
+            }
+            items.Add(new BatchItem { Command = "add", Parent = sheetPath, Type = addType, Props = props });
+        }
+    }
+
+    // dxf-resolved style facets PopulateCfNodeFromDxf surfaces; the dxf-backed
+    // Add paths (formulacf/cellis/topn/...) consume the same fill/font.* keys.
+    private static void CopyDxfStyle(DocumentNode cf, Dictionary<string, string> props)
+    {
+        CopyString(cf, "fill", props, "fill");
+        CopyBool(cf, "font.bold", props, "font.bold");
+        CopyBool(cf, "font.italic", props, "font.italic");
+        CopyBool(cf, "font.strike", props, "font.strike");
+        CopyString(cf, "font.underline", props, "font.underline");
+        CopyString(cf, "font.size", props, "font.size");
+        CopyString(cf, "font.name", props, "font.name");
+        CopyString(cf, "font.color", props, "font.color");
+    }
+
+    // ==================== Data validations ====================
+
+    private static void EmitValidations(ExcelHandler xl, string sheetPath, int count,
+        List<BatchItem> items, List<UnsupportedWarning> warnings)
+    {
+        for (int i = 1; i <= count; i++)
+        {
+            DocumentNode dv;
+            try { dv = xl.Get($"{sheetPath}/validation[{i}]"); }
+            catch (Exception ex)
+            {
+                warnings.Add(new UnsupportedWarning("validation", $"{sheetPath}/validation[{i}]", ex.Message));
+                continue;
+            }
+            var props = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            foreach (var key in new[]
+            {
+                "ref", "type", "operator", "formula1", "formula2",
+                "errorTitle", "error", "promptTitle", "prompt",
+            })
+                CopyString(dv, key, props, key);
+            foreach (var key in new[] { "allowBlank", "showError", "showInput" })
+            {
+                // Add defaults each of these to true; carry explicit values
+                // either way so the OOXML attribute round-trips exactly.
+                if (dv.Format.TryGetValue(key, out var v) && v is bool b)
+                    props[key] = b ? "true" : "false";
+            }
+            if (!props.ContainsKey("ref")) continue;
+            items.Add(new BatchItem { Command = "add", Parent = sheetPath, Type = "validation", Props = props });
+        }
+    }
+
+    // ==================== Comments ====================
+
+    private static void EmitComments(ExcelHandler xl, string sheetPath, int count,
+        List<BatchItem> items, List<UnsupportedWarning> warnings)
+    {
+        for (int i = 1; i <= count; i++)
+        {
+            DocumentNode c;
+            try { c = xl.Get($"{sheetPath}/comment[{i}]"); }
+            catch (Exception ex)
+            {
+                warnings.Add(new UnsupportedWarning("comment", $"{sheetPath}/comment[{i}]", ex.Message));
+                continue;
+            }
+            var props = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            CopyString(c, "ref", props, "ref");
+            CopyString(c, "author", props, "author");
+            if (!string.IsNullOrEmpty(c.Text)) props["text"] = c.Text!;
+            CopyBool(c, "font.bold", props, "font.bold");
+            CopyBool(c, "font.italic", props, "font.italic");
+            CopyString(c, "font.underline", props, "font.underline");
+            CopyString(c, "font.color", props, "font.color");
+            CopyString(c, "font.size", props, "font.size");
+            CopyString(c, "font.name", props, "font.name");
+            if (!props.ContainsKey("ref")) continue;
+            items.Add(new BatchItem { Command = "add", Parent = sheetPath, Type = "comment", Props = props });
+        }
+    }
+
+    // ==================== Charts ====================
+
+    private static void EmitCharts(ExcelHandler xl, string sheetPath, int count,
+        List<BatchItem> items, List<UnsupportedWarning> warnings)
+    {
+        for (int i = 1; i <= count; i++)
+        {
+            DocumentNode chart;
+            try { chart = xl.Get($"{sheetPath}/chart[{i}]"); }
+            catch (Exception ex)
+            {
+                warnings.Add(new UnsupportedWarning("chart", $"{sheetPath}/chart[{i}]", ex.Message));
+                continue;
+            }
+            // Reuse the battle-tested docx chart transcription (ChartHelper is
+            // the shared reader/builder across all three formats).
+            var spec = new WordBatchEmitter.ChartSpec(
+                chart.Format, chart.InternalFormat, chart.Children ?? new List<DocumentNode>());
+            Dictionary<string, string> props;
+            try { props = WordBatchEmitter.BuildChartProps(spec); }
+            catch (Exception ex)
+            {
+                warnings.Add(new UnsupportedWarning("chart", chart.Path ?? sheetPath,
+                    $"chart transcription failed: {ex.Message}"));
+                continue;
+            }
+            props.Remove("anchor"); // re-added below in canonical form
+
+            // Excel-specific: when every series carries a range reference
+            // (Sheet1!$B$2:$B$5), replay via dotted seriesN.values/categories
+            // refs instead of literal `data=` — the values already live in the
+            // replayed sheet (import baseline), and refs keep the chart LIVE
+            // (editing a cell updates the chart, matching the source).
+            var series = (chart.Children ?? new List<DocumentNode>())
+                .Where(s => s.Type == "series"
+                    && !(s.Format.TryGetValue("refLine", out var rl) && rl?.ToString() == "true"))
+                .ToList();
+            if (series.Count > 0 && series.All(s =>
+                    s.Format.TryGetValue("valuesRef", out var vr) && vr is string vrS && vrS.Length > 0))
+            {
+                props.Remove("data");
+                props.Remove("categories");
+                for (int n = 0; n < series.Count; n++)
+                {
+                    var s = series[n];
+                    var idx = n + 1;
+                    if (s.Format.TryGetValue("name", out var nm) && nm is string nmS && nmS.Length > 0)
+                        props[$"series{idx}.name"] = nmS;
+                    props[$"series{idx}.values"] = (string)s.Format["valuesRef"]!;
+                    if (s.Format.TryGetValue("categoriesRef", out var cr) && cr is string crS && crS.Length > 0)
+                        props[$"series{idx}.categories"] = crS;
+                }
+            }
+
+            if (chart.Format.TryGetValue("anchor", out var anch) && anch is string anchS && anchS.Length > 0)
+                props["anchor"] = anchS;
+
+            items.Add(new BatchItem { Command = "add", Parent = sheetPath, Type = "chart", Props = props });
+        }
+    }
+
+    // ==================== Sparklines ====================
+
+    private static void EmitSparklines(ExcelHandler xl, string sheetPath, int count,
+        List<BatchItem> items, List<UnsupportedWarning> warnings)
+    {
+        for (int i = 1; i <= count; i++)
+        {
+            DocumentNode spk;
+            try { spk = xl.Get($"{sheetPath}/sparkline[{i}]"); }
+            catch (Exception ex)
+            {
+                warnings.Add(new UnsupportedWarning("sparkline", $"{sheetPath}/sparkline[{i}]", ex.Message));
+                continue;
+            }
+            var props = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            CopyString(spk, "location", props, "location");
+            CopyString(spk, "dataRange", props, "dataRange");
+            CopyString(spk, "type", props, "type");
+            CopyString(spk, "color", props, "color");
+            CopyString(spk, "negativeColor", props, "negativecolor");
+            CopyBool(spk, "markers", props, "markers");
+            CopyBool(spk, "highPoint", props, "highpoint");
+            CopyBool(spk, "lowPoint", props, "lowpoint");
+            CopyBool(spk, "firstPoint", props, "firstpoint");
+            CopyBool(spk, "lastPoint", props, "lastpoint");
+            CopyBool(spk, "negative", props, "negative");
+            CopyValue(spk, "lineWeight", props, "lineweight");
+            if (!props.ContainsKey("location") || !props.ContainsKey("dataRange"))
+            {
+                warnings.Add(new UnsupportedWarning("sparkline", spk.Path ?? sheetPath,
+                    "sparkline missing location/dataRange; skipped"));
+                continue;
+            }
+            items.Add(new BatchItem { Command = "add", Parent = sheetPath, Type = "sparkline", Props = props });
+        }
+    }
+
+    // ==================== Pictures ====================
+
+    private static void EmitPictures(ExcelHandler xl, string sheetName, string sheetPath, int count,
+        List<BatchItem> items, List<UnsupportedWarning> warnings)
+    {
+        for (int i = 1; i <= count; i++)
+        {
+            DocumentNode pic;
+            try { pic = xl.Get($"{sheetPath}/picture[{i}]"); }
+            catch (Exception ex)
+            {
+                warnings.Add(new UnsupportedWarning("picture", $"{sheetPath}/picture[{i}]", ex.Message));
+                continue;
+            }
+            var dataUri = xl.GetDumpPictureDataUri(sheetName, i);
+            if (dataUri == null)
+            {
+                warnings.Add(new UnsupportedWarning("picture", pic.Path ?? sheetPath,
+                    "picture image part could not be read; skipped"));
+                continue;
+            }
+            var props = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+            {
+                ["src"] = dataUri,
+            };
+            // Anchor readback is from/to markers in column/row units — the
+            // same x/y/width/height vocabulary AddPicture consumes.
+            CopyValue(pic, "x", props, "x");
+            CopyValue(pic, "y", props, "y");
+            CopyValue(pic, "width", props, "width");
+            CopyValue(pic, "height", props, "height");
+            CopyString(pic, "alt", props, "alt");
+            CopyString(pic, "name", props, "name");
+            CopyValue(pic, "rotation", props, "rotation");
+            CopyString(pic, "flip", props, "flip");
+            CopyString(pic, "crop", props, "crop");
+            items.Add(new BatchItem { Command = "add", Parent = sheetPath, Type = "picture", Props = props });
+        }
+    }
+
+    // ==================== Shapes ====================
+
+    private static void EmitShapes(ExcelHandler xl, string sheetPath, int count,
+        List<BatchItem> items, List<UnsupportedWarning> warnings)
+    {
+        for (int i = 1; i <= count; i++)
+        {
+            DocumentNode shp;
+            try { shp = xl.Get($"{sheetPath}/shape[{i}]"); }
+            catch (Exception ex)
+            {
+                warnings.Add(new UnsupportedWarning("shape", $"{sheetPath}/shape[{i}]", ex.Message));
+                continue;
+            }
+            var props = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            if (!string.IsNullOrEmpty(shp.Text)) props["text"] = shp.Text!;
+            CopyString(shp, "name", props, "name");
+            CopyString(shp, "geometry", props, "preset");
+            CopyString(shp, "fill", props, "fill");
+            CopyValue(shp, "x", props, "x");
+            CopyValue(shp, "y", props, "y");
+            CopyValue(shp, "width", props, "width");
+            CopyValue(shp, "height", props, "height");
+            CopyString(shp, "size", props, "size");
+            CopyBool(shp, "bold", props, "bold");
+            CopyBool(shp, "italic", props, "italic");
+            CopyString(shp, "underline", props, "font.underline");
+            CopyString(shp, "color", props, "color");
+            CopyString(shp, "font", props, "font");
+            CopyString(shp, "align", props, "align");
+            CopyString(shp, "valign", props, "valign");
+            CopyValue(shp, "rotation", props, "rotation");
+            CopyString(shp, "flip", props, "flip");
+            CopyString(shp, "line", props, "line");
+            items.Add(new BatchItem { Command = "add", Parent = sheetPath, Type = "shape", Props = props });
+        }
+    }
+
+    // ==================== Copy helpers ====================
+
+    private static void CopyString(DocumentNode node, string getKey,
+        Dictionary<string, string> props, string setKey)
+    {
+        if (node.Format.TryGetValue(getKey, out var v) && v is string s && s.Length > 0)
+            props[setKey] = s;
+    }
+
+    private static void CopyBool(DocumentNode node, string getKey,
+        Dictionary<string, string> props, string setKey)
+    {
+        if (node.Format.TryGetValue(getKey, out var v) && v is bool b && b)
+            props[setKey] = "true";
+    }
+
+    private static void CopyValue(DocumentNode node, string getKey,
+        Dictionary<string, string> props, string setKey)
+    {
+        if (node.Format.TryGetValue(getKey, out var v) && v != null)
+        {
+            var s = FormatValue(v);
+            if (s.Length > 0) props[setKey] = s;
+        }
+    }
+}

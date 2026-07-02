@@ -505,7 +505,10 @@ public static partial class WordBatchEmitter
         }
     }
 
-    private sealed record ChartSpec(Dictionary<string, object?> Format, Dictionary<string, object?> InternalFormat, IReadOnlyList<DocumentNode> Series);
+    // internal (not private): ExcelBatchEmitter reuses BuildChartProps — the
+    // chart transcription logic is ChartHelper-based and format-agnostic, and
+    // duplicating its 200 lines of round-trip fixes would guarantee drift.
+    internal sealed record ChartSpec(Dictionary<string, object?> Format, Dictionary<string, object?> InternalFormat, IReadOnlyList<DocumentNode> Series);
 
     private sealed record BodyEmitContext(
         List<string> FootnoteTexts,

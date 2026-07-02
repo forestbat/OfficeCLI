@@ -1,6 +1,7 @@
 // Copyright 2026 OfficeCLI (https://OfficeCLI.AI)
 // SPDX-License-Identifier: Apache-2.0
 
+using DocumentFormat.OpenXml;
 using DocumentFormat.OpenXml.Packaging;
 using DocumentFormat.OpenXml.Spreadsheet;
 using OfficeCli.Core;
@@ -85,10 +86,12 @@ public partial class ExcelHandler
                 var raw = cell.CellValue?.Text;
                 if (!string.IsNullOrEmpty(raw))
                     cellNode.Format["__raw"] = raw;
-                // Rich-text marker: inline-string runs or a rich shared-string
-                // entry can't ride the CSV baseline; the emitter needs to know.
+                // Rich-text carrier: inline-string runs or a rich shared-string
+                // entry can't ride the CSV baseline. Serialize the runs into
+                // the `runs=<json>` shape ApplyRichTextToCell consumes so the
+                // emitter can replay via `set type=richtext runs=...`.
                 if (HasRichTextContent(cell))
-                    cellNode.Format["__richtext"] = true;
+                    cellNode.Format["__richruns"] = SerializeRichTextRuns(cell);
                 rowNode.Children.Add(cellNode);
             }
 
@@ -103,17 +106,92 @@ public partial class ExcelHandler
     {
         var inline = cell.GetFirstChild<InlineString>();
         if (inline != null && inline.Elements<Run>().Any()) return true;
+        return GetRichTextHost(cell)?.Elements<Run>().Any() == true;
+    }
+
+    private OpenXmlElement? GetRichTextHost(Cell cell)
+    {
+        var inline = cell.GetFirstChild<InlineString>();
+        if (inline != null && inline.Elements<Run>().Any()) return inline;
         if (cell.DataType?.Value == CellValues.SharedString
             && int.TryParse(cell.CellValue?.Text, out var ssIdx))
         {
             var ssItems = _doc.WorkbookPart?.SharedStringTablePart?.SharedStringTable;
-            if (ssItems != null)
-            {
-                var item = ssItems.Elements<SharedStringItem>().ElementAtOrDefault(ssIdx);
-                if (item != null && item.Elements<Run>().Any()) return true;
-            }
+            return ssItems?.Elements<SharedStringItem>().ElementAtOrDefault(ssIdx);
         }
-        return false;
+        return null;
+    }
+
+    /// <summary>
+    /// Serialize a rich-text cell's runs into the `runs=<json>` array
+    /// ApplyRichTextToCell consumes. Key vocabulary mirrors RunToNode's Get
+    /// output (bold/italic/strike/underline/superscript/subscript/size/color/
+    /// font) — the Add side accepts each of these verbatim.
+    /// </summary>
+    private string SerializeRichTextRuns(Cell cell)
+    {
+        var host = GetRichTextHost(cell);
+        var arr = new System.Text.Json.Nodes.JsonArray();
+        if (host == null) return "[]";
+        // A rich shared-string item may open with a bare <t> (unformatted
+        // leading segment) before the first <r>; carry it as a plain run.
+        var leading = host.GetFirstChild<Text>();
+        if (leading != null && !string.IsNullOrEmpty(leading.Text))
+            arr.Add(new System.Text.Json.Nodes.JsonObject { ["text"] = leading.Text });
+        foreach (var run in host.Elements<Run>())
+        {
+            var o = new System.Text.Json.Nodes.JsonObject { ["text"] = run.Text?.Text ?? "" };
+            var rp = run.RunProperties;
+            if (rp != null)
+            {
+                if (rp.GetFirstChild<Bold>() != null) o["bold"] = true;
+                if (rp.GetFirstChild<Italic>() != null) o["italic"] = true;
+                if (rp.GetFirstChild<Strike>() != null) o["strike"] = true;
+                var ul = rp.GetFirstChild<Underline>();
+                if (ul != null) o["underline"] = ul.Val?.InnerText == "double" ? "double" : "single";
+                var va = rp.GetFirstChild<VerticalTextAlignment>();
+                if (va?.Val?.Value == VerticalAlignmentRunValues.Superscript) o["superscript"] = true;
+                if (va?.Val?.Value == VerticalAlignmentRunValues.Subscript) o["subscript"] = true;
+                var sz = rp.GetFirstChild<FontSize>();
+                if (sz?.Val?.Value != null) o["size"] = $"{sz.Val.Value:0.##}pt";
+                var clr = rp.GetFirstChild<Color>();
+                if (clr?.Rgb?.Value != null) o["color"] = ParseHelpers.FormatHexColor(clr.Rgb.Value!);
+                var rf = rp.GetFirstChild<RunFont>();
+                if (rf?.Val?.Value != null) o["font"] = rf.Val.Value!;
+            }
+            arr.Add(o);
+        }
+        return arr.ToJsonString();
+    }
+
+    /// <summary>Per-sheet element counts for the indexed Get paths the batch
+    /// emitter transcribes (cf[N] / validation[N] / comment[N] / table[N] /
+    /// chart[N] / sparkline[N]).</summary>
+    public (int Tables, int Cfs, int Validations, int Comments, int Charts, int Sparklines, bool HasExtendedChart)
+        GetDumpElementCounts(string sheetName)
+    {
+        var worksheet = FindWorksheet(sheetName)
+            ?? throw new ArgumentException($"Sheet not found: {sheetName}");
+        var ws = GetSheet(worksheet);
+        var tables = worksheet.TableDefinitionParts.Count();
+        var cfs = ws.Elements<ConditionalFormatting>().Count();
+        var validations = ws.GetFirstChild<DataValidations>()?.Elements<DataValidation>().Count() ?? 0;
+        var comments = worksheet.WorksheetCommentsPart?.Comments?
+            .GetFirstChild<CommentList>()?.Elements<Comment>().Count() ?? 0;
+        // chart[N] Get indexes over GetExcelCharts (standard + extended in
+        // drawing order); extended (chartEx) charts have no Add vocabulary.
+        int charts = 0; bool hasExtended = false;
+        if (worksheet.DrawingsPart is { } dp)
+        {
+            var chartInfos = GetExcelCharts(dp);
+            charts = chartInfos.Count;
+            hasExtended = chartInfos.Any(c => c.IsExtended);
+        }
+        int sparklines = 0;
+        var extLst = ws.GetFirstChild<WorksheetExtensionList>();
+        if (extLst != null)
+            sparklines = extLst.Descendants<DocumentFormat.OpenXml.Office2010.Excel.SparklineGroup>().Count();
+        return (tables, cfs, validations, comments, charts, sparklines, hasExtended);
     }
 
     /// <summary>
@@ -199,6 +277,57 @@ public partial class ExcelHandler
         catch { return null; }
     }
 
+    /// <summary>Drawing-layer counts (pictures / leaf shapes) matching the
+    /// picture[N] / shape[N] Get index spaces.</summary>
+    public (int Pictures, int Shapes) GetDumpDrawingCounts(string sheetName)
+    {
+        var worksheet = FindWorksheet(sheetName)
+            ?? throw new ArgumentException($"Sheet not found: {sheetName}");
+        var wsDrawing = worksheet.DrawingsPart?.WorksheetDrawing;
+        if (wsDrawing == null) return (0, 0);
+        var pictures = wsDrawing.Elements<DocumentFormat.OpenXml.Drawing.Spreadsheet.TwoCellAnchor>()
+            .Count(a => a.Descendants<DocumentFormat.OpenXml.Drawing.Spreadsheet.Picture>().Any());
+        var shapes = EnumerateLeafShapes(wsDrawing).Count();
+        return (pictures, shapes);
+    }
+
+    /// <summary>
+    /// Extract picture[index]'s image bytes as a data URI for the emit's
+    /// `add picture src=` prop (ImageSource.Resolve round-trips data URIs).
+    /// SVG dual-representation aware: when the blip carries an
+    /// asvg:svgBlip extension, the TRUE source is the SVG part (the r:embed
+    /// PNG is just the fallback AddPicture regenerates on replay).
+    /// </summary>
+    public string? GetDumpPictureDataUri(string sheetName, int index)
+    {
+        var worksheet = FindWorksheet(sheetName);
+        var drawingsPart = worksheet?.DrawingsPart;
+        var wsDrawing = drawingsPart?.WorksheetDrawing;
+        if (worksheet == null || drawingsPart == null || wsDrawing == null) return null;
+        var picAnchors = wsDrawing.Elements<DocumentFormat.OpenXml.Drawing.Spreadsheet.TwoCellAnchor>()
+            .Where(a => a.Descendants<DocumentFormat.OpenXml.Drawing.Spreadsheet.Picture>().Any())
+            .ToList();
+        if (index < 1 || index > picAnchors.Count) return null;
+        var picture = picAnchors[index - 1]
+            .Descendants<DocumentFormat.OpenXml.Drawing.Spreadsheet.Picture>().First();
+        var blip = picture.BlipFill?.Blip;
+        if (blip == null) return null;
+
+        // SVG extension takes precedence over the PNG fallback embed.
+        var svgBlip = blip.Descendants()
+            .FirstOrDefault(e => e.LocalName == "svgBlip");
+        var relId = svgBlip?.GetAttributes()
+                .FirstOrDefault(a => a.LocalName == "embed").Value
+            ?? blip.Embed?.Value;
+        if (string.IsNullOrEmpty(relId)) return null;
+
+        if (drawingsPart.GetPartById(relId!) is not ImagePart imgPart) return null;
+        using var s = imgPart.GetStream();
+        using var ms = new MemoryStream();
+        s.CopyTo(ms);
+        return $"data:{imgPart.ContentType};base64,{Convert.ToBase64String(ms.ToArray())}";
+    }
+
     /// <summary>
     /// Cheap package-part scan for per-sheet content the batch emit does not
     /// round-trip yet. Mirrors PptxBatchEmitter's EmitAuxiliaryPartsScan
@@ -216,34 +345,17 @@ public partial class ExcelHandler
             if (present) result.Add((element, reason));
         }
 
-        AddIf(ws.Elements<ConditionalFormatting>().Any(), "conditionalformatting",
-            "conditional formats are not round-tripped by dump yet");
-        AddIf(ws.GetFirstChild<DataValidations>()?.Elements<DataValidation>().Any() == true, "validation",
-            "data validations are not round-tripped by dump yet");
-        AddIf(worksheet.TableDefinitionParts.Any(), "table",
-            "tables (listobjects) are not round-tripped by dump yet");
+        // PR2 round-trips tables/cf/validations/comments/charts/sparklines
+        // semantically (ExcelBatchEmitter.Elements.cs); this scan covers only
+        // what still has no emit channel.
         AddIf(worksheet.PivotTableParts.Any(), "pivottable",
             "pivot tables are not round-tripped by dump yet");
-        AddIf(worksheet.DrawingsPart?.ChartParts.Any() == true, "chart",
-            "charts are not round-tripped by dump yet");
-        AddIf(worksheet.DrawingsPart != null && worksheet.DrawingsPart.ImageParts.Any(), "picture",
-            "pictures are not round-tripped by dump yet");
-        AddIf(worksheet.DrawingsPart != null
-              && !worksheet.DrawingsPart.ChartParts.Any()
-              && !worksheet.DrawingsPart.ImageParts.Any(), "drawing",
-            "drawing shapes are not round-tripped by dump yet");
-        AddIf(worksheet.WorksheetCommentsPart?.Comments != null, "comment",
-            "cell comments are not round-tripped by dump yet");
         AddIf(worksheet.EmbeddedObjectParts.Any() || worksheet.EmbeddedPackageParts.Any(), "ole",
             "embedded OLE objects are not round-tripped by dump yet");
-        // Sparklines / slicers live in worksheet extLst.
         var extLst = ws.GetFirstChild<WorksheetExtensionList>();
         if (extLst != null)
         {
-            var extXml = extLst.OuterXml;
-            AddIf(extXml.Contains("sparklineGroups", StringComparison.Ordinal), "sparkline",
-                "sparklines are not round-tripped by dump yet");
-            AddIf(extXml.Contains("slicerList", StringComparison.OrdinalIgnoreCase), "slicer",
+            AddIf(extLst.OuterXml.Contains("slicerList", StringComparison.OrdinalIgnoreCase), "slicer",
                 "slicers are not round-tripped by dump yet");
         }
         return result;
