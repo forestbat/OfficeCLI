@@ -107,6 +107,12 @@ public static partial class ExcelBatchEmitter
         for (int i = 0; i < sheetNames.Count; i++)
             EmitSheet(xl, sheetNames[i], renameFirstSheet: i == 0, items, warnings);
 
+        // Pivot tables replay LAST, after every sheet's data exists — a
+        // pivot's source range routinely lives on a different sheet than the
+        // pivot itself (including sheets emitted later).
+        foreach (var sheetName in sheetNames)
+            EmitPivotTables(xl, "/" + sheetName, xl.GetDumpPivotCount(sheetName), items, warnings);
+
         EmitNamedRanges(xl, items, warnings);
         EmitDocPropsScan(xl, warnings);
 
@@ -142,6 +148,7 @@ public static partial class ExcelBatchEmitter
         var items = new List<BatchItem>();
         var warnings = new List<UnsupportedWarning>();
         EmitSheet(xl, sheetName, renameFirstSheet: false, items, warnings);
+        EmitPivotTables(xl, "/" + sheetName, xl.GetDumpPivotCount(sheetName), items, warnings);
         return (items, warnings);
     }
 
@@ -259,6 +266,28 @@ public static partial class ExcelBatchEmitter
 
         // 2. Value baseline: CSV import blocks + corrective typed sets.
         var rows = xl.GetDumpRowNodes(sheetName);
+
+        // Strip cells inside pivot-table locations from EVERY pass (values,
+        // corrective sets, styles, links): they are derived render output
+        // that `add pivottable` regenerates on replay — importing them as
+        // static content would fight the rebuilt pivot.
+        var pivotRects = xl.GetDumpPivotLocations(sheetName)
+            .Select(ParseRangeRect)
+            .Where(r => r != null)
+            .Select(r => r!.Value)
+            .ToList();
+        if (pivotRects.Count > 0)
+        {
+            foreach (var rowNode in rows)
+            {
+                rowNode.Children?.RemoveAll(cell =>
+                {
+                    var cellRef = LastPathSegment(cell.Path);
+                    return TryParseCellRef(cellRef, out var c, out var r)
+                        && pivotRects.Any(rect => c >= rect.C1 && c <= rect.C2 && r >= rect.R1 && r <= rect.R2);
+                });
+            }
+        }
         var corrective = new List<BatchItem>();
         var styleRows = new List<BatchItem>();
 
@@ -720,6 +749,15 @@ public static partial class ExcelBatchEmitter
         if (string.IsNullOrEmpty(path)) return "";
         var idx = path!.LastIndexOf('/');
         return idx >= 0 ? path[(idx + 1)..] : path;
+    }
+
+    private static (int C1, uint R1, int C2, uint R2)? ParseRangeRect(string range)
+    {
+        var parts = range.Split(':');
+        if (!TryParseCellRef(parts[0].Trim(), out var c1, out var r1)) return null;
+        if (parts.Length == 1) return (c1, r1, c1, r1);
+        if (!TryParseCellRef(parts[1].Trim(), out var c2, out var r2)) return null;
+        return (Math.Min(c1, c2), Math.Min(r1, r2), Math.Max(c1, c2), Math.Max(r1, r2));
     }
 
     private static bool TryParseCellRef(string cellRef, out int colIdx, out uint rowIdx)

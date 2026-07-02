@@ -426,6 +426,111 @@ public static partial class ExcelBatchEmitter
         }
     }
 
+    // ==================== Pivot tables ====================
+
+    // Called from EmitExcel AFTER all sheets (a pivot's source range can live
+    // on a later sheet); the value baseline already excluded each pivot's
+    // location rectangle so the rebuilt pivot lands on clean cells.
+    internal static void EmitPivotTables(ExcelHandler xl, string sheetPath, int count,
+        List<BatchItem> items, List<UnsupportedWarning> warnings)
+    {
+        for (int i = 1; i <= count; i++)
+        {
+            DocumentNode pt;
+            try { pt = xl.Get($"{sheetPath}/pivottable[{i}]"); }
+            catch (Exception ex)
+            {
+                warnings.Add(new UnsupportedWarning("pivottable", $"{sheetPath}/pivottable[{i}]", ex.Message));
+                continue;
+            }
+            var props = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            CopyString(pt, "source", props, "source");
+            if (!props.ContainsKey("source"))
+            {
+                warnings.Add(new UnsupportedWarning("pivottable", pt.Path ?? sheetPath,
+                    "pivot cache source range could not be read; skipped"));
+                continue;
+            }
+            // Readback surfaces the full location rectangle; Add wants the
+            // top-left position cell.
+            if (pt.Format.TryGetValue("location", out var loc) && loc is string locS && locS.Length > 0)
+                props["position"] = locS.Split(':')[0];
+            CopyString(pt, "name", props, "name");
+            CopyString(pt, "style", props, "style");
+            CopyString(pt, "rows", props, "rows");
+            CopyString(pt, "cols", props, "cols");
+            CopyString(pt, "filters", props, "filters");
+            CopyString(pt, "layout", props, "layout");
+            CopyString(pt, "grandTotalCaption", props, "grandtotalcaption");
+            CopyString(pt, "subtotals", props, "subtotals");
+            if (pt.Format.TryGetValue("blankRows", out var br) && br?.ToString() == "true")
+                props["blankrows"] = "true";
+            if (pt.Format.TryGetValue("repeatLabels", out var rl2) && rl2?.ToString() == "true")
+                props["repeatlabels"] = "true";
+            // Grand totals default to ON — carry only the off direction.
+            if (pt.Format.TryGetValue("rowGrandTotals", out var rgt) && rgt?.ToString() == "false")
+                props["rowgrandtotals"] = "false";
+            if (pt.Format.TryGetValue("colGrandTotals", out var cgt) && cgt?.ToString() == "false")
+                props["colgrandtotals"] = "false";
+            // Style-info toggles: emit only non-default values (headers on,
+            // stripes off, last column on).
+            EmitPivotToggle(pt, props, "showRowHeaders", "showrowheaders", defaultValue: true);
+            EmitPivotToggle(pt, props, "showColHeaders", "showcolheaders", defaultValue: true);
+            EmitPivotToggle(pt, props, "showRowStripes", "showrowstripes", defaultValue: false);
+            EmitPivotToggle(pt, props, "showColStripes", "showcolstripes", defaultValue: false);
+            EmitPivotToggle(pt, props, "showLastColumn", "showlastcolumn", defaultValue: true);
+
+            // dataFieldN = "DisplayName:func:Field" (+ optional
+            // dataFieldN.showAs) → values="Field:func[:showAs]:name=DisplayName".
+            var valueSpecs = new List<string>();
+            var dfCount = pt.Format.TryGetValue("dataFieldCount", out var dfc)
+                && int.TryParse(dfc?.ToString(), out var dfcN) ? dfcN : 0;
+            var dfOk = true;
+            for (int d = 1; d <= dfCount; d++)
+            {
+                if (!pt.Format.TryGetValue($"dataField{d}", out var dfv) || dfv is not string dfS)
+                { dfOk = false; break; }
+                var seg = dfS.Split(':');
+                if (seg.Length < 3) { dfOk = false; break; }
+                // Right-anchored: last two segments are func and FIELD; the
+                // display name may itself contain ':'.
+                var field = seg[^1];
+                var func = seg[^2];
+                var displayName = string.Join(":", seg[..^2]);
+                if (field.Contains(',') || displayName.Contains(','))
+                {
+                    warnings.Add(new UnsupportedWarning("pivottable", pt.Path ?? sheetPath,
+                        $"data field '{displayName}' contains a comma; value spec cannot express it"));
+                    dfOk = false; break;
+                }
+                var spec = $"{field}:{func}";
+                if (pt.Format.TryGetValue($"dataField{d}.showAs", out var sa)
+                    && sa is string saS && saS.Length > 0 && saS != "normal")
+                    spec += $":{saS}";
+                spec += $":name={displayName}";
+                valueSpecs.Add(spec);
+            }
+            if (dfOk && valueSpecs.Count > 0)
+                props["values"] = string.Join(",", valueSpecs);
+
+            // Readback-only state with no Add vocabulary — surface the loss.
+            foreach (var lossy in new[] { "sortByField", "collapsedFields", "axisAsDataField" })
+                if (pt.Format.ContainsKey(lossy))
+                    warnings.Add(new UnsupportedWarning("pivottable", pt.Path ?? sheetPath,
+                        $"pivot {lossy} state is not round-tripped (no add vocabulary)"));
+
+            items.Add(new BatchItem { Command = "add", Parent = sheetPath, Type = "pivottable", Props = props });
+        }
+    }
+
+    private static void EmitPivotToggle(DocumentNode pt, Dictionary<string, string> props,
+        string getKey, string setKey, bool defaultValue)
+    {
+        if (pt.Format.TryGetValue(getKey, out var v) && v is string s
+            && bool.TryParse(s, out var b) && b != defaultValue)
+            props[setKey] = b ? "true" : "false";
+    }
+
     // ==================== Copy helpers ====================
 
     private static void CopyString(DocumentNode node, string getKey,

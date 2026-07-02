@@ -277,6 +277,44 @@ public partial class ExcelHandler
         catch { return null; }
     }
 
+    /// <summary>Pivot-table locations on a sheet ("E1:H10" ranges). The dump
+    /// value baseline EXCLUDES cells inside these ranges — they are derived
+    /// render output that `add pivottable` regenerates on replay; importing
+    /// them as static values would collide with the rebuilt pivot.</summary>
+    public List<string> GetDumpPivotLocations(string sheetName)
+    {
+        var worksheet = FindWorksheet(sheetName)
+            ?? throw new ArgumentException($"Sheet not found: {sheetName}");
+        var result = new List<string>();
+        foreach (var pp in worksheet.PivotTableParts)
+        {
+            var loc = pp.PivotTableDefinition?.Location?.Reference?.Value;
+            if (!string.IsNullOrEmpty(loc)) result.Add(loc!);
+        }
+        return result;
+    }
+
+    /// <summary>Number of slicers on a sheet (slicer[N] index space).</summary>
+    public int GetDumpSlicerCount(string sheetName)
+    {
+        var worksheet = FindWorksheet(sheetName)
+            ?? throw new ArgumentException($"Sheet not found: {sheetName}");
+        var extLst = GetSheet(worksheet).GetFirstChild<WorksheetExtensionList>();
+        if (extLst == null) return 0;
+        // Each <x14:slicer r:id> under the slicerList ext references one
+        // SlicerPart; the slicer[N] Get index space walks the same list.
+        return extLst.Descendants()
+            .Count(e => e.LocalName == "slicer" && e.NamespaceUri.Contains("2009/9/main"));
+    }
+
+    /// <summary>Number of pivot tables on a sheet (pivottable[N] index space).</summary>
+    public int GetDumpPivotCount(string sheetName)
+    {
+        var worksheet = FindWorksheet(sheetName)
+            ?? throw new ArgumentException($"Sheet not found: {sheetName}");
+        return worksheet.PivotTableParts.Count();
+    }
+
     /// <summary>Drawing-layer counts (pictures / leaf shapes) matching the
     /// picture[N] / shape[N] Get index spaces.</summary>
     public (int Pictures, int Shapes) GetDumpDrawingCounts(string sheetName)
@@ -345,11 +383,9 @@ public partial class ExcelHandler
             if (present) result.Add((element, reason));
         }
 
-        // PR2 round-trips tables/cf/validations/comments/charts/sparklines
-        // semantically (ExcelBatchEmitter.Elements.cs); this scan covers only
-        // what still has no emit channel.
-        AddIf(worksheet.PivotTableParts.Any(), "pivottable",
-            "pivot tables are not round-tripped by dump yet");
+        // PR2-4 round-trip tables/cf/validations/comments/charts/sparklines/
+        // pictures/shapes/pivots semantically (ExcelBatchEmitter.Elements.cs);
+        // this scan covers only what still has no emit channel.
         AddIf(worksheet.EmbeddedObjectParts.Any() || worksheet.EmbeddedPackageParts.Any(), "ole",
             "embedded OLE objects are not round-tripped by dump yet");
         var extLst = ws.GetFirstChild<WorksheetExtensionList>();
