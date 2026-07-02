@@ -204,12 +204,22 @@ public static partial class PptxBatchEmitter
                     "invertIfNeg",
                     // Source c:idx / c:order (theme-accent + stack-order keys)
                     // when they differ from document position (combo reorder).
-                    "seriesIdx", "seriesOrder" })
+                    "seriesIdx", "seriesOrder",
+                    // Verbatim per-series <c:dLbls> (per-point dLbl / numFmt /
+                    // separator — beyond the dataLabels flag summary).
+                    "dlbls" })
                 {
                     if (s.Format.TryGetValue(key, out var val) && val != null)
                     {
                         var sval = val.ToString();
                         if (string.IsNullOrEmpty(sval)) continue;
+                        // Verbatim dlbls is authoritative for the series'
+                        // label styling — a semantic labelFont.* companion
+                        // would rebuild the txPr and strip it (raw +
+                        // companion double-send family).
+                        if (key.StartsWith("labelFont.", StringComparison.Ordinal)
+                            && s.Format.ContainsKey("dlbls"))
+                            continue;
                         // Idempotence: when the chart-level `key` (Reader's
                         // first-series summary, replayed at chart Setter time
                         // by fanning to every series) already carries the

@@ -1402,6 +1402,15 @@ internal static partial class ChartHelper
                     if (serDLbls.GetFirstChild<C.ShowPercent>()?.Val?.Value == true) dlFlags.Add("percent");
                     if (dlFlags.Count > 0)
                         seriesNode.Format["dataLabels"] = string.Join(",", dlFlags);
+
+                    // Per-point <c:dLbl>, a numFmt, or a separator go beyond
+                    // the flag summary — carry the whole <c:dLbls> verbatim
+                    // (the per-series `series{N}.dlbls` Set case re-inserts
+                    // it in schema order).
+                    if (serDLbls.Elements<C.DataLabel>().Any()
+                        || serDLbls.GetFirstChild<C.NumberingFormat>() != null
+                        || serDLbls.GetFirstChild<C.Separator>() != null)
+                        seriesNode.Format["dlbls"] = serDLbls.OuterXml;
                 }
                 var serDlDefRp = serDLbls?.GetFirstChild<C.TextProperties>()
                     ?.GetFirstChild<Drawing.Paragraph>()
