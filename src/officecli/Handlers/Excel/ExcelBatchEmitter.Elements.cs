@@ -141,6 +141,9 @@ public static partial class ExcelBatchEmitter
                 warnings.Add(new UnsupportedWarning("conditionalformatting", cf.Path ?? sheetPath, "cf rule has no ref; skipped"));
                 continue;
             }
+            // stopIfTrue applies to every CF rule type; the Add path honors it
+            // uniformly via ApplyStopIfTrue, so carry it for all branches.
+            CopyBool(cf, "stopIfTrue", props, "stopIfTrue");
 
             string addType;
             switch (type)
@@ -155,12 +158,18 @@ public static partial class ExcelBatchEmitter
                     CopyString(cf, "direction", props, "direction");
                     CopyString(cf, "negativeColor", props, "negativeColor");
                     CopyString(cf, "axisColor", props, "axisColor");
+                    CopyString(cf, "axisPosition", props, "axisPosition");
+                    // Explicit numeric min/max bounds; omitting them lets the
+                    // Add path fall back to autoMin/autoMax.
+                    CopyString(cf, "min", props, "min");
+                    CopyString(cf, "max", props, "max");
                     break;
                 case "colorScale":
                     addType = "colorscale";
                     CopyString(cf, "minColor", props, "mincolor");
                     CopyString(cf, "maxColor", props, "maxcolor");
                     CopyString(cf, "midColor", props, "midcolor");
+                    CopyString(cf, "midpoint", props, "midpoint");
                     break;
                 case "iconSet":
                     addType = "iconset";
@@ -192,6 +201,8 @@ public static partial class ExcelBatchEmitter
                     addType = "aboveaverage";
                     if (cf.Format.TryGetValue("aboveAverage", out var aa) && aa is bool aaB && !aaB)
                         props["above"] = "false";
+                    CopyValue(cf, "stdDev", props, "stdDev");
+                    CopyBool(cf, "equalAverage", props, "equalAverage");
                     CopyDxfStyle(cf, props);
                     break;
                 case "uniqueValues":
