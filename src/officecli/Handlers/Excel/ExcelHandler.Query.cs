@@ -350,6 +350,28 @@ public partial class ExcelHandler
                 sheetNode.Format["printArea"] = paText;
             }
 
+            // Print title rows/cols readback (_xlnm.Print_Titles). Mirrors the
+            // Print_Area path so `set printTitleRows/printTitleCols` round-trips.
+            // The defined name combines both a row range ($1:$2) and a column
+            // range ($A:$A), comma-joined; split by which side is digit/letter.
+            var printTitlesDn = workbook.GetFirstChild<DefinedNames>()?.Elements<DefinedName>()
+                .FirstOrDefault(d => d.Name == "_xlnm.Print_Titles" && d.LocalSheetId?.Value == (uint)sheetIdx);
+            if (printTitlesDn != null)
+            {
+                foreach (var tok in (printTitlesDn.Text ?? "").Split(',', StringSplitOptions.RemoveEmptyEntries))
+                {
+                    var t = tok.Trim();
+                    var bang = t.IndexOf('!');
+                    var rangePart = (bang >= 0 ? t[(bang + 1)..] : t).Replace("$", "");
+                    var leftSide = rangePart.Split(':')[0];
+                    if (leftSide.Length == 0) continue;
+                    if (char.IsDigit(leftSide[0]))
+                        sheetNode.Format["printTitleRows"] = rangePart;
+                    else if (char.IsLetter(leftSide[0]))
+                        sheetNode.Format["printTitleCols"] = rangePart;
+                }
+            }
+
             // PageMargins readback
             var pm = ws.GetFirstChild<PageMargins>();
             if (pm != null)

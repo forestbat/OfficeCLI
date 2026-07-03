@@ -75,6 +75,10 @@ public static partial class ExcelBatchEmitter
         ("paperSize", "paperSize"),
         ("fitToPage", "fitToPage"),
         ("printArea", "printArea"),
+        // _xlnm.Print_Titles repeating rows/cols. Mirrors the Print_Area path;
+        // Set accepts the bare "1:2" / "A:A" grammar Get now surfaces.
+        ("printTitleRows", "printTitleRows"),
+        ("printTitleCols", "printTitleCols"),
         ("header", "header"),
         ("footer", "footer"),
         ("margin.top", "margin.top"),
