@@ -1488,6 +1488,12 @@ public partial class ExcelHandler
                                     $"printArea '{value}' names sheet '{paSheet}', but this set targets '{sheetName}'. A print area always applies to its own sheet — pass just the range (e.g. printArea=A1:C10), or run set on /{paSheet} if that sheet exists.");
                             paRange = paRange[(bangIdx + 1)..];
                         }
+                        // Bounds-check the range like freeze/merge/comment do:
+                        // an out-of-grid ref (XFE, row 1048577) is invisible
+                        // to schema validation (defined names are opaque
+                        // strings) but makes real Excel fail to render.
+                        foreach (var paCell in paRange.Replace("$", "").Split(':'))
+                            ParseCellReference(paCell.Trim());
                         var dn = new DefinedName($"{Core.ModernFunctionQualifier.QuoteSheetNameForRef(sheetName)}!{paRange}") { Name = "_xlnm.Print_Area" };
                         if (sheetIdx >= 0) dn.LocalSheetId = (uint)sheetIdx;
                         definedNames.AppendChild(dn);
@@ -1510,6 +1516,38 @@ public partial class ExcelHandler
                         s.Name?.Value?.Equals(sheetName, StringComparison.OrdinalIgnoreCase) == true) ?? -1;
                     if (sheetIdx < 0)
                         throw new ArgumentException($"Sheet '{sheetName}' not found in workbook.");
+
+                    // OrdinalIgnoreCase: the switch matched on the lowercased
+                    // key but `key` keeps the caller's casing — the camelCase
+                    // spelling printTitleRows silently routed to the cols branch.
+                    bool isRows = key.StartsWith("printtitlerow", StringComparison.OrdinalIgnoreCase);
+
+                    // Validate BEFORE the existing Print_Titles entry is
+                    // removed below — a rejected value must not destroy the
+                    // previously-set titles (failed-set atomicity).
+                    if (!string.IsNullOrEmpty(value) && !value.Equals("none", StringComparison.OrdinalIgnoreCase))
+                    {
+                        var checkParts = value.Trim().Replace("$", "");
+                        var checkBang = checkParts.IndexOf('!');
+                        if (checkBang >= 0) checkParts = checkParts[(checkBang + 1)..];
+                        foreach (var tok in checkParts.Split(':'))
+                        {
+                            var t = tok.Trim();
+                            if (t.Length == 0) continue;
+                            if (isRows)
+                            {
+                                if (!uint.TryParse(t, out var rowNum) || rowNum < 1 || rowNum > 1048576)
+                                    throw new ArgumentException(
+                                        $"Invalid print title row '{t}': rows must be 1..1048576 (e.g. printTitleRows=1:2).");
+                            }
+                            else
+                            {
+                                if (!t.All(char.IsLetter) || ColumnNameToIndex(t.ToUpperInvariant()) > 16384)
+                                    throw new ArgumentException(
+                                        $"Invalid print title column '{t}': columns must be A..XFD (e.g. printTitleCols=A:B).");
+                            }
+                        }
+                    }
 
                     // Read existing Print_Titles for this sheet, parse row/col parts.
                     var existingDn = definedNames.Elements<DefinedName>()
@@ -1536,7 +1574,6 @@ public partial class ExcelHandler
                         existingDn.Remove();
                     }
 
-                    bool isRows = key.StartsWith("printtitlerow", StringComparison.Ordinal);
                     static string Normalize(string sheet, string range, bool rows)
                     {
                         var v = range.Trim();
@@ -1688,6 +1725,12 @@ public partial class ExcelHandler
                 case "margin.top" or "margin.bottom" or "margin.left" or "margin.right" or "margin.header" or "margin.footer":
                 {
                     var inches = ParseMarginInches(value);
+                    // Negative margins pass schema validation (only an upper
+                    // bound is declared) but real Excel refuses the file
+                    // (0x800A03EC). Reject up front; 49in is the schema cap.
+                    if (inches < 0 || inches >= 49)
+                        throw new ArgumentException(
+                            $"Invalid '{key}' value '{value}': margins must be between 0 and 49 inches.");
                     var pm = ws.GetFirstChild<PageMargins>();
                     if (pm == null)
                     {
