@@ -158,7 +158,17 @@ public partial class ExcelHandler
         {
             var importEvaluator = new Core.FormulaEvaluator(sheetData, _doc.WorkbookPart);
             foreach (var fc in importedFormulaCells)
-                WriteFormulaResultToCell(fc, importEvaluator.TryEvaluateFull(fc.CellFormula!.Text ?? ""));
+            {
+                var fText = fc.CellFormula!.Text ?? "";
+                // A formula referencing a sheet that does not exist yet (dump
+                // replay imports a sheet before the sheet its formula points at)
+                // would evaluate to #REF! here and cache that wrong value. Leave
+                // the cache empty instead; the persist-time RefreshStaleFormulaCaches
+                // sweep fills it once every referenced sheet's data exists. Mirrors
+                // the sweep's own missing-sheet guard.
+                if (FormulaReferencesMissingSheet(fText)) continue;
+                WriteFormulaResultToCell(fc, importEvaluator.TryEvaluateFull(fText));
+            }
             EnsureFullCalcOnLoad();
         }
 
