@@ -784,7 +784,7 @@ public partial class PowerPointHandler
     /// Examples: "fade", "fly-entrance", "zoom-exit-800", "fade-in-500-after",
     ///           "wipe-entrance-1000-with", "fade-entrance-500-click", "none"
     /// </summary>
-    private static void ApplyShapeAnimation(SlidePart slidePart, OpenXmlElement target, string value)
+    private static void ApplyShapeAnimation(SlidePart slidePart, OpenXmlElement target, string value, bool replaceExisting = false)
     {
         var slide = slidePart.Slide ?? throw new InvalidOperationException("Corrupt file");
         var shapeId = GetAnimationTargetSpId(target)
@@ -923,6 +923,40 @@ public partial class PowerPointHandler
                 + "Format: EFFECT[-CLASS][-DIRECTION][-DURATION][-TRIGGER][-delay=N][-easein=N][-easeout=N] "
                 + "e.g. fly-entrance-left-400");
 
+        // Template-based effects (Boomerang, Pinwheel, ...) live in
+        // _templateRegistry and bypass the simple filter-based path. Look up
+        // first so the standard preset/filter path doesn't reject them as
+        // unknown.
+        // CONSISTENCY(validate-before-mutate): this lookup THROWS on unknown
+        // effects, so it must run before replaceExisting's removal below —
+        // set animation=badeffect used to strip the shape's existing animation
+        // and then throw, leaving empty bldLst/childTnLst containers that
+        // validate red.
+        var effectTemplate = TryGetEffectTemplate(effectName, presetClass);
+
+        // Get filter string, preset ID, and subtype from effect name.
+        // Template effects keep the lookup so the schema-described
+        // preset/subtype is reported, but the actual XML comes from the template.
+        int presetId; string? filter; int presetSubtype;
+        if (effectTemplate != null)
+        {
+            presetId = effectTemplate.PresetId;
+            presetSubtype = effectTemplate.PresetSubtype;
+            filter = null;
+        }
+        else
+        {
+            (presetId, filter) = GetAnimPreset(effectName, presetClass);
+            presetSubtype = GetAnimPresetSubtype(effectName, direction);
+        }
+
+        // Replace semantics (set animation=): drop the shape's existing chain
+        // only after the new effect is known-valid, and before the trigger
+        // auto-detection below so "first animation on slide" reflects the
+        // post-removal state.
+        if (replaceExisting)
+            RemoveShapeAnimations(slide, shapeId);
+
         // Resolve trigger
         AnimTrigger trigger;
         if (explicitTrigger.HasValue)
@@ -940,28 +974,6 @@ public partial class PowerPointHandler
                 c.LocalName == "AlternateContent" && c.InnerXml.Contains("morph"));
             trigger = (hasExistingAnimations || hasMorphTransition)
                 ? AnimTrigger.AfterPrevious : AnimTrigger.OnClick;
-        }
-
-        // Template-based effects (Boomerang, Pinwheel, ...) live in
-        // _templateRegistry and bypass the simple filter-based path. Look up
-        // first so the standard preset/filter path doesn't reject them as
-        // unknown.
-        var effectTemplate = TryGetEffectTemplate(effectName, presetClass);
-
-        // Get filter string, preset ID, and subtype from effect name.
-        // Template effects keep the lookup so the schema-described
-        // preset/subtype is reported, but the actual XML comes from the template.
-        int presetId; string? filter; int presetSubtype;
-        if (effectTemplate != null)
-        {
-            presetId = effectTemplate.PresetId;
-            presetSubtype = effectTemplate.PresetSubtype;
-            filter = null;
-        }
-        else
-        {
-            (presetId, filter) = GetAnimPreset(effectName, presetClass);
-            presetSubtype = GetAnimPresetSubtype(effectName, direction);
         }
         var nodeType = trigger switch
         {
@@ -1944,7 +1956,23 @@ public partial class PowerPointHandler
                 sb.Append(' ');
         }
         // Collapse multiple spaces
-        return System.Text.RegularExpressions.Regex.Replace(sb.ToString().Trim(), @" {2,}", " ");
+        var normalized = System.Text.RegularExpressions.Regex.Replace(sb.ToString().Trim(), @" {2,}", " ");
+        // Validate the mini-language: animMotion paths are an SVG-path subset
+        // (M/L/C/Z/E commands + decimal coordinates). Free text used to pass
+        // straight through into path= — validate-green nonsense baked into the
+        // OOXML. Same reject-garbage rule as bulletRaw.
+        foreach (var token in normalized.Split(' ', StringSplitOptions.RemoveEmptyEntries))
+        {
+            var isCommand = token.Length == 1 && "MLCZEmlcze".Contains(token[0]);
+            var isNumber = double.TryParse(token,
+                System.Globalization.NumberStyles.Float,
+                System.Globalization.CultureInfo.InvariantCulture, out _);
+            if (!isCommand && !isNumber)
+                throw new ArgumentException(
+                    $"Invalid motion path token '{token}' in '{path}'. Expected SVG-style " +
+                    "commands (M/L/C/Z/E) and decimal coordinates, e.g. 'M 0 0 L 0.5 -0.3 E'.");
+        }
+        return normalized;
     }
 
     private static ParallelTimeNode BuildMotionPathGroup(

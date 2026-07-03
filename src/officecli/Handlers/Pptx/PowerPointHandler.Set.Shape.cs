@@ -1615,11 +1615,11 @@ public partial class PowerPointHandler
 
             if (animValue != null)
             {
-                // Remove existing animations before applying new one (replace, not accumulate)
-                var shapeId = shape.NonVisualShapeProperties?.NonVisualDrawingProperties?.Id?.Value;
-                if (shapeId.HasValue)
-                    RemoveShapeAnimations(slidePart.Slide!, shapeId.Value);
-                ApplyShapeAnimation(slidePart, shape, animValue);
+                // Replace, not accumulate — removal happens INSIDE
+                // ApplyShapeAnimation after the effect name is validated, so a
+                // bad effect can't strip the existing chain and leave empty
+                // timing containers (CONSISTENCY(validate-before-mutate)).
+                ApplyShapeAnimation(slidePart, shape, animValue, replaceExisting: true);
             }
             if (motionPathValue != null)
                 ApplyMotionPathAnimation(slidePart, shape, motionPathValue);
