@@ -274,10 +274,15 @@ public partial class PowerPointHandler
                 if (properties.TryGetValue("marginRight", out var pMarR) || properties.TryGetValue("marr", out pMarR))
                     pProps.RightMargin = (int)Math.Round(SpacingConverter.ParsePointsSigned(pMarR) * EmuConverter.EmuPerPointF);
                 // bulletRaw (full bullet group) takes precedence over the lossy
-                // `list` keyword when both are present.
-                if (properties.TryGetValue("bulletRaw", out var pBulletRaw) || properties.TryGetValue("bulletraw", out pBulletRaw))
+                // `list` keyword when both are present. Probe both
+                // unconditionally: dump emits list AND bulletRaw side by side,
+                // and an else-if short-circuit left `list` unread — flagged as
+                // a false unsupported_property on every numbered-list replay.
+                var hasPBulletRaw = properties.TryGetValue("bulletRaw", out var pBulletRaw) || properties.TryGetValue("bulletraw", out pBulletRaw);
+                var hasPList = properties.TryGetValue("list", out var pList) || properties.TryGetValue("liststyle", out pList);
+                if (hasPBulletRaw)
                     ApplyBulletRaw(pProps, pBulletRaw);
-                else if (properties.TryGetValue("list", out var pList) || properties.TryGetValue("liststyle", out pList))
+                else if (hasPList)
                     ApplyListStyle(pProps, pList, preserveIndent: properties.ContainsKey("indent") || properties.ContainsKey("marginLeft") || properties.ContainsKey("marginleft") || properties.ContainsKey("marL") || properties.ContainsKey("marl"));
                 // Paragraph-level default run properties (verbatim). Bare runs
                 // inherit size/bold/font from here; see ApplyDefRPrRaw.

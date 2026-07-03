@@ -820,7 +820,12 @@ public partial class PowerPointHandler
 
                 // List style (bullet/numbered). bulletRaw (full bullet group)
                 // wins over the lossy `list` keyword when both are present.
-                if (properties.TryGetValue("bulletRaw", out var shBulletRaw) || properties.TryGetValue("bulletraw", out shBulletRaw))
+                // Probe both unconditionally (tracking): an else-if left `list`
+                // unread when bulletRaw was present, warning a false
+                // unsupported_property on dump replays that emit both.
+                var hasShBulletRaw = properties.TryGetValue("bulletRaw", out var shBulletRaw) || properties.TryGetValue("bulletraw", out shBulletRaw);
+                var hasShList = properties.TryGetValue("list", out var listVal) || properties.TryGetValue("liststyle", out listVal);
+                if (hasShBulletRaw)
                 {
                     foreach (var para in newShape.TextBody?.Elements<Drawing.Paragraph>() ?? Enumerable.Empty<Drawing.Paragraph>())
                     {
@@ -828,7 +833,7 @@ public partial class PowerPointHandler
                         ApplyBulletRaw(pProps, shBulletRaw);
                     }
                 }
-                else if (properties.TryGetValue("list", out var listVal) || properties.TryGetValue("liststyle", out listVal))
+                else if (hasShList)
                 {
                     foreach (var para in newShape.TextBody?.Elements<Drawing.Paragraph>() ?? Enumerable.Empty<Drawing.Paragraph>())
                     {

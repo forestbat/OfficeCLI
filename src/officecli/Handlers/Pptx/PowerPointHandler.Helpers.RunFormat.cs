@@ -147,8 +147,13 @@ public partial class PowerPointHandler
         var sb = new System.Text.StringBuilder();
         foreach (var child in pProps.Elements())
         {
+            // Canonicalize attribute order: the SDK preserves lexical attribute
+            // order, so a buAutoNum built by ApplyListStyle (type first) and one
+            // re-parsed from bulletRaw by ApplyBulletRaw (xmlns first) emitted
+            // byte-different bulletRaw for the same bullet, breaking dump
+            // idempotency. Same fix as the xlsx OLE anchor slices.
             if (Array.IndexOf(BulletChildLocalNames, child.LocalName) >= 0)
-                sb.Append(child.OuterXml);
+                sb.Append(ExcelHandler.CanonicalizeXmlAttributeOrder(child.OuterXml));
         }
         return sb.Length > 0 ? sb.ToString() : null;
     }

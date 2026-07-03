@@ -2681,6 +2681,14 @@ public partial class WordHandler
     private string AddDefault(OpenXmlElement parent, string parentPath, int? index, Dictionary<string, string> properties, string type)
     {
         // Generic fallback: create typed element via SDK schema validation
+        // TryCreateTypedElement consumes EVERY prop (as an XML attribute or
+        // via the SetGenericAttribute fallback) but reads them through plain
+        // foreach, which doesn't fire TrackingPropertyDictionary's accessed-key
+        // recording — so a raw-element add (w:spacing w:after=...) warned
+        // unsupported_property for props that were in fact applied. Probe each
+        // key through ContainsKey (which does fire the tracking comparer).
+        foreach (var trackedKey in properties.Keys.ToList())
+            properties.ContainsKey(trackedKey);
         var created = GenericXmlQuery.TryCreateTypedElement(parent, type, properties, index);
         if (created == null)
             throw new ArgumentException($"Unknown element type '{type}' for {parentPath}. " +
