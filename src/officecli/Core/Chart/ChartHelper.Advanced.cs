@@ -611,6 +611,12 @@ internal static partial class ChartHelper
                 chartTypeEl.AppendChild(ConvertSeriesToType(original, groupToken));
             }
 
+            // Bar/column groups get the same explicit gapWidth the builder
+            // stamps (150, the spec default). Omitting it renders identically
+            // today but made a combotypes-rebuilt chart differ from a
+            // directly-built one, breaking first-round dump idempotency.
+            if (chartTypeEl is C.BarChart)
+                chartTypeEl.AppendChild(new C.GapWidth { Val = 150 });
             chartTypeEl.AppendChild(new C.AxisId { Val = catAxisId });
             chartTypeEl.AppendChild(new C.AxisId { Val = valAxisId });
 
