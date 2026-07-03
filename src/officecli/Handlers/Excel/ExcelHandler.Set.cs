@@ -2696,7 +2696,12 @@ public partial class ExcelHandler
             .FirstOrDefault(c => c.Min?.Value <= colIdx && c.Max?.Value >= colIdx);
         if (col == null)
         {
-            col = new Column { Min = colIdx, Max = colIdx, Width = 8.43, CustomWidth = true };
+            // Leave width/customWidth unset on implicit creation — `add column`
+            // produces a bare <col> and stamping the 8.43 default here made a
+            // set-only column (hidden=, outline=) round-trip non-idempotent:
+            // the replayed file gained width="8.43" customWidth="1" the source
+            // never had. The width case below stamps both when actually set.
+            col = new Column { Min = colIdx, Max = colIdx };
             var afterCol = columns.Elements<Column>().LastOrDefault(c => (c.Min?.Value ?? 0) < colIdx);
             if (afterCol != null)
                 afterCol.InsertAfterSelf(col);
