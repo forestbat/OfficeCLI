@@ -742,6 +742,13 @@ public partial class ExcelHandler
                 {
                     cfNode.Format["type"] = "aboveAverage";
                     if (rule.AboveAverage?.HasValue == true) cfNode.Format["aboveAverage"] = rule.AboveAverage.Value;
+                    // stdDev (deviations above/below mean) and equalAverage
+                    // (include values equal to the mean) round-trip via the
+                    // cfRule attributes. Only surface when explicitly set.
+                    if (rule.StdDev?.HasValue == true)
+                        cfNode.Format["stdDev"] = rule.StdDev.Value;
+                    if (rule.EqualAverage?.Value == true)
+                        cfNode.Format["equalAverage"] = true;
                     if (rule.FormatId?.Value != null) cfNode.Format["dxfId"] = rule.FormatId.Value;
                 }
 

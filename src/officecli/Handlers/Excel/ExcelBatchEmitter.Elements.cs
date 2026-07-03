@@ -170,6 +170,8 @@ public static partial class ExcelBatchEmitter
                     addType = "aboveaverage";
                     if (cf.Format.TryGetValue("aboveAverage", out var aa) && aa is bool aaB && !aaB)
                         props["above"] = "false";
+                    CopyValue(cf, "stdDev", props, "stdDev");
+                    CopyBool(cf, "equalAverage", props, "equalAverage");
                     CopyDxfStyle(cf, props);
                     break;
                 case "uniqueValues":
