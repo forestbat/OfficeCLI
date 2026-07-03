@@ -68,7 +68,7 @@ static partial class CommandBuilder
 
         // ==================== close command (stop resident) ====================
         var closeFileArg = new Argument<FileInfo>("file") { Description = "Office document path (required even with open/close mode)" };
-        var closeCommand = new Command("close", "Flush in-memory changes to disk and stop the resident (releases the file). Use 'save' instead to flush but keep the resident warm. Either is needed before a non-officecli program reads the file; a live resident also auto-flushes ~10s after going idle.");
+        var closeCommand = new Command("close", "Flush in-memory changes to disk and stop the resident (releases the file). Use 'save' instead to flush but keep the resident warm. Either is needed before a non-officecli program reads the file; a live resident also auto-flushes shortly after going idle (adaptive 2-10s; see OFFICECLI_RESIDENT_FLUSH: each|auto|<seconds>|off).");
         closeCommand.Add(closeFileArg);
         closeCommand.Add(jsonOption);
 
