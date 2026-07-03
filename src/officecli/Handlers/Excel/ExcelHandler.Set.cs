@@ -567,14 +567,27 @@ public partial class ExcelHandler
                     // placeholder so the cell holds a single value child.
                     cell.RemoveAllChildren<InlineString>();
                     cell.CellFormula = setCellFormula;
-                    // Try to evaluate and cache the result immediately
-                    var evalSheetData = GetSheet(worksheet).GetFirstChild<SheetData>();
-                    var evaluator = new Core.FormulaEvaluator(evalSheetData!, _doc.WorkbookPart);
-                    var evalResult = evaluator.TryEvaluateFull(value.TrimStart('='));
-                    // Cache the freshly-evaluated result (or clear value+type when
-                    // unevaluable). Dispatch shared with the L1 cache-refresh path —
-                    // see ExcelHandler.FormulaCache.cs.
-                    WriteFormulaResultToCell(cell, evalResult);
+                    // Try to evaluate and cache the result immediately. A formula
+                    // that references a sheet which does not exist yet (the sheet
+                    // is added later in the session) would evaluate to #REF! and
+                    // cache that wrong value; leave the cache empty instead so the
+                    // persist-time RefreshStaleFormulaCaches sweep fills it once the
+                    // referenced sheet's data exists. Mirrors the import path.
+                    if (!FormulaReferencesMissingSheet(value.TrimStart('=')))
+                    {
+                        var evalSheetData = GetSheet(worksheet).GetFirstChild<SheetData>();
+                        var evaluator = new Core.FormulaEvaluator(evalSheetData!, _doc.WorkbookPart);
+                        var evalResult = evaluator.TryEvaluateFull(value.TrimStart('='));
+                        // Cache the freshly-evaluated result (or clear value+type when
+                        // unevaluable). Dispatch shared with the L1 cache-refresh path —
+                        // see ExcelHandler.FormulaCache.cs.
+                        WriteFormulaResultToCell(cell, evalResult);
+                    }
+                    else
+                    {
+                        cell.CellValue = null;
+                        cell.DataType = null;
+                    }
                     // Excel/Sheets recalculate formulas on open via fullCalcOnLoad;
                     // headless cache-trusting readers (openpyxl/pandas) do not. The
                     // cache written here can later go stale if a precedent cell is

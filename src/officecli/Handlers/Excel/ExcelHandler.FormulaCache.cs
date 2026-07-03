@@ -102,8 +102,6 @@ public partial class ExcelHandler
                 {
                     var formula = cell.CellFormula?.Text;
                     if (string.IsNullOrEmpty(formula)) continue;
-                    // No cached value -> nothing to invalidate.
-                    if (string.IsNullOrEmpty(cell.CellValue?.Text)) continue;
                     // Array / dynamic-array spill cells own a multi-cell region;
                     // their <v> is Excel's to manage — leave it alone.
                     if (cell.CellFormula?.FormulaType?.Value == CellFormulaValues.Array) continue;
@@ -111,11 +109,31 @@ public partial class ExcelHandler
                     // silently returns 0 there — that would be a false disagreement.
                     if (FormulaReferencesMissingSheet(formula)) continue;
 
+                    // A formula cell with NO cached value is the ordering case: the
+                    // formula was written (set/import/dump-replay) before the cells
+                    // it references existed, so its own per-cell eval produced
+                    // nothing and cleared <v>. Later data now makes it computable —
+                    // fill the fresh value, exactly as the Set/Add/Import per-cell
+                    // paths do, instead of leaving the cell blank (which real Excel
+                    // renders empty until a manual recalc). No on-disk <v> is being
+                    // contradicted here, so the L1/L2 policy that guards an existing
+                    // cache does not apply.
+                    var hasCache = !string.IsNullOrEmpty(cell.CellValue?.Text);
+
                     evaluator ??= new Core.FormulaEvaluator(sheetData, _doc.WorkbookPart);
                     var report = evaluator.EvaluateForReport(formula);
                     // Act only when we can confidently recompute the value.
                     if (report.Status != Core.EvalReportStatus.Evaluated) continue;
                     var computed = report.Result!.ToCellValueText();
+
+                    if (!hasCache)
+                    {
+                        WriteFormulaResultToCell(cell, report.Result); // fill missing cache
+                        EnsureFullCalcOnLoad();
+                        sheetChanged = true;
+                        continue;
+                    }
+
                     if (CachedComputedAgree(cell.CellValue!.Text, computed)) continue; // fresh -> keep
 
                     // Stale cache — decideWrite.
