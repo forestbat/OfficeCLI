@@ -454,7 +454,10 @@ public partial class ExcelHandler
                             // normalize to the canonical key so set->get round-trips.
                             if (font.Strike != null) node.Format["strike"] = true;
                             if (font.Underline != null)
-                                node.Format["underline"] = font.Underline.Val?.InnerText == "double" ? "double" : "single";
+                            {
+                                var uCanon = OfficeCli.Core.ExcelStyleManager.NormalizeStoredUnderline(font.Underline.Val?.InnerText);
+                                if (uCanon != null) node.Format["underline"] = uCanon;
+                            }
                             if (font.Color?.Rgb?.Value != null)
                                 node.Format["font.color"] = ParseHelpers.FormatHexColor(font.Color.Rgb.Value);
                             else if (font.Color?.Theme?.Value != null)

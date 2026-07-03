@@ -751,6 +751,37 @@ internal class ExcelStyleManager
         return true; // unknown attrs: pass through (forward-compat)
     }
 
+    // Underline enum canonicalization. OOXML CT_UnderlineProperty allows
+    // single / double / singleAccounting / doubleAccounting / none. The four
+    // non-none variants are all preserved; boolean truthy inputs map to single.
+    internal static string? NormalizeUnderlineValue(string raw)
+    {
+        switch (raw.Trim().ToLowerInvariant())
+        {
+            case "double": case "dbl": return "double";
+            case "singleaccounting": case "singleacct": return "singleAccounting";
+            case "doubleaccounting": case "doubleacct": return "doubleAccounting";
+            case "single": return "single";
+            case "none": return null;
+            default:
+                return (IsValidBooleanString(raw) && IsTruthy(raw)) ? "single" : null;
+        }
+    }
+
+    // Map a stored OOXML underline val InnerText back to the canonical form.
+    // Empty/null InnerText means the default <u/> which is "single".
+    internal static string? NormalizeStoredUnderline(string? innerText)
+    {
+        switch (innerText)
+        {
+            case "double": return "double";
+            case "singleAccounting": return "singleAccounting";
+            case "doubleAccounting": return "doubleAccounting";
+            case "none": return null;
+            default: return "single";
+        }
+    }
+
     private static uint GetOrCreateFont(Stylesheet stylesheet, uint baseFontId,
         Dictionary<string, string> fontProps,
         Dictionary<string, string>? longTailFontProps = null,
@@ -783,8 +814,8 @@ internal class ExcelStyleManager
         bool strike = fontProps.TryGetValue("strike", out var sVal)
             ? IsTruthy(sVal) : baseFont.Strike != null;
         string? underline = fontProps.TryGetValue("underline", out var uVal)
-            ? (uVal.ToLowerInvariant() is "double" ? "double" : (uVal.ToLowerInvariant() == "single" || (IsValidBooleanString(uVal) && IsTruthy(uVal)) ? "single" : null))
-            : (baseFont.Underline != null ? (baseFont.Underline.Val?.InnerText == "double" ? "double" : "single") : null);
+            ? NormalizeUnderlineValue(uVal)
+            : (baseFont.Underline != null ? NormalizeStoredUnderline(baseFont.Underline.Val?.InnerText) : null);
         // vertAlign: superscript / subscript / null (baseline)
         var baseVertAlign = baseFont.GetFirstChild<VerticalTextAlignment>();
         string? vertAlign;
@@ -858,8 +889,14 @@ internal class ExcelStyleManager
         if (underline != null)
         {
             var ul = new Underline();
-            if (underline == "double")
-                ul.Val = UnderlineValues.Double;
+            // "single" is the OOXML default (u element with no val); the other
+            // three variants carry an explicit val.
+            switch (underline)
+            {
+                case "double": ul.Val = UnderlineValues.Double; break;
+                case "singleAccounting": ul.Val = UnderlineValues.SingleAccounting; break;
+                case "doubleAccounting": ul.Val = UnderlineValues.DoubleAccounting; break;
+            }
             newFont.Append(ul);
         }
         if (vertAlign != null)
