@@ -75,6 +75,15 @@ public partial class ExcelHandler
             throw new ArgumentException("Chart requires a 'data' property. Use: data=\"Series1:1,2,3;Series2:4,5,6\" " +
                 "or dataRange=\"Sheet1!A1:D5\" or series1=\"Revenue:100,200,300\"");
 
+        // Validate the chart type BEFORE any part is created: an unknown type
+        // used to throw inside the builder AFTER the DrawingsPart and its
+        // sheet relationship were attached, leaving an orphaned empty
+        // <xdr:wsDr/> part behind on every failed attempt. Extended (cx)
+        // types — funnel/treemap/… — route through ChartExBuilder below and
+        // must not be run through the classic-type parser.
+        if (!ChartExBuilder.IsExtendedChartType(chartType))
+            ChartHelper.ParseChartType(chartType);
+
         // Create DrawingsPart if needed
         var drawingsPart = chartWorksheet.DrawingsPart
             ?? chartWorksheet.AddNewPart<DrawingsPart>();

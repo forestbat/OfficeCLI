@@ -883,6 +883,14 @@ public partial class ExcelHandler
         // sheet is implied by the parent worksheet). Excel silently drops the
         // entire <extLst> on load if sqref carries a sheet prefix.
         spkCell = NormalizeSparklineSqref(spkCell, spkSheetName);
+        // A location that is not a real cell reference ("XYZ", empty) wrote a
+        // semantically dead <xne:sqref> anchor with no warning; validate the
+        // final sqref like every other cell-ref input.
+        if (string.IsNullOrWhiteSpace(spkCell)
+            || !Regex.IsMatch(spkCell, @"^\$?[A-Za-z]{1,3}\$?\d+(:\$?[A-Za-z]{1,3}\$?\d+)?$"))
+            throw new ArgumentException(
+                $"Invalid sparkline 'location': '{spkCell}'. Expected a cell reference like F1 (or a range like F1:F5).");
+        ParseCellReference(spkCell.Replace("$", "").Split(':')[0]);
 
         // Determine sparkline type
         // bt-2: reject invalid types (e.g. "bar") instead of silently mapping

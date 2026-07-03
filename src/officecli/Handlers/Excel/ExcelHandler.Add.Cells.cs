@@ -32,6 +32,12 @@ public partial class ExcelHandler
         // the auto-generated SheetN default is always safe.
         if (properties.ContainsKey("name"))
             ValidateSheetName(name);
+        // Probe ifExists UNCONDITIONALLY: it is only acted on when the name
+        // collides, but reading it inside that branch meant the tracking
+        // dictionary reported it as unsupported_property on every clean
+        // subtree-dump replay (the emitter always emits it).
+        var claimIfExists = properties.TryGetValue("ifExists", out var ifExistsVal)
+            && ifExistsVal.Equals("use", StringComparison.OrdinalIgnoreCase);
         var caseMatch = sheets.Elements<Sheet>()
             .FirstOrDefault(s => string.Equals(s.Name, name, StringComparison.OrdinalIgnoreCase));
         if (caseMatch != null)
@@ -41,8 +47,7 @@ public partial class ExcelHandler
             // both onto a workbook lacking the sheet (create it) and back
             // onto one that already has it (merge into it) — the hard
             // duplicate-name error below broke the second case.
-            if (properties.TryGetValue("ifExists", out var ifExists)
-                && ifExists.Equals("use", StringComparison.OrdinalIgnoreCase))
+            if (claimIfExists)
                 return $"/{caseMatch.Name}";
             // Distinguish the BlankDocCreator-shipped placeholder sheet
             // (untouched, claimable by the first Add) from a real
