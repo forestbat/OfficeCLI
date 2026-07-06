@@ -685,7 +685,7 @@
         var currentRow = overlay ? parseInt(overlay.getAttribute('data-from-row'), 10) || 0 : 0;
         var newRow = Math.max(0, currentRow + dRows);
         var newCol = Math.max(0, currentCol + dCols);
-        fetch('/api/edit', {
+        fetch('/api/send', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ path: cd.path, props: {
@@ -739,7 +739,7 @@
             _editingCell = null;
             if (newValue === editText) return; // no change
             // POST edit to watch server
-            fetch('/api/edit', {
+            fetch('/api/send', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ path: path, prop: 'text', value: newValue })

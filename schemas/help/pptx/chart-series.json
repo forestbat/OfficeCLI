@@ -2,7 +2,7 @@
   "$schema": "../_schema.json",
   "format": "pptx",
   "element": "chart-series",
-  "elementAliases": ["series"],
+  "elementAliases": ["series", "chartseries"],
   "parent": "chart",
   "operations": {
     "add": true,

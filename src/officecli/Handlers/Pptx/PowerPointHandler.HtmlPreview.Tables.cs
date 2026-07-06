@@ -123,11 +123,16 @@ public partial class PowerPointHandler
             var rowStyle = rowH > 0 ? $" style=\"height:{Units.EmuToPt(rowH):0.##}pt\"" : "";
             sb.AppendLine($"        <tr{rowStyle}>");
             int colIndex = 0;  // Tracked for the new per-cell TableStyleResolver below.
+            // 1-based TableCell element position — matches officecli's cell[C]
+            // numbering (Set.Table indexes `row.Elements<TableCell>()`), so an
+            // editor can map a clicked <td> to /row[R]/cell[C] and set its text.
+            int cellElemIndex = 0;
             bool isHeaderRow = hasFirstRow && rowIndex == 0;
             bool isBandedOdd = hasBandRow && (!hasFirstRow ? rowIndex % 2 == 0 : rowIndex > 0 && (rowIndex - 1) % 2 == 0);
 
             foreach (var cell in row.Elements<Drawing.TableCell>())
             {
+                cellElemIndex++;
                 var cellStyles = new List<string>();
                 // In an RTL table the <table> carries direction:rtl to reverse the column
                 // order; keep each cell's content laid out LTR so text/alignment is
@@ -442,7 +447,12 @@ public partial class PowerPointHandler
                 // vert270 rotation must wrap the content (transform is inert on the <td>).
                 if (cellTextTransform != null)
                     cellHtml = $"<div style=\"transform:{cellTextTransform};display:inline-block\">{cellHtml}</div>";
-                sb.AppendLine($"          <td{spanAttrs}{styleStr}>{diagOverlay}{cellHtml}</td>");
+                // A SEPARATE attribute (not data-path) so selection/drag still
+                // treat the whole table as the unit — an editor uses this only to
+                // map a double-clicked cell to /row[R]/cell[C] for inline text edit.
+                var cellPathAttr = string.IsNullOrEmpty(dataPath) ? ""
+                    : $" data-cell-path=\"{HtmlEncode($"{dataPath}/row[{rowIndex + 1}]/cell[{cellElemIndex}]")}\"";
+                sb.AppendLine($"          <td{spanAttrs}{cellPathAttr}{styleStr}>{diagOverlay}{cellHtml}</td>");
                 colIndex += Math.Max((int)(gridSpan ?? 1), 1);
             }
             sb.AppendLine("        </tr>");

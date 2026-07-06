@@ -16,7 +16,7 @@ static partial class CommandBuilder
     // which fails with "Unknown command". Document the per-item shape and a
     // concrete example here so `help batch` actually teaches it.
     private const string BatchHelpDescription =
-        "Execute multiple commands from a JSON array in a single pass. Standalone, this is one open/save cycle; through a live resident the items apply in memory and the disk write is deferred to save/close/idle-autosave (officecli's own reads still see the changes immediately).\n\n"
+        "Execute multiple commands from a JSON array in a single pass. Standalone, this is one open/save cycle; through a live resident the items apply in memory and the disk write is deferred to save/close/idle-autosave — adaptive 2-10s after going idle, or before the batch returns under OFFICECLI_RESIDENT_FLUSH=each (officecli's own reads still see the changes immediately).\n\n"
         + "Each array item is an OBJECT whose \"command\" is the bare verb "
         + "(add/set/remove/move/swap/get/query/...); the verb's arguments are SIBLING fields, "
         + "not a CLI string inside \"command\". Common fields: \"parent\" (add target), "

@@ -1167,40 +1167,7 @@ public partial class PowerPointHandler
                         || properties.ContainsKey("y") || properties.ContainsKey("top")
                         || properties.ContainsKey("width") || properties.ContainsKey("height");
                     if (!hasExplicitBox)
-                    {
-                        var startId = cxnDrawProps.GetFirstChild<Drawing.StartConnection>()?.Id?.Value;
-                        var endId = cxnDrawProps.GetFirstChild<Drawing.EndConnection>()?.Id?.Value;
-                        var startBox = startId.HasValue ? FrameBoundsById(endpointShapeTree, startId.Value) : null;
-                        var endBox = endId.HasValue ? FrameBoundsById(endpointShapeTree, endId.Value) : null;
-                        var pStart = startBox ?? endBox;
-                        var pEnd = endBox ?? startBox;
-                        if (pStart.HasValue && pEnd.HasValue)
-                        {
-                            var (sx, sy, scx, scy) = pStart.Value;
-                            var (ex, ey, ecx, ecy) = pEnd.Value;
-                            var p1x = sx + scx / 2;
-                            var p1y = sy + scy / 2;
-                            var p2x = ex + ecx / 2;
-                            var p2y = ey + ecy / 2;
-                            var xfrm = cxn.ShapeProperties?.Transform2D;
-                            if (cxn.ShapeProperties != null && xfrm == null)
-                            {
-                                xfrm = new Drawing.Transform2D();
-                                cxn.ShapeProperties.InsertAt(xfrm, 0);
-                            }
-                            if (xfrm != null)
-                            {
-                                xfrm.Offset ??= new Drawing.Offset();
-                                xfrm.Extents ??= new Drawing.Extents();
-                                xfrm.Offset.X = Math.Min(p1x, p2x);
-                                xfrm.Offset.Y = Math.Min(p1y, p2y);
-                                xfrm.Extents.Cx = Math.Abs(p2x - p1x);
-                                xfrm.Extents.Cy = Math.Abs(p2y - p1y);
-                                xfrm.HorizontalFlip = p2x < p1x;
-                                xfrm.VerticalFlip = p2y < p1y;
-                            }
-                        }
-                    }
+                        RecomputeConnectorBox(cxn, endpointShapeTree);
                     break;
                 }
                 // R15-4: connector text label. Mirrors the Add.Misc txBody write
@@ -1237,6 +1204,72 @@ public partial class PowerPointHandler
         }
         GetSlide(slidePart).Save();
         return unsupported;
+    }
+
+    /// <summary>
+    /// Recompute a connector's &lt;a:xfrm&gt; bounding box from its connected
+    /// shapes' current centers — the same derivation Add.Misc.cs uses when a
+    /// connector is authored with from=/to=. PowerPoint trusts the stored
+    /// offset/extent at render time (it does not recompute from stCxn/endCxn),
+    /// so whenever an endpoint's geometry changes the box must be refreshed or
+    /// the line detaches from the shape it is glued to. No-op unless the
+    /// connector has ShapeProperties and both endpoints resolve to frames.
+    /// </summary>
+    private static void RecomputeConnectorBox(ConnectionShape cxn, ShapeTree tree)
+    {
+        var draw = cxn.NonVisualConnectionShapeProperties
+            ?.GetFirstChild<NonVisualConnectorShapeDrawingProperties>();
+        var startId = draw?.GetFirstChild<Drawing.StartConnection>()?.Id?.Value;
+        var endId = draw?.GetFirstChild<Drawing.EndConnection>()?.Id?.Value;
+        var startBox = startId.HasValue ? FrameBoundsById(tree, startId.Value) : null;
+        var endBox = endId.HasValue ? FrameBoundsById(tree, endId.Value) : null;
+        var pStart = startBox ?? endBox;
+        var pEnd = endBox ?? startBox;
+        if (!pStart.HasValue || !pEnd.HasValue) return;
+        var (sx, sy, scx, scy) = pStart.Value;
+        var (ex, ey, ecx, ecy) = pEnd.Value;
+        var p1x = sx + scx / 2;
+        var p1y = sy + scy / 2;
+        var p2x = ex + ecx / 2;
+        var p2y = ey + ecy / 2;
+        var spPr = cxn.ShapeProperties;
+        if (spPr == null) return;
+        var xfrm = spPr.Transform2D;
+        if (xfrm == null) { xfrm = new Drawing.Transform2D(); spPr.InsertAt(xfrm, 0); }
+        xfrm.Offset ??= new Drawing.Offset();
+        xfrm.Extents ??= new Drawing.Extents();
+        xfrm.Offset.X = Math.Min(p1x, p2x);
+        xfrm.Offset.Y = Math.Min(p1y, p2y);
+        xfrm.Extents.Cx = Math.Abs(p2x - p1x);
+        xfrm.Extents.Cy = Math.Abs(p2y - p1y);
+        xfrm.HorizontalFlip = p2x < p1x;
+        xfrm.VerticalFlip = p2y < p1y;
+    }
+
+    /// <summary>
+    /// After a shape's geometry (x/y/width/height) changes, re-glue every
+    /// top-level connector whose start/end connection references it so the
+    /// connector tracks the moved shape — PowerPoint's interactive
+    /// "connector follows shape" behavior. Without this the connector's stored
+    /// xfrm stays pinned to the shape's old position and the line visibly
+    /// detaches.
+    /// CONSISTENCY(connector-reroute): wired from the plain-shape Set path,
+    /// which is what the editor drives on drag/resize; picture/chart/group
+    /// endpoint moves are a future extension through this same helper.
+    /// </summary>
+    private void RerouteConnectorsForShape(SlidePart slidePart, uint movedShapeId)
+    {
+        var tree = GetSlide(slidePart).CommonSlideData?.ShapeTree;
+        if (tree == null) return;
+        foreach (var cxn in tree.Elements<ConnectionShape>())
+        {
+            var draw = cxn.NonVisualConnectionShapeProperties
+                ?.GetFirstChild<NonVisualConnectorShapeDrawingProperties>();
+            var startId = draw?.GetFirstChild<Drawing.StartConnection>()?.Id?.Value;
+            var endId = draw?.GetFirstChild<Drawing.EndConnection>()?.Id?.Value;
+            if (startId != movedShapeId && endId != movedShapeId) continue;
+            RecomputeConnectorBox(cxn, tree);
+        }
     }
 
     private List<string> SetShapeByPath(Match match, Dictionary<string, string> properties)
@@ -1646,6 +1679,18 @@ public partial class PowerPointHandler
                 if (shapeHl != null) shapeHl.Tooltip = tooltipValue;
                 foreach (var rh in runHls) rh!.Tooltip = tooltipValue;
             }
+
+            // If this set moved or resized the shape, re-glue any connectors bound
+            // to it so the line tracks the shape (PowerPoint interactive behavior).
+            // The stored connector xfrm is authoritative at render time, so a stale
+            // box would leave the connector detached from the shape it links.
+            bool movedGeom = properties.Keys.Any(k =>
+                k.Equals("x", StringComparison.OrdinalIgnoreCase) || k.Equals("left", StringComparison.OrdinalIgnoreCase)
+                || k.Equals("y", StringComparison.OrdinalIgnoreCase) || k.Equals("top", StringComparison.OrdinalIgnoreCase)
+                || k.Equals("width", StringComparison.OrdinalIgnoreCase) || k.Equals("height", StringComparison.OrdinalIgnoreCase));
+            if (movedGeom
+                && shape.NonVisualShapeProperties?.NonVisualDrawingProperties?.Id?.Value is { } movedId)
+                RerouteConnectorsForShape(slidePart, movedId);
 
             GetSlide(slidePart).Save();
             return unsupported;

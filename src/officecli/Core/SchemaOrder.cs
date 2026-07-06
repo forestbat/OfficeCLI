@@ -90,6 +90,8 @@ internal static class SchemaOrder
         }, parent);
     }
 
+    [System.Diagnostics.CodeAnalysis.UnconditionalSuppressMessage("Trimming", "IL2075",
+        Justification = "Reflecting the SDK's internal compiled-particle members (ParticleType/Type/MaxOccurs/ChildrenParticles), same members the validator uses; returns MaxOccursUnknown if trimmed. Sibling of GetMaxOccurs/GetComparison, which carry the same suppression.")]
     private static int WalkForMaxOccurs(object pc, string childQName)
     {
         var t = pc.GetType();

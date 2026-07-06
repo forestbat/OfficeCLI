@@ -173,7 +173,7 @@ public partial class ExcelHandler
         // leading segment) before the first <r>; carry it as a plain run.
         var leading = host.GetFirstChild<Text>();
         if (leading != null && !string.IsNullOrEmpty(leading.Text))
-            arr.Add(new System.Text.Json.Nodes.JsonObject { ["text"] = leading.Text });
+            arr.Add((System.Text.Json.Nodes.JsonNode)new System.Text.Json.Nodes.JsonObject { ["text"] = leading.Text });
         foreach (var run in host.Elements<Run>())
         {
             var o = new System.Text.Json.Nodes.JsonObject { ["text"] = run.Text?.Text ?? "" };
@@ -195,7 +195,7 @@ public partial class ExcelHandler
                 var rf = rp.GetFirstChild<RunFont>();
                 if (rf?.Val?.Value != null) o["font"] = rf.Val.Value!;
             }
-            arr.Add(o);
+            arr.Add((System.Text.Json.Nodes.JsonNode)o);
         }
         return arr.ToJsonString();
     }

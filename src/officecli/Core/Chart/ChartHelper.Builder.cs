@@ -31,7 +31,10 @@ internal static partial class ChartHelper
         });
         var chart = new C.Chart();
 
-        if (!string.IsNullOrEmpty(title))
+        // BUG-001: `title=none` (case-insensitive) or empty string means "no
+        // title" — do not render the literal text "none". Mirrors the Setter's
+        // `title` handling in ChartHelper.Setter.cs.
+        if (!string.IsNullOrEmpty(title) && !title.Equals("none", StringComparison.OrdinalIgnoreCase))
         {
             // R53 tester-2: forward an explicit title.lang (defaults to en-US
             // inside BuildChartTitle when absent) so dump→replay preserves the

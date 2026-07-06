@@ -15,6 +15,48 @@ namespace OfficeCli.Handlers;
 
 public partial class ExcelHandler
 {
+    /// <summary>
+    /// CONSISTENCY(axis-ref-compat): Excel-style whole-column (`B:B`, `A:C`)
+    /// and whole-row (`1:1`, `2:5`) references are accepted as lenient input
+    /// aliases for the canonical col[X]/row[N] path segments — same policy as
+    /// A1-style ranges (`A1:D10`), which the path grammar already accepts.
+    /// Returns the expanded canonical segments in axis order (one per
+    /// column/row in the span), or null when the segment is not an axis
+    /// reference. Canonical readback paths remain col[X]/row[N].
+    /// Spans wider than 1024 are rejected — a set over B:XFD (16k columns)
+    /// is almost certainly a mistake, not intent.
+    /// </summary>
+    private static List<string>? TryExpandAxisRef(string cellRef)
+    {
+        var colRef = System.Text.RegularExpressions.Regex.Match(
+            cellRef, @"^([A-Za-z]{1,3}):([A-Za-z]{1,3})$");
+        if (colRef.Success)
+        {
+            var from = ColumnNameToIndex(colRef.Groups[1].Value.ToUpperInvariant());
+            var to = ColumnNameToIndex(colRef.Groups[2].Value.ToUpperInvariant());
+            if (from > to) (from, to) = (to, from);
+            if (to - from + 1 > 1024)
+                throw new ArgumentException(
+                    $"Column span {cellRef} covers {to - from + 1} columns (limit 1024). Narrow the span or address columns individually as col[X].");
+            var cols = new List<string>();
+            for (var i = from; i <= to; i++) cols.Add($"col[{IndexToColumnName(i)}]");
+            return cols;
+        }
+        var rowRef = System.Text.RegularExpressions.Regex.Match(cellRef, @"^(\d+):(\d+)$");
+        if (rowRef.Success
+            && uint.TryParse(rowRef.Groups[1].Value, out var r1) && r1 >= 1
+            && uint.TryParse(rowRef.Groups[2].Value, out var r2) && r2 >= 1)
+        {
+            if (r1 > r2) (r1, r2) = (r2, r1);
+            if (r2 - r1 + 1 > 1024)
+                throw new ArgumentException(
+                    $"Row span {cellRef} covers {r2 - r1 + 1} rows (limit 1024). Narrow the span or address rows individually as row[N].");
+            var rows = new List<string>();
+            for (var i = r1; i <= r2; i++) rows.Add($"row[{i}]");
+            return rows;
+        }
+        return null;
+    }
 
     /// <summary>
     /// Parse a print-margin value into inches (PageMargins schema unit).

@@ -63,10 +63,11 @@ public class ResidentServer : IDisposable
     // Two independent idle timers, both reset by command activity (ResetIdleTimer):
     //   - _idleCts (CurrentIdleTimeout, default 12min / 60s auto-start): on
     //     elapse the resident shuts down — flush + release the file ("close").
-    //   - _autosaveCts (AutosaveInterval, default 10s): on elapse, if the DOM is
-    //     dirty, flush to disk but KEEP the resident running ("save"). This makes
-    //     edits visible to third-party readers within ~10s of going idle without
-    //     paying the O(n) reopen cost a shutdown+restart would incur.
+    //   - _autosaveCts (CurrentAutosaveInterval, adaptive 2s–10s by default):
+    //     on elapse, if the DOM is dirty, flush to disk but KEEP the resident
+    //     running ("save"). This makes edits visible to third-party readers
+    //     shortly after going idle without paying the O(n) reopen cost a
+    //     shutdown+restart would incur. Not started in off/each flush modes.
     // The shorter autosave fires first; if the session stays idle the longer
     // idle-shutdown follows. Autosave firing does NOT reset the shutdown timer,
     // so the resident still exits the configured time after the last command.
@@ -107,30 +108,63 @@ public class ResidentServer : IDisposable
         return DefaultIdleTimeout;
     }
 
-    // Idle-save interval: after this long with no command, a dirty document is
-    // flushed to disk while the resident keeps running, so a third-party tool
-    // that opens the file directly (python-docx, openpyxl, Word, a renderer)
-    // sees recent edits without an explicit `save`/`close`. Paired with
-    // OFFICECLI_RESIDENT_IDLE_SECONDS (idle→close): this is OFFICECLI_RESIDENT_IDLE_SAVE_SECONDS
-    // (idle→save), bounded the same way; set it to 0 (or "off") to disable and
-    // flush only on save/close/shutdown. Returns null when disabled. Default 10s.
-    private static readonly TimeSpan DefaultAutosaveInterval = TimeSpan.FromSeconds(10);
-    private static readonly TimeSpan? AutosaveInterval = ResolveAutosaveInterval();
-    private static TimeSpan? ResolveAutosaveInterval()
+    // Flush policy: when a dirty in-memory DOM is written to disk so a
+    // third-party tool that opens the file directly (python-docx, openpyxl,
+    // Word, a renderer) sees recent edits without an explicit `save`/`close`.
+    // One knob, four modes (see Core/ResidentFlushPolicy.cs):
+    //   each — flush before every mutation command returns (deterministic)
+    //   auto — idle-debounced, interval adapts to measured save cost (default):
+    //          clamp(4 × EMA(save duration), 2s, 10s). Typical documents hug
+    //          the 2s floor; a data-heavy workbook whose save takes seconds
+    //          backs off automatically so background saves never eat more
+    //          than ~25% of wall-clock in a busy session.
+    //   <N>  — idle-debounced, fixed N seconds (the pre-adaptive behavior)
+    //   off  — flush only on save/close/shutdown
+    // Read from OFFICECLI_RESIDENT_FLUSH; the legacy
+    // OFFICECLI_RESIDENT_IDLE_SAVE_SECONDS (integer seconds / 0 / "off") is
+    // honored when the new variable is unset. Paired with
+    // OFFICECLI_RESIDENT_IDLE_SECONDS (idle→close); idle modes are bounded
+    // the same way.
+    private static readonly ResidentFlushMode FlushMode;
+    private static readonly TimeSpan FixedFlushInterval;
+    static ResidentServer()
     {
-        var raw = Environment.GetEnvironmentVariable("OFFICECLI_RESIDENT_IDLE_SAVE_SECONDS");
-        if (!string.IsNullOrWhiteSpace(raw))
+        foreach (var env in new[] { "OFFICECLI_RESIDENT_FLUSH", "OFFICECLI_RESIDENT_IDLE_SAVE_SECONDS" })
         {
-            if (string.Equals(raw.Trim(), "off", StringComparison.OrdinalIgnoreCase))
-                return null;
-            if (int.TryParse(raw, out var secs))
+            if (ResidentFlushPolicy.TryParse(Environment.GetEnvironmentVariable(env),
+                    MinIdleSeconds, MaxIdleSeconds, out var mode, out var fixedInterval))
             {
-                if (secs <= 0) return null; // disabled
-                if (secs >= MinIdleSeconds && secs <= MaxIdleSeconds)
-                    return TimeSpan.FromSeconds(secs);
+                FlushMode = mode;
+                FixedFlushInterval = fixedInterval;
+                return;
             }
         }
-        return DefaultAutosaveInterval;
+        FlushMode = ResidentFlushMode.Auto;
+    }
+
+    // Adaptive-interval state (auto mode): EMA of measured save durations and
+    // the derived debounce, both stored as atomically-readable primitives
+    // (CONSISTENCY(volatile-ticks): same pattern as _idleTimeoutTicks — the
+    // watchdog task reads them concurrently with command-thread writes).
+    // -1 bits = no sample yet. Writers all run under _commandLock.
+    private long _saveEmaMillis = -1;
+    private long _adaptiveIntervalTicks = ResidentFlushPolicy.MinAdaptiveInterval.Ticks;
+
+    private TimeSpan CurrentAutosaveInterval => FlushMode == ResidentFlushMode.Fixed
+        ? FixedFlushInterval
+        : TimeSpan.FromTicks(Volatile.Read(ref _adaptiveIntervalTicks));
+
+    // Fold one measured save duration into the adaptive debounce. Called after
+    // every successful _handler.Save() regardless of mode — the sample is
+    // cheap to record and keeps the estimate warm across mode-irrelevant
+    // saves (explicit `save`, each-mode flushes).
+    private void RecordSaveDuration(TimeSpan elapsed)
+    {
+        var prev = Volatile.Read(ref _saveEmaMillis);
+        var ema = ResidentFlushPolicy.NextEmaSeconds(
+            prev < 0 ? -1 : prev / 1000.0, elapsed.TotalSeconds);
+        Volatile.Write(ref _saveEmaMillis, (long)(ema * 1000));
+        Volatile.Write(ref _adaptiveIntervalTicks, ResidentFlushPolicy.IntervalForEma(ema).Ticks);
     }
 
     // Runtime upgrade path for the idle timeout. Called from the ping
@@ -270,8 +304,8 @@ public class ResidentServer : IDisposable
         var idleTask = RunIdleWatchdogAsync(pingToken);
 
         // Start idle-autosave watchdog (flush-to-disk without shutdown). Skipped
-        // entirely when autosave is disabled (OFFICECLI_RESIDENT_IDLE_SAVE_SECONDS=0).
-        var autosaveTask = AutosaveInterval is null
+        // when auto-flush is disabled (off) or handled inline per command (each).
+        var autosaveTask = FlushMode is ResidentFlushMode.Off or ResidentFlushMode.Each
             ? Task.CompletedTask
             : RunAutosaveWatchdogAsync(pingToken);
 
@@ -383,17 +417,20 @@ public class ResidentServer : IDisposable
 
     // Idle-autosave watchdog: mirrors RunIdleWatchdogAsync but, instead of
     // shutting the resident down, flushes a dirty DOM to disk and keeps running.
-    // Disabled (never started) when AutosaveInterval is null.
+    // Disabled (never started) when the flush policy is off/each.
     private async Task RunAutosaveWatchdogAsync(CancellationToken token)
     {
-        var interval = AutosaveInterval!.Value;
         while (!token.IsCancellationRequested)
         {
             try
             {
                 var autoCts = Volatile.Read(ref _autosaveCts);
                 using var linked = CancellationTokenSource.CreateLinkedTokenSource(autoCts.Token, token);
-                await Task.Delay(interval, linked.Token);
+                // Re-read every iteration: in auto mode RecordSaveDuration
+                // adjusts the interval after each measured save. An in-flight
+                // delay keeps the old value until the next pass (same accepted
+                // lag as TrySetIdleTimeout's in-flight Task.Delay).
+                await Task.Delay(CurrentAutosaveInterval, linked.Token);
                 // Reached here = idle for the autosave interval without a reset.
                 await TryAutosaveAsync(token);
             }
@@ -424,8 +461,11 @@ public class ResidentServer : IDisposable
             if (_disposed || _mainCts.IsCancellationRequested) return;
             if (!_dirty || !_editable) return;
 
+            var sw = System.Diagnostics.Stopwatch.StartNew();
             _handler.Save();
+            sw.Stop();
             _dirty = false;
+            RecordSaveDuration(sw.Elapsed);
             LogStderr($"Autosaved {Path.GetFileName(_filePath)} (idle flush, resident still running).");
         }
         catch (OperationCanceledException) { }
@@ -689,6 +729,21 @@ public class ResidentServer : IDisposable
             try
             {
                 ExecuteCommand(request);
+                // each mode: flush before the response is written so the
+                // command's success implies the change is on disk — the
+                // deterministic barrier for callers whose next step is an
+                // external reader. A Save failure here throws and surfaces as
+                // this command's error (exit != 0), never a silent stale disk.
+                // Inside a batch the per-item DeferSave still applies; this
+                // single flush at command granularity keeps batch O(n).
+                if (FlushMode == ResidentFlushMode.Each && _dirty && _editable)
+                {
+                    var sw = System.Diagnostics.Stopwatch.StartNew();
+                    _handler.Save();
+                    sw.Stop();
+                    _dirty = false;
+                    RecordSaveDuration(sw.Elapsed);
+                }
             }
             finally
             {
@@ -1044,6 +1099,18 @@ public class ResidentServer : IDisposable
     // (and batch failure rows are written to stdout).
     private bool _lastBatchHadFailure;
 
+    // Batch verbs that never mutate the DOM. ExecuteBatch notifies any live
+    // watch session after applying the items — parity with the per-verb
+    // NotifyWatch* calls in ExecuteCommand (issue #169). A batch made up
+    // entirely of these read-only verbs skips the full-refresh to avoid a
+    // needless re-render + SSE push. Any verb NOT listed here (including
+    // unknown / future ones) fails open to "notify", so a new mutating verb
+    // is never silently dropped from the preview.
+    private static readonly HashSet<string> ReadOnlyBatchVerbs = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "get", "query", "view", "validate", "dump", "raw"
+    };
+
     private void ExecuteBatch(ResidentRequest request)
     {
         _lastBatchHadFailure = false;
@@ -1143,6 +1210,18 @@ public class ResidentServer : IDisposable
         // as the single-shot resident add/set path (EmitUnrecognizedLatex) does.
         foreach (var tok in batchUnrecognizedLatex)
             Console.Error.WriteLine($"  WARNING: {UnrecognizedLatexMarker} {tok}");
+
+        // Notify any live watch session so the preview reflects the batch.
+        // Single add/set/move/remove/etc. each call a NotifyWatch* helper in
+        // ExecuteCommand; batch applied its items directly above and must do
+        // the same, otherwise the watched DOM stays stale until the watch is
+        // manually restarted (issue #169). A batch can span many
+        // slides/sheets/pages with mixed verbs, so a targeted per-slide patch
+        // isn't derivable — a full refresh mirrors swap / refresh / raw-set /
+        // add-part. Skip only provably read-only batches to avoid a needless
+        // re-render; unknown verbs fail open to notify.
+        if (items.Any(it => !ReadOnlyBatchVerbs.Contains(it.Command ?? "")))
+            NotifyWatchFullRefresh();
     }
 
     // ==================== Watch notification helpers ====================
@@ -2289,8 +2368,22 @@ public class ResidentServer : IDisposable
             Console.WriteLine($"No pending changes for {Path.GetFileName(_filePath)}");
             return;
         }
+        // Clean-skip: disk already matches the in-memory tree (a prior
+        // save/autosave/each-mode flush cleared _dirty and every mutation
+        // re-latches it via PromoteToEditable). Skipping the O(n) re-serialize
+        // makes a defensive `save` before external reads effectively free.
+        // Same message and exit code as the editable no-op above so callers
+        // scripting on `save` see an unchanged success contract.
+        if (!_dirty)
+        {
+            Console.WriteLine($"No pending changes for {Path.GetFileName(_filePath)}");
+            return;
+        }
+        var sw = System.Diagnostics.Stopwatch.StartNew();
         _handler.Save();
+        sw.Stop();
         _dirty = false;
+        RecordSaveDuration(sw.Elapsed);
         Console.WriteLine($"Saved {Path.GetFileName(_filePath)}");
     }
 

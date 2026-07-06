@@ -25,7 +25,7 @@ static partial class CommandBuilder
     private static Command BuildSaveCommand(Option<bool> jsonOption)
     {
         var saveFileArg = new Argument<FileInfo>("file") { Description = "Office document path" };
-        var saveCommand = new Command("save", "Flush in-memory changes to disk, keeping the resident running. Run before a non-officecli program reads the file (officecli's own reads always see edits; a direct disk reader sees the pre-edit file until a flush). A live resident also auto-flushes ~10s after going idle. No-op if no resident is active.");
+        var saveCommand = new Command("save", "Flush in-memory changes to disk, keeping the resident running. Run before a non-officecli program reads the file (officecli's own reads always see edits; a direct disk reader sees the pre-edit file until a flush). A live resident also auto-flushes shortly after going idle (adaptive 2-10s; see OFFICECLI_RESIDENT_FLUSH: each|auto|<seconds>|off). No-op if no resident is active.");
         saveCommand.Add(saveFileArg);
         saveCommand.Add(jsonOption);
 

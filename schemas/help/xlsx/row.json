@@ -13,7 +13,7 @@
   "paths": {
     "positional": ["/SheetName/row[N]"]
   },
-  "note": "Row index N is 1-based. Add/Set asymmetry: all formatting props are currently Set-only. Insert/move/clone at an occupied slot shifts every row at or past the slot down by one, and every range-bearing structure on the sheet (mergeCells, CF/DV sqref, autoFilter, hyperlink/table refs, named ranges, formula cell-refs) follows the displacement. 'add --from /SheetName/row[K]' with --before/--after clones cells + single-row mergeCells; relative formula refs are delta-shifted to the new anchor (Excel 'Insert Copied Cells' parity).",
+  "note": "Row index N is 1-based. Add/Set asymmetry: all formatting props are currently Set-only. Insert/move/clone at an occupied slot shifts every row at or past the slot down by one, and every range-bearing structure on the sheet (mergeCells, CF/DV sqref, autoFilter, hyperlink/table refs, named ranges, formula cell-refs) follows the displacement. 'add --from /SheetName/row[K]' with --before/--after clones cells + single-row mergeCells; relative formula refs are delta-shifted to the new anchor (Excel 'Insert Copied Cells' parity). Excel-style whole-row references (1:1; 2:5 spans on set) are accepted as input aliases for row[N]; readback paths stay canonical.",
   "examples": [
     {
       "title": "Filter rows by column name (resolves against a ListObject or a detected header-row table)",

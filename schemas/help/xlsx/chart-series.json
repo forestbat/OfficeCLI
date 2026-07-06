@@ -2,9 +2,10 @@
   "$schema": "../_schema.json",
   "format": "xlsx",
   "element": "chart-series",
+  "elementAliases": ["series", "chartseries"],
   "parent": "chart",
   "operations": {
-    "add": false,
+    "add": true,
     "set": true,
     "get": true,
     "remove": false
@@ -14,7 +15,7 @@
       "/SheetName/chart[N]/series[K]"
     ]
   },
-  "note": "At Add time, series pass as dotted props on the parent chart (series1.name, series1.values, series1.color, series1.categories); this schema is per-series Set/Get after creation. Combo charts (mixed chartType / secondary axis) are unsupported — create separate charts. `lineStyle` is not a key (rejected as UNSUPPORTED — use lineWidth + lineDash). add/remove are NOT supported on this element: series are declared at chart-creation time via the dotted props and cannot be appended or deleted individually afterward (recreate the chart with the full series list instead).",
+  "note": "At chart-Add time, series pass as dotted props on the parent chart (series1.name, series1.values, series1.color, series1.categories); afterwards `add --type chart-series` on the chart parent (/SheetName/chart[N]) appends a series — values/categories accept cell ranges (resolved to refs with cached snapshots) or literal comma-separated data; the chart must already have at least one series to derive structure from. Combo charts (mixed chartType / secondary axis) are unsupported — create separate charts. `lineStyle` is not a key (rejected as UNSUPPORTED — use lineWidth + lineDash). remove is NOT supported on this element: recreate the chart with the full series list instead.",
   "extends": [
     "_shared/chart-series",
     "_shared/chart-series.pptx-xlsx"

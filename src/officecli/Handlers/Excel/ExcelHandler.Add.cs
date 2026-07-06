@@ -121,6 +121,12 @@ public partial class ExcelHandler
             case "chart":
                 return AddChart(parentPath, type, position, properties);
 
+            // BUG-002: schema chart-series.json declares operations.add on a
+            // chart parent, but only pptx had a dispatch entry ("series").
+            // Accept the schema element name and the pptx alias alike.
+            case "series" or "chart-series" or "chartseries":
+                return AddChartSeries(parentPath, properties);
+
             case "pivottable" or "pivot":
                 return AddPivotTable(parentPath, type, position, properties);
 

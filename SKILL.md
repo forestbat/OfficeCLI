@@ -60,7 +60,7 @@ officecli close report.docx      # save and release
 
 Opt out of auto-start: `OFFICECLI_NO_AUTO_RESIDENT=1`.
 
-**Flush only at the non-officecli boundary.** officecli's own reads (`get`/`query`/`view`/`dump`) always see your latest edits, so you never need to save mid-workflow. Run `save` (keeps the resident) or `close` (flush + release) only **before a non-officecli program reads the file** — python-docx/openpyxl, Word, a renderer, delivery/upload.
+**Flush only at the non-officecli boundary.** officecli's own reads (`get`/`query`/`view`/`dump`) always see your latest edits, so you never need to save mid-workflow. Run `save` (keeps the resident) or `close` (flush + release) only **before a non-officecli program reads the file** — python-docx/openpyxl, Word, a renderer, delivery/upload. (Idle sessions auto-flush within seconds; `OFFICECLI_RESIDENT_FLUSH=each` makes every mutation flush before returning.)
 
 ---
 
@@ -325,7 +325,7 @@ When using `--after` or `--before`, `--to` can be omitted — the target contain
 
 Continues on error by default (returns exit 1 if any item fails). Use `--stop-on-error` to abort on the first failure. `--force` is the docx-protection bypass.
 
-`officecli dump <file> [<path>]` emits a replayable batch JSON for round-trip — `.docx` (full coverage) and `.pptx` (text/tables/pictures/charts/notes/theme + OLE/3D/video/audio/SmartArt/morph/p15 transitions via raw-set passthrough). Path defaults to `/` (whole document); pass a subtree path (`/body`, `/body/p[N]`, `/body/tbl[N]`, `/theme`, `/settings`, `/numbering`, `/styles`) to scope the dump. `officecli refresh <file.docx>` recalculates TOC page numbers / PAGE / cross-references after replay (Word backend on Windows; headless-HTML fallback elsewhere). `officecli plugins list` extends support to `.doc`, `.hwpx`, `.pdf` export.
+`officecli dump <file> [<path>]` emits a replayable batch JSON for round-trip — `.docx` (full coverage), `.pptx` (text/tables/pictures/charts/notes/theme + OLE/3D/video/audio/SmartArt/morph/p15 transitions via raw-set passthrough), and `.xlsx` (cells/formulas/styles + tables, conditional formatting, validations, comments, charts, sparklines, pictures, shapes, pivot tables; slicers/chartEx/OLE via verbatim carrier). Path defaults to `/` (whole document); pass a subtree path (docx: `/body`, `/body/p[N]`, `/body/tbl[N]`, `/theme`, `/settings`, `/numbering`, `/styles`; xlsx: `/SheetName`, `/sheet[N]`) to scope the dump. `officecli refresh <file.docx>` recalculates TOC page numbers / PAGE / cross-references after replay (Word backend on Windows; headless-HTML fallback elsewhere). `officecli plugins list` extends support to `.doc`, `.hwpx`, `.pdf` export.
 
 ```bash
 echo '[

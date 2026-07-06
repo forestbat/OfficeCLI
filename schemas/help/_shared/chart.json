@@ -1303,7 +1303,7 @@
     },
     "title": {
       "type": "string",
-      "description": "chart title text; pass 'none' to remove an existing title. Get also returns sub-keys title.font, title.size, title.color, title.bold when set; these are get-only readback fields surfaced from chart title runs.",
+      "description": "chart title text; pass 'none' (case-insensitive) or an empty string to omit/remove the title — on add this skips creating the title element, on set it removes an existing title. Get also returns sub-keys title.font, title.size, title.color, title.bold when set; these are get-only readback fields surfaced from chart title runs.",
       "add": true,
       "set": true,
       "get": true,

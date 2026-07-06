@@ -278,11 +278,12 @@ officecli merge q4-template.pptx q4-acme.pptx data.json
 
 #### Dump 라운드트립 — 기존 문서에서 학습
 
-`dump`는 모든 `.docx`를 — 전체 문서 **또는 임의의 서브트리** (단일 단락, 표, styles, numbering, theme, settings) — 재생 가능한 batch JSON으로 직렬화하고, `batch`가 재생합니다. 사용자가 모방하고 싶은 샘플 문서가 주어지면, 에이전트는 원시 OOXML XML이 아닌 구조화된 사양을 읽고, 변경하여 재생합니다. "기존 템플릿이 있다"와 "100개 변형을 생성해 줘" 사이의 다리.
+`dump`는 모든 `.docx`, `.pptx`, `.xlsx`를 — 전체 문서 **또는 임의의 서브트리** (단일 단락, 표, 슬라이드, 워크시트, styles, numbering, theme, settings) — 재생 가능한 batch JSON으로 직렬화하고, `batch`가 재생합니다. 사용자가 모방하고 싶은 샘플 문서가 주어지면, 에이전트는 원시 OOXML XML이 아닌 구조화된 사양을 읽고, 변경하여 재생합니다. "기존 템플릿이 있다"와 "100개 변형을 생성해 줘" 사이의 다리.
 
 ```bash
 officecli dump existing.docx -o blueprint.json                  # 전체 문서
 officecli dump existing.docx /body/tbl[1] -o table.json         # 임의의 서브트리
+officecli dump existing.xlsx /Sheet1 -o sheet.json              # 단일 워크시트
 officecli batch new.docx --input blueprint.json
 ```
 
@@ -389,7 +390,7 @@ curl -fsSL https://officecli.ai/SKILL.md -o ~/.claude/skills/officecli.md
 - **내장 에이전트 친화적 렌더링 엔진** — `view html` / `view screenshot` / `watch`가 네이티브로 HTML과 PNG를 출력. Office 불필요. 에이전트는 CI / Docker / 헤드리스 환경에서도 자신의 출력을 "보고" 레이아웃 문제를 수정할 수 있습니다.
 - **내장 수식 & 피벗 엔진** — 350+ Excel 함수 작성 시 자동 평가 (스필되는 동적 배열, 재무·채권·통계 함수군 포함); 소스 범위에서 단일 명령으로 네이티브 OOXML 피벗 테이블. 에이전트는 Office에서 재계산할 필요 없이 계산값과 집계 결과를 즉시 읽습니다.
 - **템플릿 병합** — 에이전트가 한 번 레이아웃을 설계, 다운스트림 코드가 `{{key}}` 자리표시자를 N번 채움. 각 보고서를 재생성하며 토큰을 태우는 것을 방지.
-- **라운드트립 Dump** — `dump`가 모든 `.docx`를 재생 가능한 batch JSON으로. 에이전트는 raw OOXML XML이 아닌 구조화된 사양을 읽어 인간이 작성한 샘플에서 학습.
+- **라운드트립 Dump** — `dump`가 모든 `.docx`, `.pptx`, `.xlsx`를 재생 가능한 batch JSON으로. 에이전트는 raw OOXML XML이 아닌 구조화된 사양을 읽어 인간이 작성한 샘플에서 학습.
 - **내장 도움말** — 속성명이나 값 형식이 헷갈릴 때, 에이전트는 추측하지 않고 `officecli <format> set <element>`를 실행.
 - **자동 설치** — OfficeCLI는 AI 도구 (Claude Code, Cursor, VS Code…) 를 감지하고 자가 구성합니다. 수동 skill 파일 설정 불필요.
 

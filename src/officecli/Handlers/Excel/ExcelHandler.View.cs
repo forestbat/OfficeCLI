@@ -46,7 +46,12 @@ public partial class ExcelHandler
                 var cellElements = row.Elements<Cell>();
                 if (cols != null)
                     cellElements = cellElements.Where(c => cols.Contains(ParseCellReference(c.CellReference?.Value ?? "A1").Column));
-                var cells = cellElements.Select(c => GetCellDisplayValue(c, evaluator)).ToArray();
+                // Prefix each cell with its A1 address so a sparse row stays unambiguous
+                // (tab-position != column when gaps collapse).
+                // Agents parse per tab-token with ^([A-Z]+\d+)=(.*)$.
+                var cells = cellElements
+                    .Select(c => $"{c.CellReference?.Value ?? "?"}={GetCellDisplayValue(c, evaluator)}")
+                    .ToArray();
                 var rowRef = row.RowIndex?.Value ?? (uint)lineNum;
                 sb.AppendLine($"[/{sheetName}/row[{rowRef}]] {string.Join("\t", cells)}");
                 emitted++;

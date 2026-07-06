@@ -278,11 +278,12 @@ officecli merge q4-template.pptx q4-acme.pptx data.json
 
 #### Dump によるラウンドトリップ — 既存ドキュメントから学ぶ
 
-`dump` は任意の `.docx` — ドキュメント全体**または任意のサブツリー**（単一の段落、表、styles、numbering、theme、settings）— を再生可能なバッチ JSON にシリアライズし、`batch` で再生。ユーザーが模倣したいサンプルから、エージェントは生の OOXML XML ではなく構造化された仕様を読み、変更して再生します。"既存テンプレートがある" と "100 個のバリエーションを生成して" を繋ぎます。
+`dump` は任意の `.docx`・`.pptx`・`.xlsx` — ドキュメント全体**または任意のサブツリー**（単一の段落、表、スライド、ワークシート、styles、numbering、theme、settings）— を再生可能なバッチ JSON にシリアライズし、`batch` で再生。ユーザーが模倣したいサンプルから、エージェントは生の OOXML XML ではなく構造化された仕様を読み、変更して再生します。"既存テンプレートがある" と "100 個のバリエーションを生成して" を繋ぎます。
 
 ```bash
 officecli dump existing.docx -o blueprint.json                  # ドキュメント全体
 officecli dump existing.docx /body/tbl[1] -o table.json         # 任意のサブツリー
+officecli dump existing.xlsx /Sheet1 -o sheet.json              # 単一ワークシート
 officecli batch new.docx --input blueprint.json
 ```
 
@@ -389,7 +390,7 @@ curl -fsSL https://officecli.ai/SKILL.md -o ~/.claude/skills/officecli.md
 - **内蔵エージェントフレンドリーレンダリングエンジン** — `view html` / `view screenshot` / `watch` がネイティブに HTML と PNG を出力。Office 不要。エージェントは CI / Docker / ヘッドレス環境でも自分の出力を "見て" レイアウトの問題を修正できます。
 - **内蔵数式 & ピボットエンジン** — 350+ の Excel 関数が書き込み時に自動評価 (スピルする動的配列、財務・債券・統計関数群を含む); ソース範囲から 1 コマンドでネイティブ OOXML ピボットテーブル。エージェントは Office で再計算せずに、計算値と集計結果を即座に読み取れます。
 - **テンプレートマージ** — エージェントがレイアウトを一度設計し、下流コードが `{{key}}` プレースホルダーを N 回入力。各レポートを再生成してトークンを焼くことを避けます。
-- **ラウンドトリップ Dump** — `dump` が任意の `.docx` を再生可能なバッチ JSON に変換。エージェントは生の OOXML XML ではなく構造化された仕様を読んで、人間が作成したサンプルから学習。
+- **ラウンドトリップ Dump** — `dump` が任意の `.docx`・`.pptx`・`.xlsx` を再生可能なバッチ JSON に変換。エージェントは生の OOXML XML ではなく構造化された仕様を読んで、人間が作成したサンプルから学習。
 - **内蔵ヘルプ** — プロパティ名や値形式に迷ったら、エージェントは推測せず `officecli <format> set <element>` を実行。
 - **自動インストール** — OfficeCLI は使っているツール (Claude Code、Cursor、VS Code…) を検出して自己構成します。手動の skill ファイルセットアップ不要。
 

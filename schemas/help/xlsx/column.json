@@ -14,7 +14,7 @@
   "paths": {
     "positional": ["/SheetName/col[X]"]
   },
-  "note": "X is a column letter (A,B,…) or 1-based index. Insert/move/clone at an occupied slot shifts every column at or past the slot right by one, and every range-bearing structure on the sheet (mergeCells, CF/DV sqref, autoFilter, hyperlink/table refs, named ranges, formula cell-refs) follows the displacement. 'add --from /SheetName/col[L]' with --before/--after clones cells + single-col mergeCells; relative formula refs are delta-shifted to the new anchor (Excel 'Insert Copied Cells' parity).",
+  "note": "X is a column letter (A,B,…) or 1-based index. Insert/move/clone at an occupied slot shifts every column at or past the slot right by one, and every range-bearing structure on the sheet (mergeCells, CF/DV sqref, autoFilter, hyperlink/table refs, named ranges, formula cell-refs) follows the displacement. 'add --from /SheetName/col[L]' with --before/--after clones cells + single-col mergeCells; relative formula refs are delta-shifted to the new anchor (Excel 'Insert Copied Cells' parity). Excel-style whole-column references (B:B; B:D spans on set) are accepted as input aliases for col[X]; readback paths stay canonical.",
   "properties": {
     "name": {
       "type": "string",

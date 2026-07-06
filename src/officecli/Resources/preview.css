@@ -264,4 +264,11 @@ html.headless .page-counter { display: none !important; }
 .slide-table { width: 100%; height: 100%; border-collapse: collapse; table-layout: fixed; }
 .slide-table td { padding: 4px 6px; vertical-align: top; overflow: hidden; font-size: 10pt; color: inherit; }
 .connector { position: absolute; pointer-events: none; }
+/* The connector's bounding box is a large rectangle for any diagonal/bent line,
+   so the box stays click-through (pointer-events:none above) — otherwise it would
+   swallow clicks meant for shapes beneath it. But pointer-events is inherited in
+   SVG, so leave the drawn stroke itself hittable: an interactive host (the editor)
+   can then select the connector by clicking the visible line, while the empty box
+   area still passes through. fill="none" means only the stroke receives events. */
+.connector svg line, .connector svg polyline, .connector svg path { pointer-events: stroke; }
 .group { position: absolute; }

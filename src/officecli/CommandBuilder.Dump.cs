@@ -12,7 +12,7 @@ static partial class CommandBuilder
 {
     private static Command BuildDumpCommand(Option<bool> jsonOption)
     {
-        var dumpFileArg = new Argument<FileInfo>("file") { Description = "Office document path (.docx or .pptx)" };
+        var dumpFileArg = new Argument<FileInfo>("file") { Description = "Office document path (.docx, .pptx, or .xlsx)" };
         var dumpPathArg = new Argument<string>("path")
         {
             Description = "DOM path of the subtree to dump. Defaults to '/' (whole document) when omitted. "

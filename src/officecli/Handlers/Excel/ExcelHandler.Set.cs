@@ -204,6 +204,24 @@ public partial class ExcelHandler
                 brkSetMatch.Groups[1].Value.Equals("rowbreak", StringComparison.OrdinalIgnoreCase),
                 int.Parse(brkSetMatch.Groups[2].Value), properties);
 
+        // CONSISTENCY(axis-ref-compat): accept Excel-style whole-column/row
+        // references (B:B, B:D, 1:1, 2:5) as input aliases — expand to the
+        // canonical col[X]/row[N] segments and apply per column/row, the way
+        // range set (A1:D1) applies per cell.
+        if (TryExpandAxisRef(cellRef) is { } axisSegments)
+        {
+            var axisUnsupported = new List<string>();
+            foreach (var seg in axisSegments)
+            {
+                var segResult = Set($"/{sheetName}/{seg}", properties);
+                // Intersect: a prop is unsupported only if no column/row took it.
+                axisUnsupported = axisSegments[0] == seg
+                    ? segResult
+                    : axisUnsupported.Intersect(segResult, StringComparer.OrdinalIgnoreCase).ToList();
+            }
+            return axisUnsupported;
+        }
+
         // Handle /SheetName/col[X] where X is a column letter (A) or numeric index (1)
         var colMatch = Regex.Match(cellRef, @"^col\[([A-Za-z0-9]+)\]$", RegexOptions.IgnoreCase);
         if (colMatch.Success)
@@ -926,6 +944,20 @@ public partial class ExcelHandler
         return unsupported;
     }
 
+    // BUG-003: worksheet child order is sheetPr, dimension, sheetViews, ...
+    // A blind InsertAt(0) puts sheetViews before an existing sheetPr (e.g. one
+    // created by tabColor) and produces schema-invalid OOXML that fails
+    // validate (Excel silently repairs it, so it went unnoticed).
+    private static void InsertSheetViewsInSchemaOrder(Worksheet ws, SheetViews sheetViews)
+    {
+        OpenXmlElement? anchor = ws.GetFirstChild<SheetDimension>()
+            ?? (OpenXmlElement?)ws.GetFirstChild<SheetProperties>();
+        if (anchor != null)
+            ws.InsertAfter(sheetViews, anchor);
+        else
+            ws.InsertAt(sheetViews, 0);
+    }
+
     // ==================== Sheet-level Set (freeze panes) ====================
 
     private List<string> SetSheetLevel(WorksheetPart worksheet, string sheetName, Dictionary<string, string> properties)
@@ -1161,7 +1193,7 @@ public partial class ExcelHandler
                     if (sheetViews == null)
                     {
                         sheetViews = new SheetViews();
-                        ws.InsertAt(sheetViews, 0);
+                        InsertSheetViewsInSchemaOrder(ws, sheetViews);
                     }
                     var sheetView = sheetViews.GetFirstChild<SheetView>();
                     if (sheetView == null)
@@ -1304,7 +1336,7 @@ public partial class ExcelHandler
                     if (sheetViews == null)
                     {
                         sheetViews = new SheetViews();
-                        ws.InsertAt(sheetViews, 0);
+                        InsertSheetViewsInSchemaOrder(ws, sheetViews);
                     }
                     var sheetView = sheetViews.GetFirstChild<SheetView>();
                     if (sheetView == null)
@@ -1325,7 +1357,7 @@ public partial class ExcelHandler
                     if (sheetViews == null)
                     {
                         sheetViews = new SheetViews();
-                        ws.InsertAt(sheetViews, 0);
+                        InsertSheetViewsInSchemaOrder(ws, sheetViews);
                     }
                     var sheetView = sheetViews.GetFirstChild<SheetView>();
                     if (sheetView == null)
@@ -1342,7 +1374,7 @@ public partial class ExcelHandler
                     if (sheetViews == null)
                     {
                         sheetViews = new SheetViews();
-                        ws.InsertAt(sheetViews, 0);
+                        InsertSheetViewsInSchemaOrder(ws, sheetViews);
                     }
                     var sheetView = sheetViews.GetFirstChild<SheetView>();
                     if (sheetView == null)
@@ -1361,7 +1393,7 @@ public partial class ExcelHandler
                     if (sheetViews == null)
                     {
                         sheetViews = new SheetViews();
-                        ws.InsertAt(sheetViews, 0);
+                        InsertSheetViewsInSchemaOrder(ws, sheetViews);
                     }
                     var sheetView = sheetViews.GetFirstChild<SheetView>();
                     if (sheetView == null)

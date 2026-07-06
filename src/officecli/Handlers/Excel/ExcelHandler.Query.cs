@@ -1071,6 +1071,19 @@ public partial class ExcelHandler
             if (Regex.IsMatch(cellRef, @"^\d+$"))
                 throw new ArgumentException($"Invalid cell reference: '{cellRef}'. Expected format like 'A1', 'B2'.");
 
+            // CONSISTENCY(axis-ref-compat): Excel-style whole-column/row
+            // references (B:B, 1:1) are input aliases for col[X]/row[N] —
+            // re-dispatch a single-axis span to the canonical path (readback
+            // Path stays canonical). Multi-axis spans (B:D) have no single
+            // node to return; point at the bracket syntax instead.
+            if (TryExpandAxisRef(cellRef) is { } axisSegments)
+            {
+                if (axisSegments.Count == 1)
+                    return Get($"/{sheetNameFromPath}/{axisSegments[0]}", depth);
+                throw new ArgumentException(
+                    $"{cellRef} spans multiple {(char.IsDigit(cellRef[0]) ? "rows" : "columns")} — get them one at a time ({axisSegments[0]} … {axisSegments[^1]}); set accepts the whole span.");
+            }
+
             // Generic XML fallback: navigate worksheet XML tree
             var xmlSegments = GenericXmlQuery.ParsePathSegments(cellRef);
             var target = GenericXmlQuery.NavigateByPath(GetSheet(worksheet), xmlSegments);

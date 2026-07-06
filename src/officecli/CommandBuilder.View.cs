@@ -12,7 +12,7 @@ static partial class CommandBuilder
     private static Command BuildViewCommand(Option<bool> jsonOption)
     {
         var viewFileArg = new Argument<FileInfo>("file") { Description = "Office document path (.docx, .xlsx, .pptx)" };
-        var viewModeArg = new Argument<string>("mode") { Description = "View mode: text, annotated, outline, stats, issues, html, svg, screenshot, pdf, forms" };
+        var viewModeArg = new Argument<string>("mode") { Description = "View mode: text, annotated, outline, stats, issues, html, svg, screenshot, pdf, forms. text mode (xlsx): each cell is rendered as <A1>=<value>, tab-separated; empty cells are omitted, so a sparse row lists only its populated cells (e.g. 'B2=120000\\tD2=Beijing')." };
         var startLineOpt = new Option<int?>("--start") { Description = "Start line/paragraph number" };
         var endLineOpt = new Option<int?>("--end") { Description = "End line/paragraph number" };
         var maxLinesOpt = new Option<int?>("--max-lines") { Description = "Maximum number of lines/rows/slides to output (truncates with total count)" };

@@ -278,11 +278,12 @@ officecli merge q4-template.pptx q4-acme.pptx data.json
 
 #### Dump 往返 —— 从现有文档学习
 
-`dump` 把任意 `.docx` —— 整个文档**或任意子树**（单段、单表、styles、numbering、theme、settings）——序列化为可重放的 batch JSON，`batch` 重放回去。给一份用户想模仿的范本，智能体读结构化规格而不是原始 OOXML XML，修改后重放。打通"我有一份现成模板"和"给我生成 100 份变体"之间的链路。
+`dump` 把任意 `.docx`、`.pptx`、`.xlsx` —— 整个文档**或任意子树**（单段、单表、单页幻灯片、单个工作表、styles、numbering、theme、settings）——序列化为可重放的 batch JSON，`batch` 重放回去。给一份用户想模仿的范本，智能体读结构化规格而不是原始 OOXML XML，修改后重放。打通"我有一份现成模板"和"给我生成 100 份变体"之间的链路。
 
 ```bash
 officecli dump existing.docx -o blueprint.json                  # 整个文档
 officecli dump existing.docx /body/tbl[1] -o table.json         # 任意子树
+officecli dump existing.xlsx /Sheet1 -o sheet.json              # 单个工作表
 officecli batch new.docx --input blueprint.json
 ```
 
@@ -398,7 +399,7 @@ curl -fsSL https://officecli.ai/SKILL.md -o ~/.claude/skills/officecli.md
 - **内置 agent 友好渲染引擎** —— `view html` / `view screenshot` / `watch` 原生输出 HTML 和 PNG。无需 Office。智能体能"看见"自己的产出，并在 CI / Docker / 无头环境里修复排版问题。
 - **内置公式与透视引擎** —— 350+ Excel 函数写入即自动求值（含可溢出动态数组、财务/债券与统计函数族）；从源数据范围一条命令生成原生 OOXML 数据透视表。智能体立刻读到计算值和聚合结果，不需要回到 Office 重算。
 - **模板合并** —— 智能体一次性设计版式，下游代码把 `{{key}}` 占位符填充 N 次。避免每份报告都烧 token 重生成。
-- **Dump 往返** —— `dump` 把任意 `.docx` 转成可重放的 batch JSON。智能体通过读结构化规格学习人类范本，而不是从原始 OOXML XML 反推。
+- **Dump 往返** —— `dump` 把任意 `.docx`、`.pptx`、`.xlsx` 转成可重放的 batch JSON。智能体通过读结构化规格学习人类范本，而不是从原始 OOXML XML 反推。
 - **内置帮助** —— 属性名或取值格式不确定时，智能体跑 `officecli <format> set <element>`，不靠猜。
 - **自动安装** —— OfficeCLI 自动识别您的 AI 工具（Claude Code、Cursor、VS Code…）并完成配置。无需手动放 skill 文件。
 
