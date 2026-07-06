@@ -153,6 +153,9 @@ img "erDiagram — entities & relations" "erDiagram
 img "gantt — project schedule" "gantt
   title Project Plan
   dateFormat YYYY-MM-DD
+  axisFormat %b %d
+  tickInterval 1week
+  weekday monday
   todayMarker off
   section Design
   Research :a1, 2024-01-01, 5d

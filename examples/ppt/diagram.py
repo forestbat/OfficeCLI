@@ -77,7 +77,8 @@ GALLERY = [
     ("er",           "erDiagram — entities & relations",
      "erDiagram\n  CUSTOMER ||--o{ ORDER : places\n  ORDER ||--|{ LINE_ITEM : contains"),
     ("gantt",        "gantt — project schedule",
-     "gantt\n  title Project Plan\n  dateFormat YYYY-MM-DD\n  todayMarker off\n  section Design\n"
+     "gantt\n  title Project Plan\n  dateFormat YYYY-MM-DD\n  axisFormat %b %d\n"
+     "  tickInterval 1week\n  weekday monday\n  todayMarker off\n  section Design\n"
      "  Research :a1, 2024-01-01, 5d\n  Draft :after a1, 4d\n  section Build\n  Code :2024-01-12, 6d"),
     ("journey",      "journey — user journey",
      "journey\n  title My working day\n  section Morning\n  Standup: 3: Me, Team\n"
