@@ -2224,7 +2224,15 @@ internal class WatchServer : IDisposable
             {
                 case "add":
                 {
-                    var parent = root.GetProperty("parent").GetString() ?? "";
+                    // Accept the canonical batch-item key "path" (used by /api/batch,
+                    // the SDKs) as well
+                    // as the legacy "parent". /api/send must accept the same item shape
+                    // as /api/batch (see HandlePostBatchAsync doc) — otherwise `add`
+                    // diverges per backend and a `path`-shaped item throws a raw
+                    // KeyNotFoundException instead of running.
+                    var parent = (root.TryGetProperty("path", out var addPathEl) ? addPathEl.GetString() : null)
+                        ?? (root.TryGetProperty("parent", out var addParentEl) ? addParentEl.GetString() : null)
+                        ?? "";
                     psi.ArgumentList.Add("add");
                     psi.ArgumentList.Add(_filePath);
                     psi.ArgumentList.Add(parent);
