@@ -303,8 +303,8 @@
     },
     "nowrap": {
       "type": "bool",
-      "description": "disable text wrapping inside the cell (set-only; apply after add).",
-      "add": false,
+      "description": "disable text wrapping inside the cell.",
+      "add": true,
       "set": true,
       "get": true,
       "examples": [

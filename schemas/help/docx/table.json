@@ -18,7 +18,7 @@
       "/body/tbl[N]"
     ]
   },
-  "note": "Tables default to Single/Size=4 borders on all sides. Length props use twips (raw int) or unit-qualified. Data can be seeded via 'data' (semicolon rows, comma cells) or per-cell 'r{R}c{C}' props.",
+  "note": "Tables default to Single/Size=4 borders on all sides. Length props use twips (raw int) or unit-qualified. Data can be seeded via 'data' (semicolon rows, comma cells) or per-cell 'r{R}c{C}' props. cantSplit / noWrap / hideMark are row/cell-scoped, not table props — see 'help docx table-row' / 'help docx table-cell'.",
   "children": [
     {
       "element": "row",

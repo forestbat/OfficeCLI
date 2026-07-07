@@ -45,6 +45,18 @@
       "readback": "true when header, key absent otherwise",
       "enforcement": "report"
     },
+    "cantSplit": {
+      "type": "bool",
+      "description": "w:cantSplit — keep the row on one page (no break across pages). Row-scoped: apply per row, not on the table (Word stores it per-row too).",
+      "add": true,
+      "set": true,
+      "get": true,
+      "examples": [
+        "--prop cantSplit=true"
+      ],
+      "readback": "true when set, key absent otherwise",
+      "enforcement": "report"
+    },
     "height.rule": {
       "type": "string",
       "add": false,
