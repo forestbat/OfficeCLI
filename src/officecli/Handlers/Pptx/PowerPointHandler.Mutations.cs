@@ -782,7 +782,7 @@ public partial class PowerPointHandler
             {
                 // Moving a slide after/before itself is a no-op.
                 var sameNewSlideIds = slideIdList.Elements<SlideId>().ToList();
-                var sameIdx = sameNewSlideIds.IndexOf(slideId) + 1;
+                var sameIdx = PathIndex.FromArrayIndex(sameNewSlideIds.IndexOf(slideId));
                 return $"/slide[{sameIdx}]";
             }
 
@@ -841,7 +841,7 @@ public partial class PowerPointHandler
 
             movePresentation.Save();
             var newSlideIds = slideIdList.Elements<SlideId>().ToList();
-            var newIdx = newSlideIds.IndexOf(slideId) + 1;
+            var newIdx = PathIndex.FromArrayIndex(newSlideIds.IndexOf(slideId));
             return $"/slide[{newIdx}]";
         }
 
@@ -859,7 +859,7 @@ public partial class PowerPointHandler
             tgtSlidePart = srcSlidePart;
             tgtShapeTree = GetSlide(srcSlidePart).CommonSlideData?.ShapeTree
                 ?? throw new InvalidOperationException("Slide has no shape tree");
-            var srcSlideIdx = slideParts.IndexOf(srcSlidePart) + 1;
+            var srcSlideIdx = PathIndex.FromArrayIndex(slideParts.IndexOf(srcSlidePart));
             effectiveParentPath = $"/slide[{srcSlideIdx}]";
         }
         else
@@ -1091,7 +1091,7 @@ public partial class PowerPointHandler
         SwapXmlElements(elem1, elem2);
         GetSlide(slide1Part).Save();
 
-        var slideIdx = slideParts.IndexOf(slide1Part) + 1;
+        var slideIdx = PathIndex.FromArrayIndex(slideParts.IndexOf(slide1Part));
         var parentPath = $"/slide[{slideIdx}]";
         var shapeTree = GetSlide(slide1Part).CommonSlideData?.ShapeTree
             ?? throw new InvalidOperationException("Slide has no shape tree");
@@ -1314,7 +1314,7 @@ public partial class PowerPointHandler
 
         GetSlide(slidePart).Save();
         var newRows = table.Elements<Drawing.TableRow>().ToList();
-        var newRowIdx = newRows.IndexOf(row) + 1;
+        var newRowIdx = PathIndex.FromArrayIndex(newRows.IndexOf(row));
         return $"/slide[{slideIdx}]/table[{tableIdx}]/tr[{newRowIdx}]";
     }
 
@@ -1373,7 +1373,7 @@ public partial class PowerPointHandler
 
         GetSlide(slidePart).Save();
         var newRows = table.Elements<Drawing.TableRow>().ToList();
-        var newRowIdx = newRows.IndexOf(clone) + 1;
+        var newRowIdx = PathIndex.FromArrayIndex(newRows.IndexOf(clone));
         return $"/slide[{slideIdx}]/table[{tableIdx}]/tr[{newRowIdx}]";
     }
 
@@ -1440,7 +1440,7 @@ public partial class PowerPointHandler
 
         GetSlide(slidePart).Save();
         var newCells = row.Elements<Drawing.TableCell>().ToList();
-        var newCellIdx = newCells.IndexOf(clone) + 1;
+        var newCellIdx = PathIndex.FromArrayIndex(newCells.IndexOf(clone));
         return $"/slide[{slideIdx}]/table[{tableIdx}]/tr[{rowIdx}]/tc[{newCellIdx}]";
     }
 
@@ -1542,7 +1542,7 @@ public partial class PowerPointHandler
 
         GetSlide(slidePart).Save();
         var newGridCols = grid.Elements<Drawing.GridColumn>().ToList();
-        var newColIdx = newGridCols.IndexOf(movingGridCol) + 1;
+        var newColIdx = PathIndex.FromArrayIndex(newGridCols.IndexOf(movingGridCol));
         return $"/slide[{slideIdx}]/table[{tableIdx}]/col[{newColIdx}]";
     }
 
@@ -1611,7 +1611,7 @@ public partial class PowerPointHandler
 
         GetSlide(slidePart).Save();
         var newGridCols = grid.Elements<Drawing.GridColumn>().ToList();
-        var newColIdx = newGridCols.IndexOf(clonedGridCol) + 1;
+        var newColIdx = PathIndex.FromArrayIndex(newGridCols.IndexOf(clonedGridCol));
         return $"/slide[{slideIdx}]/table[{tableIdx}]/col[{newColIdx}]";
     }
 

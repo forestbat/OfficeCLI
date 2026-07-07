@@ -311,7 +311,7 @@ public partial class WordHandler
             // later FormField re-threading (which also inspects index)
             // doesn't try to rearrange runs inside the new paragraph.
             index = null;
-            var paraIdx = bodyEl.Elements<Paragraph>().ToList().IndexOf(para) + 1;
+            var paraIdx = PathIndex.FromArrayIndex(bodyEl.Elements<Paragraph>().ToList().IndexOf(para));
             parentPath = $"/body/{BuildParaPathSegment(para, paraIdx)}";
         }
         else

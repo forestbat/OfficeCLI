@@ -719,7 +719,7 @@ public partial class WordHandler
             // CONSISTENCY(run-path-index): align the returned r[N] index with
             // navigation's r[N] resolution, which uses Descendants<Run>() and
             // skips comment-reference runs. GetAllRuns encapsulates both rules.
-            var imgRunIdx = GetAllRuns(existingPara).IndexOf(imgRun) + 1;
+            var imgRunIdx = PathIndex.FromArrayIndex(GetAllRuns(existingPara).IndexOf(imgRun));
             // CONSISTENCY(para-path-canonical): canonicalize to paraId-form.
             resultPath = $"{ReplaceTrailingParaSegment(parentPath, existingPara)}/r[{imgRunIdx}]";
         }
@@ -742,7 +742,7 @@ public partial class WordHandler
                     new SpacingBetweenLines { Line = "240", LineRule = LineSpacingRuleValues.Auto }));
                 imgCell.AppendChild(imgPara);
             }
-            var imgPIdx = imgCell.Elements<Paragraph>().ToList().IndexOf(imgPara) + 1;
+            var imgPIdx = PathIndex.FromArrayIndex(imgCell.Elements<Paragraph>().ToList().IndexOf(imgPara));
             resultPath = $"{parentPath}/{BuildParaPathSegment(imgPara, imgPIdx)}";
         }
         else
@@ -763,7 +763,7 @@ public partial class WordHandler
             {
                 var refElement = allChildren[index.Value];
                 parent.InsertBefore(imgPara, refElement);
-                var imgPIdx = parent.Elements<Paragraph>().ToList().IndexOf(imgPara) + 1;
+                var imgPIdx = PathIndex.FromArrayIndex(parent.Elements<Paragraph>().ToList().IndexOf(imgPara));
                 resultPath = $"{parentPath}/{BuildParaPathSegment(imgPara, imgPIdx)}";
             }
             else
@@ -935,7 +935,7 @@ public partial class WordHandler
         if (parent is Paragraph axPara)
         {
             axPara.AppendChild(axRun);
-            var axRunIdx = GetAllRuns(axPara).IndexOf(axRun) + 1;
+            var axRunIdx = PathIndex.FromArrayIndex(GetAllRuns(axPara).IndexOf(axRun));
             // CONSISTENCY(para-path-canonical): canonicalize to paraId-form.
             resultPath = $"{ReplaceTrailingParaSegment(parentPath, axPara)}/r[{axRunIdx}]";
         }
@@ -954,8 +954,8 @@ public partial class WordHandler
                 AssignParaId(hostPara);
                 axCell.AppendChild(hostPara);
             }
-            var axPIdx = axCell.Elements<Paragraph>().ToList().IndexOf(hostPara) + 1;
-            var axCellRunIdx = GetAllRuns(hostPara).IndexOf(axRun) + 1;
+            var axPIdx = PathIndex.FromArrayIndex(axCell.Elements<Paragraph>().ToList().IndexOf(hostPara));
+            var axCellRunIdx = PathIndex.FromArrayIndex(GetAllRuns(hostPara).IndexOf(axRun));
             resultPath = $"{parentPath}/{BuildParaPathSegment(hostPara, axPIdx)}/r[{axCellRunIdx}]";
         }
         else
@@ -963,7 +963,7 @@ public partial class WordHandler
             var hostPara = new Paragraph(axRun);
             AssignParaId(hostPara);
             AppendToParent(parent, hostPara);
-            var axPIdx = parent.Elements<Paragraph>().ToList().IndexOf(hostPara) + 1;
+            var axPIdx = PathIndex.FromArrayIndex(parent.Elements<Paragraph>().ToList().IndexOf(hostPara));
             resultPath = $"{parentPath}/{BuildParaPathSegment(hostPara, axPIdx)}/r[1]";
         }
         return resultPath;
@@ -1530,7 +1530,7 @@ public partial class WordHandler
                 if (ReferenceEquals(para, existingPara)) break;
                 olePIdx++;
             }
-            var oleRunIdx = GetAllRuns(existingPara).IndexOf(oleRun) + 1;
+            var oleRunIdx = PathIndex.FromArrayIndex(GetAllRuns(existingPara).IndexOf(oleRun));
             // CONSISTENCY(para-path-canonical): canonicalize to paraId-form.
             resultPath = $"{ReplaceTrailingParaSegment(parentPath, existingPara)}/r[{oleRunIdx}]";
         }
@@ -1549,10 +1549,10 @@ public partial class WordHandler
                 AssignParaId(olePara);
                 oleCell.AppendChild(olePara);
             }
-            var olePIdx = oleCell.Elements<Paragraph>().ToList().IndexOf(olePara) + 1;
+            var olePIdx = PathIndex.FromArrayIndex(oleCell.Elements<Paragraph>().ToList().IndexOf(olePara));
             // CONSISTENCY(ole-run-path): same /r[1] suffix as the else branch
             // below — the OLE run is the addressable target, not the paragraph.
-            var oleCellRunIdx = GetAllRuns(olePara).IndexOf(oleRun) + 1;
+            var oleCellRunIdx = PathIndex.FromArrayIndex(GetAllRuns(olePara).IndexOf(oleRun));
             resultPath = $"{parentPath}/{BuildParaPathSegment(olePara, olePIdx)}/r[{oleCellRunIdx}]";
         }
         else
@@ -1569,7 +1569,7 @@ public partial class WordHandler
             {
                 AppendToParent(parent, olePara);
             }
-            var olePIdx = parent.Elements<Paragraph>().ToList().IndexOf(olePara) + 1;
+            var olePIdx = PathIndex.FromArrayIndex(parent.Elements<Paragraph>().ToList().IndexOf(olePara));
             // Return the /r[1] address so callers can Set/Get/Remove the
             // OLE run directly. Picture's Add returns a paragraph-level
             // path because the paragraph Set is meaningful (font, style);

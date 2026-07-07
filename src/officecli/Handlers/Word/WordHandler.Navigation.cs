@@ -1616,13 +1616,13 @@ public partial class WordHandler
                     parentPath += "/" + canonName + $"[@sdtId={sdtIdVal}]";
                 else
                 {
-                    var posIdx = childList.IndexOf(next) + 1;
+                    var posIdx = PathIndex.FromArrayIndex(childList.IndexOf(next));
                     parentPath += "/" + canonName + $"[{posIdx}]";
                 }
             }
             else
             {
-                var posIdx = childList.IndexOf(next) + 1;
+                var posIdx = PathIndex.FromArrayIndex(childList.IndexOf(next));
                 parentPath += "/" + canonName + $"[{posIdx}]";
             }
             current = next;

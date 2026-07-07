@@ -510,7 +510,7 @@ public partial class ExcelHandler
             .Where(a => (a is XDR.TwoCellAnchor || a is XDR.OneCellAnchor || a is XDR.AbsoluteAnchor)
                 && a.Descendants<XDR.Picture>().Any())
             .ToList();
-        var picIdx = picAnchors.IndexOf(anchor) + 1;
+        var picIdx = PathIndex.FromArrayIndex(picAnchors.IndexOf(anchor));
 
         return $"/{picSheetName}/picture[{picIdx}]";
     }
@@ -841,7 +841,7 @@ public partial class ExcelHandler
 
         var shpAnchors = shpDrawingsPart.WorksheetDrawing.Elements<XDR.TwoCellAnchor>()
             .Where(a => a.Descendants<XDR.Shape>().Any()).ToList();
-        var shpIdx = shpAnchors.IndexOf(shpAnchor) + 1;
+        var shpIdx = PathIndex.FromArrayIndex(shpAnchors.IndexOf(shpAnchor));
 
         return $"/{shpSheetName}/shape[{shpIdx}]";
     }
@@ -1029,7 +1029,7 @@ public partial class ExcelHandler
 
         // Count all sparkline groups to determine index
         var allSpkGroups = spkGroups.Elements<X14.SparklineGroup>().ToList();
-        var spkIdx = allSpkGroups.IndexOf(spkGroup) + 1;
+        var spkIdx = PathIndex.FromArrayIndex(allSpkGroups.IndexOf(spkGroup));
         return $"/{spkSheetName}/sparkline[{spkIdx}]";
     }
 

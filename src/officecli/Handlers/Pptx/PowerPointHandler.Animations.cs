@@ -3108,7 +3108,7 @@ public partial class PowerPointHandler
             if (hasMorphSelf) continue;
 
             // Don't strip if the next slide has morph (this slide is a morph source)
-            var nextIdx = slideParts.IndexOf(sp) + 1;
+            var nextIdx = PathIndex.FromArrayIndex(slideParts.IndexOf(sp));
             if (nextIdx < slideParts.Count)
             {
                 var nextSlide = GetSlide(slideParts[nextIdx]);

@@ -463,7 +463,7 @@ public partial class PowerPointHandler
                 }
 
                 GetSlide(rowSlidePart).Save();
-                var rowIdx = rowTable.Elements<Drawing.TableRow>().ToList().IndexOf(newTblRow) + 1;
+                var rowIdx = PathIndex.FromArrayIndex(rowTable.Elements<Drawing.TableRow>().ToList().IndexOf(newTblRow));
                 return $"{parentPath}/tr[{rowIdx}]";
     }
 
@@ -538,7 +538,7 @@ public partial class PowerPointHandler
                 }
 
                 GetSlide(colSlidePart).Save();
-                var colIdx = tableGrid.Elements<Drawing.GridColumn>().ToList().IndexOf(newGridCol) + 1;
+                var colIdx = PathIndex.FromArrayIndex(tableGrid.Elements<Drawing.GridColumn>().ToList().IndexOf(newGridCol));
                 return $"{parentPath}/col[{colIdx}]";
     }
 
@@ -626,7 +626,7 @@ public partial class PowerPointHandler
                 }
 
                 GetSlide(cellSlidePart).Save();
-                var cellIdx = cellRow.Elements<Drawing.TableCell>().ToList().IndexOf(newCell) + 1;
+                var cellIdx = PathIndex.FromArrayIndex(cellRow.Elements<Drawing.TableCell>().ToList().IndexOf(newCell));
                 return $"{parentPath}/tc[{cellIdx}]";
     }
 

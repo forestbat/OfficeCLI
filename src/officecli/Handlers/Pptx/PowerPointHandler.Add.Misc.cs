@@ -2064,7 +2064,7 @@ public partial class PowerPointHandler
 
                 // Build result path
                 var siblings = fbParent.ChildElements.Where(e => e.LocalName == created.LocalName).ToList();
-                var createdIdx = siblings.IndexOf(created) + 1;
+                var createdIdx = PathIndex.FromArrayIndex(siblings.IndexOf(created));
                 return $"{parentPath}/{created.LocalName}[{createdIdx}]";
     }
 

@@ -1069,7 +1069,7 @@ public partial class WordHandler
             targetTable.AppendChild(newRow);
         }
 
-        var rowIdx = targetTable.Elements<TableRow>().ToList().IndexOf(newRow) + 1;
+        var rowIdx = PathIndex.FromArrayIndex(targetTable.Elements<TableRow>().ToList().IndexOf(newRow));
         return $"{parentPath}/tr[{rowIdx}]";
     }
 
@@ -1169,7 +1169,7 @@ public partial class WordHandler
             LastAddUnsupportedProps.RemoveAll(k =>
                 k.StartsWith("revision.", StringComparison.OrdinalIgnoreCase));
 
-        var newColIdx = grid.Elements<GridColumn>().ToList().IndexOf(newGridCol) + 1;
+        var newColIdx = PathIndex.FromArrayIndex(grid.Elements<GridColumn>().ToList().IndexOf(newGridCol));
         return $"{parentPath}/col[{newColIdx}]";
     }
 
@@ -1587,7 +1587,7 @@ public partial class WordHandler
             }
         }
 
-        var cellIdx = targetRow.Elements<TableCell>().ToList().IndexOf(newCell) + 1;
+        var cellIdx = PathIndex.FromArrayIndex(targetRow.Elements<TableCell>().ToList().IndexOf(newCell));
         return $"{parentPath}/tc[{cellIdx}]";
     }
 }

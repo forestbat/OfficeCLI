@@ -207,7 +207,7 @@ public partial class ExcelHandler
 
         workbook.Save();
 
-        var nrIdx = definedNames.Elements<DefinedName>().ToList().IndexOf(dn) + 1;
+        var nrIdx = PathIndex.FromArrayIndex(definedNames.Elements<DefinedName>().ToList().IndexOf(dn));
         return $"/namedrange[{nrIdx}]";
     }
 
@@ -324,7 +324,7 @@ public partial class ExcelHandler
             cmtWsElement.Save();
         }
 
-        var cmtIdx = commentList.Elements<Comment>().ToList().IndexOf(comment) + 1;
+        var cmtIdx = PathIndex.FromArrayIndex(commentList.Elements<Comment>().ToList().IndexOf(comment));
         return $"/{cmtSheetName}/comment[{cmtIdx}]";
     }
 
@@ -1461,7 +1461,7 @@ public partial class ExcelHandler
         tableParts.Count = (uint)tableParts.Elements<TablePart>().Count();
         SaveWorksheet(tblWorksheet);
 
-        var tblIdx = tblWorksheet.TableDefinitionParts.ToList().IndexOf(tableDefPart) + 1;
+        var tblIdx = PathIndex.FromArrayIndex(tblWorksheet.TableDefinitionParts.ToList().IndexOf(tableDefPart));
         return $"/{tblSheetName}/table[{tblIdx}]";
     }
 

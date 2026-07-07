@@ -399,7 +399,7 @@ public partial class WordHandler
                 AssignParaId(firstPara);
                 tc.AppendChild(firstPara);
             }
-            var paraIdx = tc.Elements<Paragraph>().ToList().IndexOf(firstPara) + 1;
+            var paraIdx = PathIndex.FromArrayIndex(tc.Elements<Paragraph>().ToList().IndexOf(firstPara));
             parent = firstPara;
             parentPath = $"{parentPath}/{BuildParaPathSegment(firstPara, paraIdx)}";
             // Drop --index — it referred to a position inside the cell, not
@@ -712,7 +712,7 @@ public partial class WordHandler
         string resultPath;
         if (wrappingPara != null)
         {
-            var wrapIdx = parent.Elements<Paragraph>().ToList().IndexOf(wrappingPara) + 1;
+            var wrapIdx = PathIndex.FromArrayIndex(parent.Elements<Paragraph>().ToList().IndexOf(wrappingPara));
             resultPath = $"{parentPath}/{BuildParaPathSegment(wrappingPara, wrapIdx)}/{BookmarkSelector(wrappingPara)}";
         }
         else
@@ -1694,7 +1694,7 @@ public partial class WordHandler
             {
                 foreach (var fr in fieldRuns) fieldPara.AppendChild(fr);
                 var runs = GetAllRuns(fieldPara);
-                var runIdx = runs.IndexOf(pathRun) + 1;
+                var runIdx = PathIndex.FromArrayIndex(runs.IndexOf(pathRun));
                 resultPath = $"{fieldParaPath}/r[{runIdx}]";
             }
         }
@@ -2069,7 +2069,7 @@ public partial class WordHandler
             // index is a childElement-index (ResolveAnchorPosition counts pPr).
             // pPr-aware insert keeps pPr as the first child of <w:p>.
             InsertIntoParagraph(brkPara, brkRun, index);
-            var brkRunIdx = GetAllRuns(brkPara).IndexOf(brkRun) + 1;
+            var brkRunIdx = PathIndex.FromArrayIndex(GetAllRuns(brkPara).IndexOf(brkRun));
             // CONSISTENCY(para-path-canonical): parentPath already targets
             // the paragraph; replacing its trailing /p[...] segment with
             // paraId-form yields a path that mirrors what Get later
@@ -2723,7 +2723,7 @@ public partial class WordHandler
                 "Use 'officecli docx add' for details.");
 
         var siblings = parent.ChildElements.Where(e => e.LocalName == created.LocalName).ToList();
-        var createdIdx = siblings.IndexOf(created) + 1;
+        var createdIdx = PathIndex.FromArrayIndex(siblings.IndexOf(created));
         var resultPath = $"{parentPath}/{created.LocalName}[{createdIdx}]";
         return resultPath;
     }

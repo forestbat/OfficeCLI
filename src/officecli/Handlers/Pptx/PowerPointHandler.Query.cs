@@ -1418,7 +1418,7 @@ public partial class PowerPointHandler
             var mediaPic = mediaList[elementIdx - 1];
             // Find the picture's index among all pictures for PictureToNode
             var allPics = shapeTreeEl.Elements<Picture>().ToList();
-            var picIdx = allPics.IndexOf(mediaPic) + 1;
+            var picIdx = PathIndex.FromArrayIndex(allPics.IndexOf(mediaPic));
             var node = PictureToNode(mediaPic, slideIdx, picIdx, targetSlidePart);
             // Override the path to use the media-type-specific path
             node.Path = $"/slide[{slideIdx}]/{BuildElementPathSegment(elementType, mediaPic, elementIdx)}";

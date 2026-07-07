@@ -1440,7 +1440,7 @@ public partial class WordHandler
             {
                 var refElement = allChildren[index.Value];
                 parent.InsertBefore(para, refElement);
-                var paraPosIdx = parent.Elements<Paragraph>().ToList().IndexOf(para) + 1;
+                var paraPosIdx = PathIndex.FromArrayIndex(parent.Elements<Paragraph>().ToList().IndexOf(para));
                 resultPath = $"{parentPath}/{BuildParaPathSegment(para, paraPosIdx)}";
                 // Positional insert shifts which paragraph is last and the count;
                 // drop the append-monotonic body cache.
@@ -2838,7 +2838,7 @@ public partial class WordHandler
             }
             // CONSISTENCY(run-path-index): match navigation's r[N] enumeration
             // (Descendants<Run>() minus comment-reference runs) via GetAllRuns.
-            var runPosIdx = GetAllRuns(targetPara).IndexOf(newRun) + 1;
+            var runPosIdx = PathIndex.FromArrayIndex(GetAllRuns(targetPara).IndexOf(newRun));
             // CONSISTENCY(para-path-canonical): canonicalize to paraId-form.
             // For hyperlink-parented runs, parentPath already includes the
             // hyperlink segment; emit a hyperlink-scoped result path.
@@ -3306,7 +3306,7 @@ public partial class WordHandler
         else
             tabs.AppendChild(tabStop);
 
-        var newIdx = tabs.Elements<TabStop>().ToList().IndexOf(tabStop) + 1;
+        var newIdx = PathIndex.FromArrayIndex(tabs.Elements<TabStop>().ToList().IndexOf(tabStop));
         return $"{parentPath}/tab[{newIdx}]";
     }
 
@@ -3395,7 +3395,7 @@ public partial class WordHandler
         // so textId must regenerate to mark the paragraph as modified for
         // revision-tracking and diff tooling. Mirrors AddRun's behavior.
         para.TextId = GenerateParaId();
-        var runIdx = GetAllRuns(para).IndexOf(ptabRun) + 1;
+        var runIdx = PathIndex.FromArrayIndex(GetAllRuns(para).IndexOf(ptabRun));
         // CONSISTENCY(para-path-canonical): when parent is itself a
         // paragraph, parentPath already points at it — appending another
         // /p[N] would yield an illegal /p[1]/p[1]/r[N] path. Replace the

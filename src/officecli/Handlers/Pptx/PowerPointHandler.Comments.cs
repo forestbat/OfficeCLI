@@ -151,7 +151,7 @@ public partial class PowerPointHandler
         }
         commentsPart.CommentList.Save();
 
-        var addedIdx = commentsPart.CommentList.Elements<Comment>().ToList().IndexOf(comment) + 1;
+        var addedIdx = PathIndex.FromArrayIndex(commentsPart.CommentList.Elements<Comment>().ToList().IndexOf(comment));
         return $"/slide[{slideIdx}]/comment[{addedIdx}]";
     }
 

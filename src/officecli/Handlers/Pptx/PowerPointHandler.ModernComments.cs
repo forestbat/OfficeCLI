@@ -286,7 +286,7 @@ public partial class PowerPointHandler
             replyLst.AppendChild(reply);
             part.CommentList!.Save();
 
-            var newRIdx = replyLst.Elements<CommentReply>().ToList().IndexOf(reply) + 1;
+            var newRIdx = PathIndex.FromArrayIndex(replyLst.Elements<CommentReply>().ToList().IndexOf(reply));
             return $"/slide[{slideIdx}]/modernComment[{resolvedParent.commentIdx}]/reply[{newRIdx}]";
         }
 

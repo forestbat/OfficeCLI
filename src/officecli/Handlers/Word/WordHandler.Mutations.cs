@@ -1426,7 +1426,7 @@ public partial class WordHandler
         }
 
         var siblings = targetParent.ChildElements.Where(e => e.LocalName == element.LocalName).ToList();
-        var newIdx = siblings.IndexOf(element) + 1;
+        var newIdx = PathIndex.FromArrayIndex(siblings.IndexOf(element));
         return $"{effectiveParentPath}/{element.LocalName}[{newIdx}]";
     }
 
@@ -1615,7 +1615,7 @@ public partial class WordHandler
         // descends into MoveToRun (Descendants<Run>()), so the run keeps a
         // stable r[N] index in the target paragraph's run list.
         var allRunsInTarget = targetParent.Descendants<Run>().ToList();
-        var rIdx = allRunsInTarget.IndexOf(destRun) + 1;
+        var rIdx = PathIndex.FromArrayIndex(allRunsInTarget.IndexOf(destRun));
         return $"{targetParentPath.TrimEnd('/')}/r[{rIdx}]";
     }
 
@@ -1952,7 +1952,7 @@ public partial class WordHandler
 
                 SaveDoc();
                 var fSiblings = targetParent.ChildElements.Where(e => e.LocalName == clone.LocalName).ToList();
-                var fNewIdx = fSiblings.IndexOf(clone) + 1;
+                var fNewIdx = PathIndex.FromArrayIndex(fSiblings.IndexOf(clone));
                 return $"{targetParentPath}/{clone.LocalName}[{fNewIdx}]";
             }
         }
@@ -1967,7 +1967,7 @@ public partial class WordHandler
         SaveDoc();
 
         var siblings = targetParent.ChildElements.Where(e => e.LocalName == clone.LocalName).ToList();
-        var newIdx = siblings.IndexOf(clone) + 1;
+        var newIdx = PathIndex.FromArrayIndex(siblings.IndexOf(clone));
         return $"{targetParentPath}/{clone.LocalName}[{newIdx}]";
     }
 
@@ -2648,7 +2648,7 @@ public partial class WordHandler
 
         SaveDoc();
         var newGridCols = grid.Elements<GridColumn>().ToList();
-        var newColIdx = newGridCols.IndexOf(movingGridCol) + 1;
+        var newColIdx = PathIndex.FromArrayIndex(newGridCols.IndexOf(movingGridCol));
         return $"/body/tbl[{tableIdx}]/col[{newColIdx}]";
     }
 
@@ -2708,7 +2708,7 @@ public partial class WordHandler
 
         SaveDoc();
         var newGridCols = grid.Elements<GridColumn>().ToList();
-        var newColIdx = newGridCols.IndexOf(clonedGridCol) + 1;
+        var newColIdx = PathIndex.FromArrayIndex(newGridCols.IndexOf(clonedGridCol));
         return $"/body/tbl[{tableIdx}]/col[{newColIdx}]";
     }
 }
