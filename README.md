@@ -87,7 +87,7 @@ This copies the binary to your PATH and installs the **officecli skill** into ev
 ## For Developers — See It Live in 30 Seconds
 
 ```bash
-# 1. Install (macOS / Linux)
+# 1. Install (macOS / Linux) — or: brew install officecli / npm install -g @officecli/officecli
 curl -fsSL https://raw.githubusercontent.com/iOfficeAI/OfficeCLI/main/install.sh | bash
 # Windows (PowerShell): irm https://raw.githubusercontent.com/iOfficeAI/OfficeCLI/main/install.ps1 | iex
 
@@ -211,6 +211,16 @@ curl -fsSL https://raw.githubusercontent.com/iOfficeAI/OfficeCLI/main/install.sh
 
 # Windows (PowerShell)
 irm https://raw.githubusercontent.com/iOfficeAI/OfficeCLI/main/install.ps1 | iex
+```
+
+**Or via a package manager:**
+
+```bash
+# Homebrew (macOS / Linux)
+brew install officecli
+
+# npm (all platforms — fetches the native binary for your platform)
+npm install -g @officecli/officecli
 ```
 
 **Or download manually** from [GitHub Releases](https://github.com/iOfficeAI/OfficeCLI/releases):

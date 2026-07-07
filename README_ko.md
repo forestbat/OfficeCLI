@@ -87,7 +87,7 @@ officecli install
 ## 개발자용 — 30초 만에 라이브로 확인
 
 ```bash
-# 1. 설치 (macOS / Linux)
+# 1. 설치 (macOS / Linux) — 또는: brew install officecli / npm install -g @officecli/officecli
 curl -fsSL https://raw.githubusercontent.com/iOfficeAI/OfficeCLI/main/install.sh | bash
 # Windows (PowerShell): irm https://raw.githubusercontent.com/iOfficeAI/OfficeCLI/main/install.ps1 | iex
 
@@ -208,6 +208,16 @@ curl -fsSL https://raw.githubusercontent.com/iOfficeAI/OfficeCLI/main/install.sh
 
 # Windows (PowerShell)
 irm https://raw.githubusercontent.com/iOfficeAI/OfficeCLI/main/install.ps1 | iex
+```
+
+**또는 패키지 매니저로 설치:**
+
+```bash
+# Homebrew (macOS / Linux)
+brew install officecli
+
+# npm (모든 플랫폼 — 설치 시 플랫폼에 맞는 네이티브 바이너리를 받아옵니다)
+npm install -g @officecli/officecli
 ```
 
 **또는 수동 다운로드** [GitHub Releases](https://github.com/iOfficeAI/OfficeCLI/releases):
