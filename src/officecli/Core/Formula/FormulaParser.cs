@@ -487,7 +487,7 @@ internal static class FormulaParser
             {
                 var naryPr = element.ChildElements.FirstOrDefault(e => e.LocalName == "naryPr");
                 var chrElem = naryPr?.ChildElements.FirstOrDefault(e => e.LocalName == "chr");
-                var chr = chrElem?.GetAttribute("val", "http://schemas.openxmlformats.org/officeDocument/2006/math").Value ?? "∑";
+                var chr = chrElem?.GetAttribute("val", "http://schemas.openxmlformats.org/officeDocument/2006/math").Value ?? "∫"; // ECMA-376: omitted m:chr = integral (Word omits it for ∫); NOT ∑
                 var cmd = NaryCharToCommand(chr);
                 var subText = ArgToLatex(element.ChildElements.FirstOrDefault(e => e.LocalName == "sub"));
                 var supText = ArgToLatex(element.ChildElements.FirstOrDefault(e => e.LocalName == "sup"));
@@ -862,7 +862,7 @@ internal static class FormulaParser
             {
                 var naryPr = element.ChildElements.FirstOrDefault(e => e.LocalName == "naryPr");
                 var chrElem = naryPr?.ChildElements.FirstOrDefault(e => e.LocalName == "chr");
-                var chr = chrElem?.GetAttribute("val", "http://schemas.openxmlformats.org/officeDocument/2006/math").Value ?? "∑";
+                var chr = chrElem?.GetAttribute("val", "http://schemas.openxmlformats.org/officeDocument/2006/math").Value ?? "∫"; // ECMA-376: omitted m:chr = integral (Word omits it for ∫); NOT ∑
                 var subText = ArgToReadable(element.ChildElements.FirstOrDefault(e => e.LocalName == "sub"));
                 var supText = ArgToReadable(element.ChildElements.FirstOrDefault(e => e.LocalName == "sup"));
                 var baseText = ArgToReadable(element.ChildElements.FirstOrDefault(e => e.LocalName == "e"));
