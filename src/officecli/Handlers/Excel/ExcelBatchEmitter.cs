@@ -476,14 +476,25 @@ public static partial class ExcelBatchEmitter
             });
         if (sheetNode.Format.TryGetValue("protect", out var prot) && prot is bool pb && pb)
         {
+            var protProps = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase) { ["protect"] = "true" };
+            // Round-trip the stored hashes verbatim (legacy password attr and
+            // the modern algorithm set) — previously the password was dropped
+            // and replay silently degraded to passwordless protection.
+            foreach (var hashKey in new[]
+            {
+                "passwordHash", "protection.algorithm", "protection.hash",
+                "protection.salt", "protection.spinCount",
+            })
+            {
+                if (sheetNode.Format.TryGetValue(hashKey, out var hv) && hv?.ToString() is { Length: > 0 } hvS)
+                    protProps[hashKey] = hvS;
+            }
             items.Add(new BatchItem
             {
                 Command = "set",
                 Path = sheetPath,
-                Props = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase) { ["protect"] = "true" },
+                Props = protProps,
             });
-            warnings.Add(new UnsupportedWarning("sheet.password", sheetPath,
-                "sheet protection password hashes cannot be round-tripped; protection is emitted without a password"));
         }
 
         // Manual page breaks. Get exposes them as comma-joined index lists;

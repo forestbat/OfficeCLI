@@ -320,7 +320,23 @@ public partial class ExcelHandler
             // Sheet protection readback
             var sheetProtection = ws.GetFirstChild<SheetProtection>();
             if (sheetProtection?.Sheet?.Value == true)
+            {
                 sheetNode.Format["protect"] = true;
+                // Password hashes (legacy 16-bit `password` attr and the
+                // modern algorithmName/hashValue/saltValue/spinCount set)
+                // are surfaced verbatim so dump→batch preserves protection
+                // strength instead of silently degrading to passwordless.
+                if (sheetProtection.Password?.Value is { Length: > 0 } legacyPw)
+                    sheetNode.Format["passwordHash"] = legacyPw;
+                if (sheetProtection.AlgorithmName?.Value is { Length: > 0 } algo)
+                    sheetNode.Format["protection.algorithm"] = algo;
+                if (sheetProtection.HashValue?.Value is { Length: > 0 } hashV)
+                    sheetNode.Format["protection.hash"] = hashV;
+                if (sheetProtection.SaltValue?.Value is { Length: > 0 } saltV)
+                    sheetNode.Format["protection.salt"] = saltV;
+                if (sheetProtection.SpinCount?.HasValue == true)
+                    sheetNode.Format["protection.spinCount"] = (int)sheetProtection.SpinCount.Value;
+            }
 
             // Print settings readback
             var pageSetup = ws.GetFirstChild<PageSetup>();

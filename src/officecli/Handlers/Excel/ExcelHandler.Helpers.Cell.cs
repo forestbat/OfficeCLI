@@ -232,7 +232,36 @@ public partial class ExcelHandler
                 }
             }
         }
+        // Advisory only — a multi-million-cell merge is legal OOXML and
+        // validates green, but real Excel stalls for minutes opening it
+        // (empirically: 16384x1 renders in seconds; 1024x100000 hangs past
+        // a 120s render timeout). Warn so the caller knows the file may be
+        // unusable in practice; do not reject (lenient-input convention).
+        if (TryParseRangeDims(refUpper, out var mergeRows, out var mergeCols)
+            && (long)mergeRows * mergeCols > 10_000_000)
+        {
+            Console.Error.WriteLine(
+                $"Warning: merge range '{refUpper}' spans {(long)mergeRows * mergeCols:N0} cells; " +
+                "real Excel can hang for minutes opening merges this large.");
+        }
         mergeCells.AppendChild(new MergeCell { Reference = refUpper });
+    }
+
+    private static bool TryParseRangeDims(string range, out int rows, out int cols)
+    {
+        rows = cols = 0;
+        var dimParts = range.Split(':');
+        if (dimParts.Length != 2) return false;
+        var m1 = System.Text.RegularExpressions.Regex.Match(dimParts[0], @"^([A-Z]+)(\d+)$");
+        var m2 = System.Text.RegularExpressions.Regex.Match(dimParts[1], @"^([A-Z]+)(\d+)$");
+        if (!m1.Success || !m2.Success) return false;
+        var c1 = ColumnNameToIndex(m1.Groups[1].Value);
+        var c2 = ColumnNameToIndex(m2.Groups[1].Value);
+        var r1 = int.Parse(m1.Groups[2].Value);
+        var r2 = int.Parse(m2.Groups[2].Value);
+        rows = Math.Abs(r2 - r1) + 1;
+        cols = Math.Abs(c2 - c1) + 1;
+        return true;
     }
 
     private DocumentNode GetCellRange(string sheetName, SheetData sheetData, string range, int depth, WorksheetPart? part = null)

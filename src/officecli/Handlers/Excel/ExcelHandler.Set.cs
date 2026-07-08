@@ -1546,6 +1546,43 @@ public partial class ExcelHandler
                     }
                     break;
                 }
+                // Verbatim hash write-back — the dump emitter surfaces the
+                // stored hashes (legacy `password` attr / modern algorithm
+                // set) so replay preserves protection strength. Values are
+                // written as-is, never re-hashed.
+                case "passwordhash":
+                {
+                    var spH = ws.GetFirstChild<SheetProtection>();
+                    if (spH == null)
+                    {
+                        spH = new SheetProtection { Sheet = true, Objects = true, Scenarios = true };
+                        InsertSheetProtectionInOrder(ws, spH);
+                    }
+                    spH.Password = string.IsNullOrEmpty(value) ? null : HexBinaryValue.FromString(value);
+                    break;
+                }
+                case "protection.algorithm":
+                case "protection.hash":
+                case "protection.salt":
+                case "protection.spincount":
+                {
+                    var spM = ws.GetFirstChild<SheetProtection>();
+                    if (spM == null)
+                    {
+                        spM = new SheetProtection { Sheet = true, Objects = true, Scenarios = true };
+                        InsertSheetProtectionInOrder(ws, spM);
+                    }
+                    switch (key.ToLowerInvariant())
+                    {
+                        case "protection.algorithm": spM.AlgorithmName = value; break;
+                        case "protection.hash": spM.HashValue = value; break;
+                        case "protection.salt": spM.SaltValue = value; break;
+                        case "protection.spincount":
+                            spM.SpinCount = uint.TryParse(value, out var spin) ? spin : null;
+                            break;
+                    }
+                    break;
+                }
 
                 // ==================== Print Settings ====================
                 case "printarea":
