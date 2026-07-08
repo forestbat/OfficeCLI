@@ -822,6 +822,15 @@ public partial class ExcelHandler
             return null;
         }
 
+        // Element-looking paths that reach the cell fallthrough (e.g.
+        // chart[1]/series[2] — series has no remove operation) used to die
+        // with a nonsensical "Cell chart[1]/series[2] not found". Name the
+        // real limitation instead.
+        if (cellRef.Contains("/series[", StringComparison.OrdinalIgnoreCase))
+            throw new ArgumentException(
+                "remove is not supported for chart series (operations: add/set/get). " +
+                "Rebuild the chart without the series, or repoint its values via set.");
+
         // Single cell
         var cell = FindCell(sheetData, cellRef)
             ?? throw new ArgumentException($"Cell {cellRef} not found");
