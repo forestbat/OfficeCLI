@@ -737,6 +737,32 @@ public partial class ExcelHandler
     /// round-trip yet. Mirrors PptxBatchEmitter's EmitAuxiliaryPartsScan
     /// contract: silent data loss is worse than a noisy warning.
     /// </summary>
+    // Worksheet children the batch emitter round-trips (or that replay
+    // regenerates as a side effect). Anything outside this set is content
+    // dump will silently lose — surface it as an unsupported_feature warning
+    // instead (mirrors PptxBatchEmitter.EmitAuxiliaryPartsScan).
+    private static readonly HashSet<string> DumpHandledWorksheetChildren = new(StringComparer.Ordinal)
+    {
+        "sheetPr", "dimension", "sheetViews", "sheetFormatPr", "cols",
+        "sheetData", "sheetProtection", "autoFilter", "sortState",
+        "mergeCells", "conditionalFormatting", "dataValidations",
+        "hyperlinks", "printOptions", "pageMargins", "pageSetup",
+        "headerFooter", "rowBreaks", "colBreaks", "drawing",
+        "legacyDrawing", "legacyDrawingHF", "oleObjects", "tableParts",
+        "extLst", "phoneticPr", "sheetCalcPr", "ignoredErrors",
+    };
+
+    // extLst ext URIs the emitter consumes (sparklines, slicer list, x14
+    // conditional formatting, x14 data validations, timeline).
+    private static readonly HashSet<string> DumpHandledExtUris = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "{05C60535-1F16-4fd2-B633-E4A46CF9E463}",
+        "{725AE2AE-9491-48be-B2B4-4EB974FC3084}",
+        "{78C0D931-6437-407d-A8EE-F0AAD7539E65}",
+        "{B025F937-C7B1-47D3-B67F-A62EFF666E3E}",
+        "{FF2B5EF4-FFF2-40B4-BE49-F238E27FC236}",
+    };
+
     public List<(string Element, string Reason)> GetDumpUnsupportedFeatures(string sheetName)
     {
         var result = new List<(string, string)>();
@@ -744,9 +770,25 @@ public partial class ExcelHandler
         if (worksheet == null) return result;
         var ws = GetSheet(worksheet);
 
-        // PR2-6 round-trip tables/cf/validations/comments/charts/sparklines/
-        // pictures/shapes/pivots/slicers/chartEx/OLE; nothing scans here
-        // today — kept as the hook for future unsupported content.
+        foreach (var child in ws.ChildElements)
+        {
+            var name = child.LocalName;
+            if (DumpHandledWorksheetChildren.Contains(name)) continue;
+            result.Add((name,
+                $"worksheet element <{name}> is not round-tripped by dump; it will be missing after replay"));
+        }
+
+        var wsExtLst = ws.GetFirstChild<WorksheetExtensionList>();
+        if (wsExtLst != null)
+        {
+            foreach (var ext in wsExtLst.Elements<WorksheetExtension>())
+            {
+                var uri = ext.Uri?.Value ?? "";
+                if (DumpHandledExtUris.Contains(uri)) continue;
+                result.Add(($"extLst ext {uri}",
+                    $"worksheet extension {uri} is not round-tripped by dump; its content will be missing after replay"));
+            }
+        }
         return result;
     }
 }
