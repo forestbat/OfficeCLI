@@ -87,7 +87,7 @@ officecli install
 ## 开发者 — 30 秒亲眼看到效果
 
 ```bash
-# 1. 安装（macOS / Linux）
+# 1. 安装（macOS / Linux）— 也可以：brew install officecli / npm install -g @officecli/officecli
 curl -fsSL https://raw.githubusercontent.com/iOfficeAI/OfficeCLI/main/install.sh | bash
 # Windows (PowerShell): irm https://raw.githubusercontent.com/iOfficeAI/OfficeCLI/main/install.ps1 | iex
 
@@ -208,6 +208,16 @@ curl -fsSL https://raw.githubusercontent.com/iOfficeAI/OfficeCLI/main/install.sh
 
 # Windows (PowerShell)
 irm https://raw.githubusercontent.com/iOfficeAI/OfficeCLI/main/install.ps1 | iex
+```
+
+**或通过包管理器安装：**
+
+```bash
+# Homebrew（macOS / Linux）
+brew install officecli
+
+# npm（全平台 — 安装时自动拉取对应平台的原生二进制）
+npm install -g @officecli/officecli
 ```
 
 **或手动下载** [GitHub Releases](https://github.com/iOfficeAI/OfficeCLI/releases)：
