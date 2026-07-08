@@ -546,6 +546,22 @@ internal static class AttributeFilter
             return (true, val?.ToString() ?? "");
         }
 
+        // Revision synthetic nodes namespace every key (revision.type,
+        // revision.author, revision.id, revision.date). The Word handler's
+        // selector pre-filter (MatchesFilter in Set.Revision) accepts the short
+        // names, so `query revision[@type=ins]` matched at the handler only to
+        // be dropped here — `type` fell through to the node.Type fallback below
+        // ("revision" != "ins") and `author` resolved as unknown key. Map the
+        // short name onto its namespaced Format key, gated on the revision node
+        // type (same gating precedent as the cell `value` fallback below).
+        if (string.Equals(node.Type, "revision", StringComparison.OrdinalIgnoreCase))
+        {
+            var nsKey = node.Format.Keys.FirstOrDefault(k =>
+                string.Equals(k, "revision." + key, StringComparison.OrdinalIgnoreCase));
+            if (nsKey != null)
+                return (true, node.Format[nsKey]?.ToString() ?? "");
+        }
+
         // "text" falls back to node.Text if not in Format
         if (string.Equals(key, "text", StringComparison.OrdinalIgnoreCase))
         {
