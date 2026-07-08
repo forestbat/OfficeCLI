@@ -14,7 +14,7 @@
   "paths": {
     "positional": ["/slide[N]/connector[M]"]
   },
-  "note": "Aliases: connection. Straight / bent / curved connector lines. 'from' and 'to' can reference shape paths to auto-attach endpoints.",
+  "note": "Aliases: connection. Straight / bent / curved connector lines. 'from' and 'to' reference shape paths to auto-attach endpoints; with no explicit x/y/width/height the line is anchored edge-to-edge (auto-picks the facing edges) so it spans the gap instead of crossing both shapes. Use fromSide/toSide to force a specific edge. NOTE: the chosen edge drives only the drawn geometry (offset/extent) — the low-level stCxn/endCxn idx is not yet derived from a side, so after a manual drag in PowerPoint the connector re-anchors to the auto-picked edge.",
   "properties": {
     "shape": {
       "type": "enum",
@@ -27,7 +27,7 @@
     },
     "from": {
       "type": "string",
-      "description": "start-point shape reference (Add/Set only). Accepts a shape index (1, 2, …), /slide[N]/shape[M] (positional), /slide[N]/shape[@id=M] (as returned by 'query shape'), or /slide[N]/shape[@name=Foo]. Reverse path resolution is not implemented.",
+      "description": "start-point frame reference (Add/Set only). Accepts a frame index (1, 2, …), a positional path /slide[N]/<type>[M], an @id path /slide[N]/<type>[@id=M] (as returned by query/get), or an @name path /slide[N]/<type>[@name=Foo]. <type> may be shape, picture, table, chart, group, connector, etc. — any top-level frame, not only shapes. Reverse path resolution is not implemented.",
       "add": true, "set": true, "get": false,
       "examples": ["--prop from='/slide[1]/shape[1]'", "--prop from='/slide[1]/shape[@id=10001]'", "--prop from='/slide[1]/shape[@name=BoxA]'"],
       "readback": "see startShape/endShape get-only properties for resolved endpoint shape ids",
@@ -35,7 +35,7 @@
     },
     "to": {
       "type": "string",
-      "description": "end-point shape reference (Add/Set only). Accepts a shape index (1, 2, …), /slide[N]/shape[M] (positional), /slide[N]/shape[@id=M] (as returned by 'query shape'), or /slide[N]/shape[@name=Foo]. Reverse path resolution is not implemented.",
+      "description": "end-point frame reference (Add/Set only). Accepts a frame index (1, 2, …), a positional path /slide[N]/<type>[M], an @id path /slide[N]/<type>[@id=M] (as returned by query/get), or an @name path /slide[N]/<type>[@name=Foo]. <type> may be shape, picture, table, chart, group, connector, etc. — any top-level frame, not only shapes. Reverse path resolution is not implemented.",
       "add": true, "set": true, "get": false,
       "examples": ["--prop to='/slide[1]/shape[2]'", "--prop to='/slide[1]/shape[@id=10002]'", "--prop to='/slide[1]/shape[@name=BoxB]'"],
       "readback": "see startShape/endShape get-only properties for resolved endpoint shape ids",
@@ -154,10 +154,44 @@
       "readback": "plain text content of the connector txBody",
       "enforcement": "report"
     },
+    "fromSide": {
+      "type": "enum",
+      "values": ["top", "bottom", "left", "right", "center"],
+      "description": "which edge of the 'from' shape the line leaves. Omitted (default) = auto-pick the edge facing the 'to' shape (right↔left for a same-row layout, bottom↔top for stacked) so the line spans the gap instead of crossing both boxes. 'center' pins the endpoint to the shape center (line enters the box), reproducing the legacy center-to-center look on demand. Drives the drawn geometry (offset/extent); the endpoint still follows the shape when it moves, but re-anchors to the auto edge (sides are not persisted).",
+      "add": true, "set": true, "get": false,
+      "aliases": ["fromside", "startSide", "startside"],
+      "examples": ["--prop fromSide=right", "--prop fromSide=bottom", "--prop fromSide=center"],
+      "enforcement": "report"
+    },
+    "toSide": {
+      "type": "enum",
+      "values": ["top", "bottom", "left", "right", "center"],
+      "description": "which edge of the 'to' shape the line enters. See fromSide; default auto-picks the edge facing the 'from' shape.",
+      "add": true, "set": true, "get": false,
+      "aliases": ["toside", "endSide", "endside"],
+      "examples": ["--prop toSide=left", "--prop toSide=top"],
+      "enforcement": "report"
+    },
+    "fromIdx": {
+      "type": "number",
+      "description": "low-level connection-site index on the 'from' shape (writes <a:stCxn idx>). Prefer fromSide unless you know the preset's cxnLst ordering. 0-based; defaults to 0.",
+      "add": true, "set": true, "get": false,
+      "aliases": ["fromidx", "startIdx", "startidx"],
+      "examples": ["--prop fromIdx=3"],
+      "enforcement": "report"
+    },
+    "toIdx": {
+      "type": "number",
+      "description": "low-level connection-site index on the 'to' shape (writes <a:endCxn idx>). Prefer toSide. 0-based; defaults to 0.",
+      "add": true, "set": true, "get": false,
+      "aliases": ["toidx", "endIdx", "endidx"],
+      "examples": ["--prop toIdx=1"],
+      "enforcement": "report"
+    },
     "startShape": { "type":"number", "add":false, "set":false, "get":true, "description":"shape id of the start connection endpoint.", "readback":"integer shape id", "enforcement":"report" },
-    "startIdx":   { "type":"number", "add":false, "set":false, "get":true, "description":"connection point index on start shape (0-based; omitted when 0).", "readback":"integer", "enforcement":"report" },
+    "startIdx":   { "type":"number", "add":false, "set":false, "get":true, "description":"connection point index on start shape (0-based; emitted whenever the start endpoint is connected, 0 = default anchor). Get-side readback of fromIdx.", "readback":"integer", "enforcement":"report" },
     "endShape":   { "type":"number", "add":false, "set":false, "get":true, "description":"shape id of the end connection endpoint.", "readback":"integer shape id", "enforcement":"report" },
-    "endIdx":     { "type":"number", "add":false, "set":false, "get":true, "description":"connection point index on end shape (0-based; omitted when 0).", "readback":"integer", "enforcement":"report" },
+    "endIdx":     { "type":"number", "add":false, "set":false, "get":true, "description":"connection point index on end shape (0-based; emitted whenever the end endpoint is connected, 0 = default anchor). Get-side readback of toIdx.", "readback":"integer", "enforcement":"report" },
     "zorder": {
       "type": "string",
       "description": "1-based z-order in slide shape tree. Add accepts 'top'/'bottom'/'forward'/'backward'/integer (same vocabulary as shape/picture/group); Get returns the resolved integer position.",

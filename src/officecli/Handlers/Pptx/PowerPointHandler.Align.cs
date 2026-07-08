@@ -76,6 +76,11 @@ public partial class PowerPointHandler
                         "slide-left, slide-center, slide-right, slide-top, slide-middle, slide-bottom");
             }
         }
+
+        // Re-glue any connector anchored to a moved shape — same "connector follows
+        // shape" behavior the plain per-shape x/y set path triggers. Without this,
+        // align/distribute silently detached glued connectors (stale connector xfrm).
+        RerouteConnectorsForMovedShapes(slidePart, shapes);
     }
 
     /// <summary>
@@ -141,6 +146,24 @@ public partial class PowerPointHandler
         {
             throw new ArgumentException(
                 $"Invalid distribute value: '{distributeValue}'. Valid: horizontal, vertical");
+        }
+
+        // Re-glue connectors anchored to the redistributed shapes (see AlignShapes).
+        RerouteConnectorsForMovedShapes(slidePart, shapes);
+    }
+
+    /// <summary>
+    /// After align/distribute repositions shapes, re-run the connector reroute for
+    /// each moved shape so glued connectors track them — the same behavior the
+    /// per-shape x/y set path already provides via RerouteConnectorsForShape.
+    /// </summary>
+    private void RerouteConnectorsForMovedShapes(SlidePart slidePart, List<Shape> shapes)
+    {
+        foreach (var s in shapes)
+        {
+            var id = s.NonVisualShapeProperties?.NonVisualDrawingProperties?.Id?.Value;
+            if (id.HasValue)
+                RerouteConnectorsForShape(slidePart, id.Value);
         }
     }
 

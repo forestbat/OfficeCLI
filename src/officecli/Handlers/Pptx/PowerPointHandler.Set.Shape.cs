@@ -1204,22 +1204,40 @@ public partial class PowerPointHandler
                     // schema allows only one of each on a connector).
                     var endpointShapeTree = GetSlide(slidePart).CommonSlideData?.ShapeTree
                         ?? throw new ArgumentException("Slide has no shape tree");
+                    // Connectors are slide-local: reject a from/to path naming a
+                    // different slide, which ResolveShapeId would otherwise silently
+                    // bind to the same-index shape on this slide (mirror Add path).
+                    var cxnSlideNum = GetSlideIndex(slidePart);
+                    var xSlide = Regex.Match(value, @"^/slide\[(\d+)\]/");
+                    if (xSlide.Success && int.Parse(xSlide.Groups[1].Value) != cxnSlideNum)
+                        throw new ArgumentException(
+                            $"Connector '{key}={value}' references a different slide; a connector can "
+                            + $"only attach to shapes on its own slide (slide {cxnSlideNum}).");
                     var endpointId = ResolveShapeId(value, endpointShapeTree);
+                    // Reject an unresolvable reference (garbage id, out-of-range
+                    // index, or a shape nested in a group) instead of writing a
+                    // dangling stCxn/endCxn — mirror the Add path's RequireReachableFrame.
+                    if (FrameBoundsById(endpointShapeTree, endpointId) == null)
+                        throw new ArgumentException(
+                            $"Connector '{key}={value}' does not resolve to a shape on this slide "
+                            + "(no top-level frame with that id/index exists; note a shape nested inside a group cannot be a connector endpoint).");
                     var cxnDrawProps = cxn.NonVisualConnectionShapeProperties
                         ?.GetFirstChild<NonVisualConnectorShapeDrawingProperties>();
                     if (cxnDrawProps == null) { unsupported.Add(key); break; }
                     bool isStart = key.Equals("from", StringComparison.OrdinalIgnoreCase)
                         || key.Equals("startshape", StringComparison.OrdinalIgnoreCase);
+                    // Assign via the typed property (not RemoveAllChildren+AppendChild):
+                    // the SDK setter places stCxn/endCxn in canonical schema order
+                    // (cxnSpLocks, stCxn, endCxn). Appending after an existing endCxn
+                    // when setting 'from' later would emit stCxn AFTER endCxn, which is
+                    // schema-invalid — PowerPoint silently drops the out-of-order child
+                    // and loses the start attachment.
                     if (isStart)
-                    {
-                        cxnDrawProps.RemoveAllChildren<Drawing.StartConnection>();
-                        cxnDrawProps.AppendChild(new Drawing.StartConnection { Id = endpointId, Index = 0 });
-                    }
+                        cxnDrawProps.StartConnection = new Drawing.StartConnection
+                        { Id = endpointId, Index = ParseConnectorIdx(properties, "fromIdx", "fromidx", "startIdx", "startidx") };
                     else
-                    {
-                        cxnDrawProps.RemoveAllChildren<Drawing.EndConnection>();
-                        cxnDrawProps.AppendChild(new Drawing.EndConnection { Id = endpointId, Index = 0 });
-                    }
+                        cxnDrawProps.EndConnection = new Drawing.EndConnection
+                        { Id = endpointId, Index = ParseConnectorIdx(properties, "toIdx", "toidx", "endIdx", "endidx") };
 
                     // R14-4: recompute the connector's xfrm bounding box from the
                     // (possibly new) endpoint centers — mirror Add.Misc.cs connector
@@ -1231,7 +1249,69 @@ public partial class PowerPointHandler
                         || properties.ContainsKey("y") || properties.ContainsKey("top")
                         || properties.ContainsKey("width") || properties.ContainsKey("height");
                     if (!hasExplicitBox)
-                        RecomputeConnectorBox(cxn, endpointShapeTree);
+                        RecomputeConnectorBox(cxn, endpointShapeTree,
+                            NormalizeConnectorSide(properties, "fromSide", "fromside", "startSide", "startside"),
+                            NormalizeConnectorSide(properties, "toSide", "toside", "endSide", "endside"));
+                    break;
+                }
+                // Edge anchoring on an existing connector without changing endpoints:
+                // `set connector --prop fromSide=right --prop toSide=left`. Recompute
+                // the xfrm from the current connected shapes using the requested edges
+                // so the drawn line moves to those edges (PowerPoint renders our
+                // offset/extent, not stCxn/endCxn). Only meaningful when both endpoints
+                // resolve to frames; a no-op box recompute is harmless otherwise.
+                case "fromside" or "startside":
+                case "toside" or "endside":
+                {
+                    // Handled once per Set call — skip if the sibling side key already
+                    // triggered the recompute, and skip when from/to is also changing
+                    // (that case recomputes with sides above).
+                    if (key is "toside" or "endside"
+                        && (properties.ContainsKey("fromSide") || properties.ContainsKey("fromside")
+                            || properties.ContainsKey("startSide") || properties.ContainsKey("startside")))
+                        break;
+                    if (properties.ContainsKey("from") || properties.ContainsKey("startshape")
+                        || properties.ContainsKey("to") || properties.ContainsKey("endshape"))
+                        break;
+                    bool hasBox = properties.ContainsKey("x") || properties.ContainsKey("left")
+                        || properties.ContainsKey("y") || properties.ContainsKey("top")
+                        || properties.ContainsKey("width") || properties.ContainsKey("height");
+                    if (hasBox) break;
+                    var sideShapeTree = GetSlide(slidePart).CommonSlideData?.ShapeTree
+                        ?? throw new ArgumentException("Slide has no shape tree");
+                    // Compose sequential single-side sets: sides aren't persisted as
+                    // connector state, but on a pure `set` (no shape moved) the stored
+                    // geometry still sits on the last-chosen edges, so re-derive the
+                    // side that isn't being changed from the current endpoint position
+                    // instead of resetting it to auto. This makes
+                    //   set fromSide=top ; set toSide=bottom
+                    // end up top→bottom rather than clobbering fromSide back to auto.
+                    var (rFrom, rTo) = ResolveSidesFromGeometry(cxn, sideShapeTree,
+                        NormalizeConnectorSide(properties, "fromSide", "fromside", "startSide", "startside"),
+                        NormalizeConnectorSide(properties, "toSide", "toside", "endSide", "endside"));
+                    RecomputeConnectorBox(cxn, sideShapeTree, rFrom, rTo);
+                    break;
+                }
+                // Low-level connection-site index on an existing connector. Mutates
+                // the <a:stCxn/endCxn idx> on the current endpoint (no-op if the
+                // endpoint isn't connected). Does not move the drawn line — that is
+                // offset/extent, driven by fromSide/toSide.
+                case "fromidx" or "startidx":
+                {
+                    var d = cxn.NonVisualConnectionShapeProperties
+                        ?.GetFirstChild<NonVisualConnectorShapeDrawingProperties>();
+                    var st = d?.GetFirstChild<Drawing.StartConnection>();
+                    if (st != null) st.Index = ParseConnectorIdx(properties, key);
+                    else unsupported.Add($"{key} (connector has no start connection; set 'from' first)");
+                    break;
+                }
+                case "toidx" or "endidx":
+                {
+                    var d = cxn.NonVisualConnectionShapeProperties
+                        ?.GetFirstChild<NonVisualConnectorShapeDrawingProperties>();
+                    var en = d?.GetFirstChild<Drawing.EndConnection>();
+                    if (en != null) en.Index = ParseConnectorIdx(properties, key);
+                    else unsupported.Add($"{key} (connector has no end connection; set 'to' first)");
                     break;
                 }
                 // R15-4: connector text label. Mirrors the Add.Misc txBody write
@@ -1279,23 +1359,99 @@ public partial class PowerPointHandler
     /// the line detaches from the shape it is glued to. No-op unless the
     /// connector has ShapeProperties and both endpoints resolve to frames.
     /// </summary>
-    private static void RecomputeConnectorBox(ConnectionShape cxn, ShapeTree tree)
+    /// <summary>
+    /// Parse a connector connection-site index (fromIdx/toIdx and legacy
+    /// startIdx/endIdx aliases) from the property bag; defaults to 0 when absent
+    /// or non-numeric, matching Add.Misc.cs's connector idx handling.
+    /// </summary>
+    private static uint ParseConnectorIdx(Dictionary<string, string> p, params string[] keys)
+    {
+        foreach (var k in keys)
+        {
+            if (!p.TryGetValue(k, out var raw)) continue;
+            var t = raw?.Trim();
+            if (string.IsNullOrEmpty(t)) continue;
+            // Reject garbage instead of defaulting to 0 (mirror the Add path and
+            // NormalizeConnectorSide's strict validation).
+            if (uint.TryParse(t, System.Globalization.NumberStyles.Integer,
+                    System.Globalization.CultureInfo.InvariantCulture, out var v))
+                return v;
+            throw new ArgumentException(
+                $"Invalid connector index '{raw}' for '{k}': expected a non-negative integer.");
+        }
+        return 0;
+    }
+
+    /// <summary>
+    /// Given explicit fromSide/toSide (either may be null), fill any null side by
+    /// classifying the connector's current stored endpoint against its connected
+    /// shape's edges. Lets two sequential single-side `set` calls compose without
+    /// persisting side state — valid only on a pure `set` where the stored xfrm
+    /// still reflects the last edge choice (not after a shape move, which is why
+    /// the move-reroute path keeps using auto). Falls back to the explicit values
+    /// (i.e. auto) when endpoints/geometry can't be resolved.
+    /// </summary>
+    private static (string? from, string? to) ResolveSidesFromGeometry(
+        ConnectionShape cxn, ShapeTree tree, string? explicitFrom, string? explicitTo)
+    {
+        if (explicitFrom != null && explicitTo != null) return (explicitFrom, explicitTo);
+        var draw = cxn.NonVisualConnectionShapeProperties
+            ?.GetFirstChild<NonVisualConnectorShapeDrawingProperties>();
+        var startId = draw?.GetFirstChild<Drawing.StartConnection>()?.Id?.Value;
+        var endId = draw?.GetFirstChild<Drawing.EndConnection>()?.Id?.Value;
+        var xf = cxn.ShapeProperties?.Transform2D;
+        if (xf == null || !startId.HasValue || !endId.HasValue) return (explicitFrom, explicitTo);
+        var sBox = FrameBoundsById(tree, startId.Value);
+        var eBox = FrameBoundsById(tree, endId.Value);
+        if (!sBox.HasValue || !eBox.HasValue) return (explicitFrom, explicitTo);
+        long ox = xf.Offset?.X?.Value ?? 0, oy = xf.Offset?.Y?.Value ?? 0;
+        long cx = xf.Extents?.Cx?.Value ?? 0, cy = xf.Extents?.Cy?.Value ?? 0;
+        bool fh = xf.HorizontalFlip?.Value == true, fv = xf.VerticalFlip?.Value == true;
+        long p1x = fh ? ox + cx : ox, p2x = fh ? ox : ox + cx;
+        long p1y = fv ? oy + cy : oy, p2y = fv ? oy : oy + cy;
+        return (explicitFrom ?? NearestConnectorSide(p1x, p1y, sBox.Value),
+                explicitTo ?? NearestConnectorSide(p2x, p2y, eBox.Value));
+    }
+
+    /// <summary>Classify a point to the nearest of a box's five anchor points
+    /// (left/right/top/bottom edge midpoints, or center).</summary>
+    private static string NearestConnectorSide(long px, long py, (long x, long y, long cx, long cy) b)
+    {
+        (string s, long x, long y)[] c =
+        {
+            ("left", b.x, b.y + b.cy / 2), ("right", b.x + b.cx, b.y + b.cy / 2),
+            ("top", b.x + b.cx / 2, b.y), ("bottom", b.x + b.cx / 2, b.y + b.cy),
+            ("center", b.x + b.cx / 2, b.y + b.cy / 2),
+        };
+        string best = "center"; double bd = double.MaxValue;
+        foreach (var k in c)
+        {
+            double dx = px - k.x, dy = py - k.y, d = dx * dx + dy * dy;
+            if (d < bd) { bd = d; best = k.s; }
+        }
+        return best;
+    }
+
+    private static void RecomputeConnectorBox(ConnectionShape cxn, ShapeTree tree,
+        string? fromSide = null, string? toSide = null)
     {
         var draw = cxn.NonVisualConnectionShapeProperties
             ?.GetFirstChild<NonVisualConnectorShapeDrawingProperties>();
         var startId = draw?.GetFirstChild<Drawing.StartConnection>()?.Id?.Value;
         var endId = draw?.GetFirstChild<Drawing.EndConnection>()?.Id?.Value;
-        var startBox = startId.HasValue ? FrameBoundsById(tree, startId.Value) : null;
-        var endBox = endId.HasValue ? FrameBoundsById(tree, endId.Value) : null;
-        var pStart = startBox ?? endBox;
-        var pEnd = endBox ?? startBox;
-        if (!pStart.HasValue || !pEnd.HasValue) return;
-        var (sx, sy, scx, scy) = pStart.Value;
-        var (ex, ey, ecx, ecy) = pEnd.Value;
-        var p1x = sx + scx / 2;
-        var p1y = sy + scy / 2;
-        var p2x = ex + ecx / 2;
-        var p2y = ey + ecy / 2;
+        // A derived box needs BOTH endpoints anchored to real shapes. If only one
+        // is connected (or a box can't be resolved), leave the existing geometry
+        // alone rather than collapsing both ends onto the single shape — that
+        // produced a diagonal corner-clip when setting a side on a one-ended
+        // connector, and detaches nothing useful on a shape move.
+        if (!startId.HasValue || !endId.HasValue) return;
+        var startBox = FrameBoundsById(tree, startId.Value);
+        var endBox = FrameBoundsById(tree, endId.Value);
+        if (!startBox.HasValue || !endBox.HasValue) return;
+        var pStart = startBox;
+        var pEnd = endBox;
+        var (p1x, p1y, p2x, p2y) = ComputeConnectorEndpoints(
+            pStart.Value, pEnd.Value, fromSide, toSide);
         var spPr = cxn.ShapeProperties;
         if (spPr == null) return;
         var xfrm = spPr.Transform2D;
