@@ -268,6 +268,15 @@ public partial class WordHandler
 
     private void RenderParagraphHtml(StringBuilder sb, Paragraph para)
     {
+        // VML horizontal rule (w:pict > v:rect[o:hr="t"]). The body loop
+        // checks this before dispatching, but paragraphs routed through this
+        // shared renderer (headers/footers, text boxes) skipped w:pict in the
+        // run walk, so the rule silently vanished outside the body.
+        if (IsVmlHorizontalRule(para))
+        {
+            RenderVmlHorizontalRule(sb, para);
+            return;
+        }
         // Use <div> instead of <p> when paragraph contains block-level elements (text boxes, charts, shapes)
         var tag = HasBlockLevelDrawing(para) ? "div" : "p";
         sb.Append(BuildParagraphOpenTag(para, tag));

@@ -568,6 +568,15 @@ public partial class WordHandler
                 {
                     if (child is Paragraph cellPara)
                     {
+                        // VML horizontal rule inside a cell — same pre-dispatch
+                        // check as the body loop; the generic run walk skips
+                        // w:pict, so without this the rule disappeared.
+                        if (IsVmlHorizontalRule(cellPara))
+                        {
+                            CloseCellList();
+                            RenderVmlHorizontalRule(sb, cellPara);
+                            return;
+                        }
                         // Display equation inside a cell: a <w:p> whose content is
                         // an <m:oMathPara>/<m:oMath> wrapper. Body paragraphs route
                         // these to a katex-formula span (HtmlPreview.cs ~line 2362);
