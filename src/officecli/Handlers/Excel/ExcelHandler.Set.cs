@@ -741,7 +741,7 @@ public partial class ExcelHandler
                         // <x:hyperlinks/> behind — schema-invalid (>=1 child
                         // required), so real Excel refused the file even
                         // though the set itself was correctly rejected.
-                        var isInternalTarget = TryParseInternalHyperlinkLocation(value) != null;
+                        var isInternalTarget = ResolveInternalHyperlinkLocation(value) != null;
                         if (!isInternalTarget)
                             Core.HyperlinkUriValidator.RequireSafeScheme(value, "link");
                         if (hyperlinksEl == null)
@@ -761,7 +761,7 @@ public partial class ExcelHandler
                         // R37-B: also accept bare `SheetName!Cell` (no '#' prefix)
                         // and quoted `'Multi Word'!Cell` as internal targets.
                         // CONSISTENCY(internal-hyperlink): same detection used in Add.Cells.cs.
-                        var internalLoc = TryParseInternalHyperlinkLocation(value);
+                        var internalLoc = ResolveInternalHyperlinkLocation(value);
                         if (internalLoc != null)
                         {
                             // Internal target (sheet cell or named range) is

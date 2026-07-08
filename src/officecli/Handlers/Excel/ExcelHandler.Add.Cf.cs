@@ -296,14 +296,43 @@ public partial class ExcelHandler
         var normalizedMinColor = ParseHelpers.NormalizeArgbColor(minColor);
         var normalizedMaxColor = ParseHelpers.NormalizeArgbColor(maxColor);
 
-        // CF5 — accept user-supplied midpoint percentile (`midpoint=50`, default 50).
+        // CF5 — accept user-supplied midpoint (`midpoint=50`, default 50).
+        // Lenient forms: "50", "50%" (percent → percentile), and prefixed
+        // "percentile:50" / "percent:50" / "num:50". Anything else must be
+        // rejected: an unparsed value ("50%", "percentile:50") used to land
+        // verbatim in <cfvo val=>, which passes schema validation but real
+        // Excel refuses the whole file (0x800A03EC).
         var midPointStr = properties.GetValueOrDefault("midpoint")
             ?? properties.GetValueOrDefault("midPoint")
             ?? "50";
+        var midType = ConditionalFormatValueObjectValues.Percentile;
+        var midRaw = midPointStr.Trim();
+        var midColon = midRaw.IndexOf(':');
+        if (midColon > 0)
+        {
+            midType = midRaw[..midColon].Trim().ToLowerInvariant() switch
+            {
+                "percentile" => ConditionalFormatValueObjectValues.Percentile,
+                "percent" => ConditionalFormatValueObjectValues.Percent,
+                "num" or "number" => ConditionalFormatValueObjectValues.Number,
+                var badKind => throw new ArgumentException(
+                    $"Unknown midPoint kind '{badKind}'. Valid: percentile:<n>, percent:<n>, num:<n>, or a bare number (percentile).")
+            };
+            midRaw = midRaw[(midColon + 1)..].Trim();
+        }
+        else if (midRaw.EndsWith('%'))
+        {
+            midType = ConditionalFormatValueObjectValues.Percent;
+            midRaw = midRaw[..^1].Trim();
+        }
+        if (!double.TryParse(midRaw, System.Globalization.NumberStyles.Float,
+                System.Globalization.CultureInfo.InvariantCulture, out _))
+            throw new ArgumentException(
+                $"Invalid midPoint '{midPointStr}': expected a number, optionally as percentile:<n> / percent:<n> / num:<n> or '<n>%'.");
         var colorScale = new ColorScale();
         colorScale.Append(new ConditionalFormatValueObject { Type = ConditionalFormatValueObjectValues.Min });
         if (midColor != null)
-            colorScale.Append(new ConditionalFormatValueObject { Type = ConditionalFormatValueObjectValues.Percentile, Val = midPointStr });
+            colorScale.Append(new ConditionalFormatValueObject { Type = midType, Val = midRaw });
         colorScale.Append(new ConditionalFormatValueObject { Type = ConditionalFormatValueObjectValues.Max });
         colorScale.Append(new DocumentFormat.OpenXml.Spreadsheet.Color { Rgb = normalizedMinColor });
         if (midColor != null)

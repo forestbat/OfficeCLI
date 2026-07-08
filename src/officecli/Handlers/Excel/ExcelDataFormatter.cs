@@ -77,6 +77,15 @@ internal static class ExcelDataFormatter
     {
         var formatCode = customFormatCode ?? (BuiltInFormats.TryGetValue(numFmtId, out var b) ? b : null);
 
+        // Elapsed-time accumulator formats ([h]:mm:ss, [mm]:ss, [s]) count
+        // total units instead of wrapping into a calendar time — 1.5 under
+        // [h]:mm:ss is 36:00:00, not "1899-12-31 12:00". IsDateFormat strips
+        // bracket codes before scanning, so these used to fall through to
+        // the calendar-date path and render a nonsense wrapped date.
+        if (formatCode != null
+            && Regex.IsMatch(formatCode, @"\[(h+|m+|s+)\]", RegexOptions.IgnoreCase))
+            return FormatElapsed(value, formatCode);
+
         if (IsDateFormat(numFmtId, formatCode))
             // 1904 date system: serials count from 1904-01-01, which is
             // exactly 1462 days after the 1900 system's 1899-12-30 epoch
@@ -140,6 +149,47 @@ internal static class ExcelDataFormatter
         if (formatCode == null) return false;
         var stripped = Regex.Replace(formatCode, "\"[^\"]*\"", "");
         return stripped.Contains('%');
+    }
+
+    // Serial days → accumulated h/m/s per the first bracketed token; the
+    // tokens after it decide whether minute/second parts are appended.
+    private static string FormatElapsed(double value, string formatCode)
+    {
+        var negative = value < 0;
+        var totalSeconds = (long)Math.Round(Math.Abs(value) * 86400);
+        var acc = Regex.Match(formatCode, @"\[(h+|m+|s+)\]", RegexOptions.IgnoreCase);
+        var unit = char.ToLowerInvariant(acc.Groups[1].Value[0]);
+        var rest = formatCode[(acc.Index + acc.Length)..];
+        var restStripped = Regex.Replace(rest, "\"[^\"]*\"", "");
+        string text;
+        switch (unit)
+        {
+            case 'h':
+            {
+                var h = totalSeconds / 3600;
+                var mm = totalSeconds % 3600 / 60;
+                var ss = totalSeconds % 60;
+                var hasMin = restStripped.Contains('m', StringComparison.OrdinalIgnoreCase);
+                var hasSec = restStripped.Contains('s', StringComparison.OrdinalIgnoreCase);
+                text = hasMin && hasSec ? $"{h}:{mm:00}:{ss:00}"
+                    : hasMin ? $"{h}:{mm:00}"
+                    : h.ToString();
+                break;
+            }
+            case 'm':
+            {
+                var mTotal = totalSeconds / 60;
+                var ss = totalSeconds % 60;
+                text = restStripped.Contains('s', StringComparison.OrdinalIgnoreCase)
+                    ? $"{mTotal}:{ss:00}"
+                    : mTotal.ToString();
+                break;
+            }
+            default:
+                text = totalSeconds.ToString();
+                break;
+        }
+        return negative ? "-" + text : text;
     }
 
     private static string FormatDate(double value, string? formatCode)

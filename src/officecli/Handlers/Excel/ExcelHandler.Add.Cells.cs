@@ -740,7 +740,7 @@ public partial class ExcelHandler
             // Validate the scheme BEFORE creating the <hyperlinks> container
             // (same fix as the Set path): a rejected scheme used to leave an
             // empty schema-invalid <x:hyperlinks/> behind — Excel 0x800A03EC.
-            var addLinkIsInternal = TryParseInternalHyperlinkLocation(linkUrl) != null;
+            var addLinkIsInternal = ResolveInternalHyperlinkLocation(linkUrl) != null;
             if (!addLinkIsInternal)
                 Core.HyperlinkUriValidator.RequireSafeScheme(linkUrl, "link");
             var ws = GetSheet(cellWorksheet);
@@ -770,7 +770,7 @@ public partial class ExcelHandler
             // the link. Handler-as-truth: consumed here so it is not reported
             // unsupported (schema hyperlink.json documents cell display=).
             var hlDisplay = properties.GetValueOrDefault("display");
-            var addInternalLoc = TryParseInternalHyperlinkLocation(linkUrl);
+            var addInternalLoc = ResolveInternalHyperlinkLocation(linkUrl);
             if (addInternalLoc != null)
             {
                 var hl = new Hyperlink
