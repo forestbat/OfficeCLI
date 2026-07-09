@@ -1071,6 +1071,17 @@ public partial class ExcelHandler
                 newCol.Width = parsedColWidth;
                 newCol.CustomWidth = true;
             }
+            else if (newCol.Width == null)
+            {
+                // A <col> with no width attribute renders ZERO-width in real
+                // Excel (verified via remote render: the inserted column and
+                // its cells visually vanish while Get/dump still see them).
+                // Materializing for Get/Query symmetry must therefore carry
+                // the sheet's default width explicitly.
+                newCol.Width = ws.SheetFormatProperties?.DefaultColumnWidth?.Value
+                    ?? ws.SheetFormatProperties?.BaseColumnWidth?.Value + 0.43
+                    ?? 8.43;
+            }
             if (hasColHidden)
             {
                 newCol.Hidden = addColHidden!.Equals("true", StringComparison.OrdinalIgnoreCase)
