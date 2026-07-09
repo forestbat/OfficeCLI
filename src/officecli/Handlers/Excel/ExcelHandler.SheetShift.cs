@@ -166,9 +166,18 @@ public partial class ExcelHandler
             var tbl = tablePart.Table;
             if (tbl == null) continue;
             bool tblDirty = false;
+            // A ListObject is never header-only: Excel itself always keeps at
+            // least one (blank) data row — deleting every data row in the UI
+            // leaves ref A1:B2. Without this floor, a predicate remove that
+            // matched every data row shrank ref to the header row alone, a
+            // shape Excel never writes.
+            int tblHeaderRows = (int)(tbl.HeaderRowCount?.Value ?? 1);
+            int tblTotalsRows = (int)(tbl.TotalsRowCount?.Value ?? 0);
             if (tbl.Reference?.Value != null)
             {
                 var shifted = refMapper(tbl.Reference.Value);
+                if (shifted != null)
+                    shifted = EnsureTableRefRowFloor(shifted, tblHeaderRows + 1 + tblTotalsRows);
                 if (shifted != null && !string.Equals(shifted, tbl.Reference.Value, StringComparison.Ordinal))
                 {
                     tbl.Reference = shifted;
@@ -178,6 +187,8 @@ public partial class ExcelHandler
             if (tbl.AutoFilter?.Reference?.Value != null)
             {
                 var shifted = refMapper(tbl.AutoFilter.Reference.Value);
+                if (shifted != null)
+                    shifted = EnsureTableRefRowFloor(shifted, tblHeaderRows + 1);   // autoFilter spans header+data, no totals
                 if (shifted != null && !string.Equals(shifted, tbl.AutoFilter.Reference.Value, StringComparison.Ordinal))
                 {
                     tbl.AutoFilter.Reference = shifted;
@@ -517,6 +528,19 @@ public partial class ExcelHandler
     // what Excel itself would after recalc — an error-typed cell with #REF! as
     // the cached value — so display shows #REF! and `view issues` classifies it
     // as a formula error (not a stale number).
+    // Grow a shifted table ref back to its minimum legal row span (header +
+    // one data row + totals). Column span and anchor are untouched; a
+    // single-cell ref passes through unchanged.
+    private static string EnsureTableRefRowFloor(string refStr, int minRowSpan)
+    {
+        var m = System.Text.RegularExpressions.Regex.Match(
+            refStr, @"^([A-Z]+)(\d+):([A-Z]+)(\d+)$", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+        if (!m.Success) return refStr;
+        int r1 = int.Parse(m.Groups[2].Value), r2 = int.Parse(m.Groups[4].Value);
+        if (r2 - r1 + 1 >= minRowSpan) return refStr;
+        return $"{m.Groups[1].Value}{r1}:{m.Groups[3].Value}{r1 + minRowSpan - 1}";
+    }
+
     private static void InvalidateCacheIfShiftBrokeFormula(Cell cell, string oldText, string newText)
     {
         if (newText == oldText || !newText.Contains("#REF!", StringComparison.Ordinal)) return;
