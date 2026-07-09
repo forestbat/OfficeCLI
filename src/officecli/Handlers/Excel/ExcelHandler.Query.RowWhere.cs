@@ -234,6 +234,12 @@ public partial class ExcelHandler
             // because "Salary" is absent from a plain row node's Format.
             foreach (var cond in colConds)
                 rowNode.Format[cond.Key] = probe.Format[cond.Key];
+            // Cross-handler `evaluated` protocol: when a probed column
+            // surfaced the #OCLI_NOTEVAL! sentinel, flag the row so callers
+            // read Format["evaluated"] instead of string-sniffing the
+            // sentinel out of the column value.
+            if (colConds.Any(c => (probe.Format[c.Key]?.ToString() ?? "") == "#OCLI_NOTEVAL!"))
+                rowNode.Format["evaluated"] = false;
             // Trace which table bound the predicate. source=detected flags a
             // header-sniff (stable=false) match so the caller knows the column
             // resolution was heuristic, mirroring DetectTables' own stable flag.
