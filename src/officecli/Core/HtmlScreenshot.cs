@@ -164,13 +164,18 @@ internal static class HtmlScreenshot
     /// <summary>
     /// Screenshot only the region covered by the given <c>data-path</c> targets
     /// (a single element, or several whose union bounding box is captured —
-    /// e.g. the two corner cells of an xlsx range). Two passes, mirroring the
-    /// PAGES:N dump-dom pattern: pass 1 injects a measure script that un-hides
-    /// hidden ancestors (an inactive sheet tab's content) and writes the union
-    /// rect into the document title; pass 2 injects a crop transform at that
-    /// rect and captures at exactly the rect's size. Chrome-family only (the
-    /// injection needs a scriptable engine); returns a Result whose Error is
-    /// "clip_target_not_found" when no target matched a rendered element.
+    /// e.g. the two corner cells of an xlsx range). Three passes, all plain
+    /// chrome invocations: pass 1 injects a measure script that resolves the
+    /// targets (un-hiding an inactive sheet tab's content) and reports the
+    /// union rect + document extent through the document title; pass 2
+    /// captures the WHOLE page at a viewport covering the target (layout is
+    /// identical to the measure pass, so the coordinates hold — no transform
+    /// tricks, which Chrome's paint culling and ~500px window clamp defeat);
+    /// pass 3 loads that PNG in a bare wrapper page offset by the rect origin
+    /// and captures at exactly the rect's size — a pure pixel crop.
+    /// Chrome-family only (the injection needs a scriptable engine); returns
+    /// a Result whose Error is "clip_target_not_found" when no target matched
+    /// a rendered element.
     /// </summary>
     public static Result CaptureClipped(string htmlPath, string outPath, IReadOnlyList<string> dataPaths,
                                         int padPx = 0, int scale = 2)
@@ -239,53 +244,51 @@ internal static class HtmlScreenshot
             // instead to keep the PNG within the multi-image LLM ceiling.
             if (Math.Max(w, h) * scale > 1920) scale = 1;
 
-            // Pass 2: capture at a viewport of the measured rect's size. The
-            // crop script re-measures the target LIVE inside that viewport —
-            // responsive previews (pptx scales slides to the viewport width)
-            // lay out differently at the small capture window, so pass-1
-            // coordinates cannot be reused. It then applies scale(k) to fill
-            // the viewport plus a translate to the live origin; for static
-            // previews (xlsx/docx) the live rect equals the measured one and
-            // k ≈ 1. The transform goes on <html> so nested page/sheet
-            // transforms compose underneath it.
-            var cropScript =
-                "<script>function _clipCrop(){" +
-                prelude +
-                "var els=_clipEls();if(els.length===0)return;" +
-                "var x1=1e9,y1=1e9,x2=-1e9,y2=-1e9;els.forEach(function(el){var r=el.getBoundingClientRect();" +
-                "var x=r.left+window.scrollX,y=r.top+window.scrollY;" +
-                "if(x<x1)x1=x;if(y<y1)y1=y;if(x+r.width>x2)x2=x+r.width;if(y+r.height>y2)y2=y+r.height;});" +
-                $"var pad={padPx};var rw=x2-x1+2*pad,rh=y2-y1+2*pad;x1-=pad;y1-=pad;" +
-                // The intended viewport is interpolated, NOT window.innerWidth:
-                // Chrome clamps small windows to a ~500px minimum, so innerWidth
-                // can exceed the requested size and would over-zoom the crop.
-                $"var k=Math.min({w}/rw,{h}/rh);" +
-                "var st=document.documentElement.style;st.overflow='hidden';" +
-                "st.transform='scale('+k+') translate('+(-x1)+'px,'+(-y1)+'px)';st.transformOrigin='0 0';" +
-                // Blank out everything beyond the target's right/bottom edges.
-                // k comes from min(width-ratio, height-ratio); when the live
-                // layout's aspect differs slightly from pass 1 the other axis
-                // underfills and adjacent content (the paragraph right under a
-                // docx table) would leak into the strip. The covers live in
-                // page coordinates and ride the same root transform, so they
-                // mask exactly from the target's edge outward.
-                "function _cov(l,t){var d=document.createElement('div');var ds=d.style;" +
-                "ds.position='absolute';ds.background='#fff';ds.zIndex='2147483647';" +
-                "ds.left=l+'px';ds.top=t+'px';ds.width='100000px';ds.height='100000px';" +
-                "document.body.appendChild(d);}" +
-                "_cov(x1,y2);_cov(x2,y1);" +
-                "document.title='CLIPPED';}" +
-                "if(document.readyState==='complete')_clipCrop();else window.addEventListener('load',_clipCrop);</script>";
-            var cropPath = htmlPath + ".clipcrop.html";
+            // Pass 2: whole-page capture at a viewport that CONTAINS the target
+            // (same layout as the measure pass, so the measured coordinates
+            // hold). The capture viewport must never shrink below the measure
+            // viewport's defaults: layout at a smaller window would reflow
+            // responsive previews and invalidate the rect.
+            const int maxViewport = 4000;
+            var fullW = Math.Max(800, x + w);
+            var fullH = Math.Max(600, y + h);
+            if (fullW > maxViewport || fullH > maxViewport)
+                return new Result(false, "chrome",
+                    $"clip target extends to ({fullW},{fullH}) CSS px — beyond the {maxViewport}px capture ceiling");
+            var fullPath = htmlPath + ".clipfull.png";
+            var wrapPath = htmlPath + ".clipwrap.html";
             try
             {
-                File.WriteAllText(cropPath, Inject(html, cropScript));
-                var ok = CaptureChromeSized(cropPath, outPath, w, h, scale);
+                // The prelude must run in the capture too (an inactive sheet's
+                // content stays hidden without it).
+                var showScript =
+                    "<script>function _clipShow(){" + prelude + "_clipEls();}" +
+                    "if(document.readyState==='complete')_clipShow();else window.addEventListener('load',_clipShow);</script>";
+                var fullSrc = htmlPath + ".clipsrc.html";
+                File.WriteAllText(fullSrc, Inject(html, showScript));
+                bool fullOk;
+                try { fullOk = CaptureChromeSized(fullSrc, fullPath, fullW, fullH, scale); }
+                finally { try { File.Delete(fullSrc); } catch { /* ignore */ } }
+                if (!fullOk) return new Result(false, "chrome", "whole-page capture failed");
+
+                // Pass 3: pure pixel crop — show the full PNG offset by the
+                // rect origin in a bare page and capture at the rect's size.
+                // The PNG already carries the HiDPI scale, so the wrapper
+                // renders it at its CSS size and captures at the same factor.
+                var fullUri = new Uri(Path.GetFullPath(fullPath)).AbsoluteUri;
+                File.WriteAllText(wrapPath,
+                    "<!DOCTYPE html><html><head><title>clip</title><style>html,body{margin:0;padding:0;overflow:hidden}</style></head>" +
+                    $"<body><img src=\"{fullUri}\" style=\"position:absolute;left:{-x}px;top:{-y}px;width:{fullW}px;height:{fullH}px\"></body></html>");
+                var ok = CaptureChromeSized(wrapPath, outPath, w, h, scale);
                 return ok
                     ? new Result(true, "chrome", null)
                     : new Result(false, "chrome", "clipped capture produced no image");
             }
-            finally { try { File.Delete(cropPath); } catch { /* ignore */ } }
+            finally
+            {
+                try { File.Delete(fullPath); } catch { /* ignore */ }
+                try { File.Delete(wrapPath); } catch { /* ignore */ }
+            }
         }
         finally { try { File.Delete(measurePath); } catch { /* ignore */ } }
     }
