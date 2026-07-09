@@ -203,26 +203,33 @@ internal static class HtmlScreenshot
             "function _clipEls(){var els=[];_clipPaths.forEach(function(p){" +
             "var el=_clipPick(p);if(el)els.push(el);});return els;}";
 
-        // No requestAnimationFrame here: under --virtual-time-budget headless
-        // rendering, rAF callbacks fire unreliably (no compositor frames), so
-        // the title write raced the DOM dump. getBoundingClientRect forces a
-        // synchronous reflow, so measuring directly at load is deterministic.
+        // The rect is reported via console.log -> --enable-logging=stderr in
+        // the SAME chrome invocation that captures the full page: headless
+        // dump-dom uses a different, fixed viewport (~1024x513, --window-size
+        // ignored) than screenshot mode, and any preview whose layout depends
+        // on viewport height (the xlsx sheet stack) measures differently
+        // there — a separate measure pass can never be trusted. One process,
+        // one layout, one frame. The settle delay runs late in the virtual
+        // time budget so font loads and the page's own layout JS (pptx shape
+        // positioning) have finished; virtual time fast-forwards it, so the
+        // wall-clock cost is nil. No requestAnimationFrame anywhere: rAF
+        // fires unreliably under --virtual-time-budget.
         var measureScript =
             "<script>function _clipRun(){" +
             prelude +
-            "var els=_clipEls();if(els.length===0){document.title='CLIP:NOTFOUND';return;}" +
+            "var els=_clipEls();if(els.length===0){console.log('CLIPRECT:NOTFOUND');return;}" +
             "var x1=1e9,y1=1e9,x2=-1e9,y2=-1e9;els.forEach(function(el){var r=el.getBoundingClientRect();" +
             "var x=r.left+window.scrollX,y=r.top+window.scrollY;" +
             "if(x<x1)x1=x;if(y<y1)y1=y;if(x+r.width>x2)x2=x+r.width;if(y+r.height>y2)y2=y+r.height;});" +
-            "document.title='CLIP:'+Math.floor(x1)+','+Math.floor(y1)+','+Math.ceil(x2-x1)+','+Math.ceil(y2-y1);}" +
-            // Measure AFTER the page's own layout JS settles, not at load: the
-            // pptx preview positions shapes and the docx preview adjusts the
-            // page a tick later, so a load-time rect is 0x0 (pptx — the picker
-            // then falls back to the hidden sidebar thumbnail) or a few px
-            // off (docx — a sliver of the next paragraph leaks in). setTimeout
-            // is fast-forwarded by --virtual-time-budget, so the wall-clock
-            // cost is nil; rAF is NOT reliable under virtual time.
-            "function _clipArm(){setTimeout(_clipRun,800);}" +
+            "console.log('CLIPRECT:'+Math.floor(x1)+','+Math.floor(y1)+','+Math.ceil(x2-x1)+','+Math.ceil(y2-y1)" +
+            "+','+window.innerWidth+','+window.innerHeight);}" +
+            // Un-hide EARLY, measure LATE: revealing an inactive sheet's
+            // content triggers the page's own observers (resize/height
+            // adjustments), so a rect taken in the same tick as the un-hide
+            // reads the pre-adjustment layout while the paint shows the
+            // post-adjustment one. The 11-second virtual gap lets every
+            // observer settle before the coordinates are read.
+            "function _clipArm(){setTimeout(function(){_clipEls();},800);setTimeout(_clipRun,12000);}" +
             "if(document.readyState==='complete')_clipArm();else window.addEventListener('load',_clipArm);</script>";
 
         string Inject(string doc, string script) =>
@@ -231,73 +238,71 @@ internal static class HtmlScreenshot
                 : doc + script;
 
         var measurePath = htmlPath + ".clipmeasure.html";
+        var fullPath = htmlPath + ".clipfull.png";
+        var wrapPath = htmlPath + ".clipwrap.html";
         try
         {
             File.WriteAllText(measurePath, Inject(html, measureScript));
-            // The measure browser MUST match the capture browser exactly —
-            // same window size, hidden scrollbars, same DPR. A default
-            // dump-dom window keeps a scrollbar the capture hides, and those
-            // ~15px reflow the page just enough to shift every coordinate a
-            // few pixels (the strip of next-paragraph text under a clipped
-            // docx table). When the target extends past the current viewport,
-            // re-measure AT the enlarged viewport until the rect is interior,
-            // so the pass-2 layout equals the final measure layout verbatim.
+            // Combined measure + whole-page capture. When the target extends
+            // past the current viewport, retry AT the enlarged viewport (the
+            // enlargement can reflow viewport-dependent layout, so the rect
+            // must come from the same run that painted the final PNG).
+            // Headless chrome's JS/layout viewport is SHORTER than the
+            // requested window (87px of window chrome on macOS; 0 on some
+            // platforms), and the final --screenshot paint re-lays-out at the
+            // FULL window height — so a rect measured by page JS lives in a
+            // different vertical layout than the painted pixels whenever the
+            // page's layout depends on viewport height (the xlsx sheet
+            // stack). Self-calibrate: the measure run reports its own
+            // innerHeight, giving delta = window - viewport; the measure runs
+            // with the window ENLARGED by delta (JS layout = target height)
+            // and the capture runs with the plain window (paint layout = the
+            // same target height). No hardcoded platform constant.
             const int maxViewport = 4000;
-            int vw = 800, vh = 600, x = 0, y = 0, w = 0, h = 0;
+            int vw = 800, vh = 600, x = 0, y = 0, w = 0, h = 0, deltaH = 0;
             for (var attempt = 0; ; attempt++)
             {
-                var dom = DumpDom(measurePath, extraArgs:
-                [
-                    "--hide-scrollbars",
-                    $"--force-device-scale-factor={scale}",
-                    $"--window-size={vw},{vh}",
-                ]);
-                if (dom == null) return new Result(false, "chrome", "dump-dom failed while measuring the clip target");
-                // Match the TITLE only — the serialized DOM also contains the
-                // injected script's source, so a bare Contains() would match
-                // the literals inside it.
-                if (System.Text.RegularExpressions.Regex.IsMatch(dom, @"<title>CLIP:NOTFOUND</title>"))
-                    return new Result(false, "chrome", "clip_target_not_found");
-                var m = System.Text.RegularExpressions.Regex.Match(dom, @"<title>CLIP:(-?\d+),(-?\d+),(\d+),(\d+)</title>");
-                if (!m.Success) return new Result(false, "chrome", "clip rect not reported (page may have replaced the title)");
-                x = Math.Max(0, int.Parse(m.Groups[1].Value) - padPx);
-                y = Math.Max(0, int.Parse(m.Groups[2].Value) - padPx);
-                w = int.Parse(m.Groups[3].Value) + 2 * padPx;
-                h = int.Parse(m.Groups[4].Value) + 2 * padPx;
+                var (ok, stderr) = RunChromeCapture(measurePath, fullPath, vw, vh + deltaH, scale);
+                if (!ok)
+                    return new Result(false, "chrome", "measure run failed");
+                var rectM = System.Text.RegularExpressions.Regex.Match(
+                    stderr ?? "", @"CLIPRECT:(-?\d+),(-?\d+),(\d+),(\d+),(\d+),(\d+)");
+                if (!rectM.Success)
+                {
+                    if ((stderr ?? "").Contains("CLIPRECT:NOTFOUND"))
+                        return new Result(false, "chrome", "clip_target_not_found");
+                    return new Result(false, "chrome", "clip rect not reported (console logging unavailable?)");
+                }
+                x = Math.Max(0, int.Parse(rectM.Groups[1].Value) - padPx);
+                y = Math.Max(0, int.Parse(rectM.Groups[2].Value) - padPx);
+                w = int.Parse(rectM.Groups[3].Value) + 2 * padPx;
+                h = int.Parse(rectM.Groups[4].Value) + 2 * padPx;
+                var innerH = int.Parse(rectM.Groups[6].Value);
                 if (w <= 0 || h <= 0) return new Result(false, "chrome", "clip target has an empty bounding box");
+                var newDelta = (vh + deltaH) - innerH;
                 var needW = Math.Max(vw, x + w);
                 var needH = Math.Max(vh, y + h);
                 if (needW > maxViewport || needH > maxViewport)
                     return new Result(false, "chrome",
                         $"clip target extends to ({needW},{needH}) CSS px — beyond the {maxViewport}px capture ceiling");
-                if ((needW == vw && needH == vh) || attempt >= 2) { vw = needW; vh = needH; break; }
-                vw = needW; vh = needH;
+                var settled = needW == vw && needH == vh && innerH == vh;
+                if (settled || attempt >= 4) { vw = needW; vh = needH; break; }
+                vw = needW; vh = needH; deltaH = Math.Max(0, newDelta);
             }
-            // The viewport must stay the rect's CSS size (shrinking would
-            // truncate, not scale), so large targets drop the HiDPI factor
-            // instead to keep the PNG within the multi-image LLM ceiling.
-            // (scale is part of the measured environment; changing it does not
-            // alter CSS layout, so the loop above stays valid.)
+            // Oversized targets drop the HiDPI factor to stay within the
+            // multi-image LLM ceiling; device pixels only, CSS layout intact.
             if (Math.Max(w, h) * scale > 1920) scale = 1;
-
+            // The whole-page capture: plain window (vw, vh) paints at exactly
+            // the (vw, vh) layout the calibrated measure ran in.
+            {
+                var (okF, _) = RunChromeCapture(measurePath, fullPath, vw, vh, scale);
+                if (!okF || !File.Exists(fullPath) || new FileInfo(fullPath).Length == 0)
+                    return new Result(false, "chrome", "whole-page capture failed");
+            }
             var fullW = vw;
             var fullH = vh;
-            var fullPath = htmlPath + ".clipfull.png";
-            var wrapPath = htmlPath + ".clipwrap.html";
             try
             {
-                // The prelude must run in the capture too (an inactive sheet's
-                // content stays hidden without it).
-                var showScript =
-                    "<script>function _clipShow(){" + prelude + "_clipEls();}" +
-                    "if(document.readyState==='complete')_clipShow();else window.addEventListener('load',_clipShow);</script>";
-                var fullSrc = htmlPath + ".clipsrc.html";
-                File.WriteAllText(fullSrc, Inject(html, showScript));
-                bool fullOk;
-                try { fullOk = CaptureChromeSized(fullSrc, fullPath, fullW, fullH, scale); }
-                finally { try { File.Delete(fullSrc); } catch { /* ignore */ } }
-                if (!fullOk) return new Result(false, "chrome", "whole-page capture failed");
-
                 // Pass 3: pure pixel crop — show the full PNG offset by the
                 // rect origin in a bare page and capture at the rect's size.
                 // The PNG already carries the HiDPI scale, so the wrapper
@@ -518,6 +523,59 @@ internal static class HtmlScreenshot
             }
         }
         return null;
+    }
+
+    /// <summary>
+    /// One chrome run that paints a screenshot AND returns stderr, where
+    /// --enable-logging=stderr surfaces the page's console.log lines — the
+    /// channel CaptureClipped uses to read the measured rect out of the very
+    /// same invocation that produced the pixels. Both streams are drained
+    /// asynchronously before the bounded wait (undrained pipes deadlock at
+    /// ~64KB).
+    /// </summary>
+    private static (bool Ok, string? Stderr) RunChromeCapture(string htmlPath, string outPath, int w, int h, int scale)
+    {
+        var bin = FindChrome();
+        if (bin == null) return (false, null);
+        outPath = Path.GetFullPath(outPath);
+        var url = new Uri(Path.GetFullPath(htmlPath)).AbsoluteUri + "#screenshot";
+        try
+        {
+            var psi = new ProcessStartInfo
+            {
+                FileName = bin,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                UseShellExecute = false,
+                CreateNoWindow = true,
+            };
+            foreach (var a in new[]
+            {
+                "--headless=new",
+                "--disable-gpu",
+                "--no-sandbox",
+                "--hide-scrollbars",
+                "--enable-logging=stderr",
+                "--v=0",
+                $"--force-device-scale-factor={scale}",
+                $"--window-size={w},{h}",
+                "--virtual-time-budget=15000",
+                "--timeout=20000",
+                $"--screenshot={outPath}",
+                url,
+            }) psi.ArgumentList.Add(a);
+            using var p = Process.Start(psi);
+            if (p == null) return (false, null);
+            var outTask = p.StandardOutput.ReadToEndAsync();
+            var errTask = p.StandardError.ReadToEndAsync();
+            if (!p.WaitForExit(120_000))
+            {
+                try { p.Kill(true); } catch { /* ignore */ }
+                return (false, null);
+            }
+            return (p.ExitCode == 0, errTask.GetAwaiter().GetResult());
+        }
+        catch { return (false, null); }
     }
 
     private static (bool, string?) RunBinary(string bin, string[] args)
