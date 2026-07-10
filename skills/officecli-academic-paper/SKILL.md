@@ -496,7 +496,7 @@ Academic-specific:
 - **Hanging-indent canonical form is `indent=720 hangingIndent=720`.** Not `ind.firstLine=-720`. The dotted form emits `<w:ind>` after `<w:jc>` and fails schema on emit.
 - **Footnote reference runs show as empty strings in `view annotated`.** The `<w:footnoteReference>` XML element has no visible text on the reference side; the note body lives in `/footnotes/footnote[N]`. Confirm with `officecli query "$FILE" 'footnote'`, not by eyeballing `view text`.
 - **Caption placement:** Table caption ABOVE the table; Figure caption BELOW the figure. Every major style (APA, Chicago, IEEE, MLA) agrees. Putting a Table caption below the table is an academic-style error, not a rendering issue — `validate` will not catch it.
-- **TOC cached rendering / shell-escape:** → see docx v2 §TOC delivery step, §Shell escape.
+- **TOC cached rendering / shell-escape:** → see docx v2 §Table of Contents, §Shell escape.
 
 ## Renderer quirks (cross-viewer)
 

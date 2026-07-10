@@ -471,7 +471,7 @@ echo "Delivery Gate PASS"
 Fields carry cached values that may be stale or empty at write time — confirm existence by **structure, not text**.
 
 - **Footer PAGE:** `get /footer[N] --depth 3` lists the begin / instrText / separate / cached / end run chain — ≥ 5 runs for one PAGE, ≥ 11 for composite "Page X of Y". A single run with text `"Page"` = field missing; re-add with `--prop field=page`.
-- **TOC:** `get /toc[1] --depth 2` shows field structure. Page numbers may read `1 1 1 1` or `Update field to see…` until recalculated (see TOC delivery step).
+- **TOC:** `get /toc[1] --depth 2` shows field structure. Page numbers may read `1 1 1 1` or `Update field to see…` until recalculated (see §Table of Contents — set `updateFields=true`).
 - **MERGEFIELD:** `query 'field[fieldType=mergefield]'` — one per slot, no literal `{{name}}` elsewhere.
 
 ### Honest limit
