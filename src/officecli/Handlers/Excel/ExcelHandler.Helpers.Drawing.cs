@@ -1391,6 +1391,26 @@ public partial class ExcelHandler
     }
 
     /// <summary>
+    /// Clamp a TwoCellAnchor span computed from x/y/width/height (column/row
+    /// units) to Excel's grid. The FROM marker must be a real cell
+    /// (A1..XFD1048576) and still throws if outside it. The TO marker is the
+    /// exclusive right/bottom edge, so it may legitimately sit one past the last
+    /// cell (col 16384 / row 1048576) — a picture/shape placed near XFD simply
+    /// ends at the grid edge, which is what real Excel does. A width/height that
+    /// walks the TO marker further than that (e.g. x=1,width=16384 → toCol 16385)
+    /// was silently persisted and made Excel refuse the file (0x800A03EC), so the
+    /// TO marker is clamped to the ceiling here rather than written out of range.
+    /// Returns the clamped (toCol, toRow).
+    /// </summary>
+    internal static (int toCol, int toRow) ClampAnchorSpan(int fromCol, int fromRow, int toCol, int toRow, string original)
+    {
+        ValidateAnchorCell(fromCol, fromRow, original);
+        const int MaxToCol = 16384;     // exclusive right edge of XFD
+        const int MaxToRow = 1048576;   // exclusive bottom edge of the last row
+        return (Math.Clamp(toCol, fromCol, MaxToCol), Math.Clamp(toRow, fromRow, MaxToRow));
+    }
+
+    /// <summary>
     /// Return true if the given anchor= value is one of the recognized
     /// anchorMode tokens (oneCell/twoCell/absolute). Used by the picture
     /// branch to disambiguate mode-strings from cell-range strings.

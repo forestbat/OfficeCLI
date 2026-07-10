@@ -177,6 +177,8 @@ public partial class ExcelHandler
             oleToRow = ay + (int)wholeRows;
             oleToColOff = remCols;
             oleToRowOff = remRows;
+            (oleToCol, oleToRow) = ClampAnchorSpan(oleFromCol, oleFromRow, oleToCol, oleToRow,
+                $"x={ax},y={ay},width/height");
         }
 
         // 5. Ensure the legacy VmlDrawingPart exists and carry an
@@ -479,6 +481,8 @@ public partial class ExcelHandler
                     twoToColOff = picRemCols;
                     twoToRowOff = picRemRows;
                 }
+                (twoToCol, twoToRow) = ClampAnchorSpan(twoFromCol, twoFromRow, twoToCol, twoToRow,
+                    $"picture anchor (to col {twoToCol}, row {twoToRow})");
                 anchor = new XDR.TwoCellAnchor(
                     new XDR.FromMarker(
                         new XDR.ColumnId(twoFromCol.ToString()),
@@ -623,6 +627,16 @@ public partial class ExcelHandler
         else
         {
             (sx, sy, sw, sh) = ParseAnchorBounds(properties, "1", "1", "5", "3");
+        }
+        // Clamp the derived TwoCellAnchor span to Excel's grid so an
+        // x/y/width/height that walks the TO marker past the ceiling ends at the
+        // grid edge (what real Excel does) instead of being written out of range
+        // into a file Excel refuses to open. FROM out of grid still throws.
+        {
+            var (shpToCol, shpToRow) = ClampAnchorSpan(sx, sy, sx + sw, sy + sh,
+                shpAnchorStr ?? $"x={sx},y={sy},width={sw},height={sh}");
+            sw = shpToCol - sx;
+            sh = shpToRow - sy;
         }
         var shpText = properties.GetValueOrDefault("text", "") ?? "";
         OfficeCli.Core.ParseHelpers.ValidateXmlText(shpText, "shape text");
