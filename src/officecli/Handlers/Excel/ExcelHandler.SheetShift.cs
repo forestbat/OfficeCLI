@@ -96,12 +96,20 @@ public partial class ExcelHandler
             if (formulaTextMapper != null)
                 foreach (var rule in cf.Elements<ConditionalFormattingRule>())
                 {
+                    // A CF rule's <formula> is RELATIVE to the top-left of its
+                    // sqref. Deleting a row/col that a self-relative reference
+                    // lands on must re-relativize (Excel keeps "B2>3"), NOT
+                    // rewrite it to a literal "#REF!" — that silently disables
+                    // the rule. The generic shifter (correct for cell formulas
+                    // referencing a truly-gone cell) produces #REF! here; when
+                    // it introduces a NEW #REF! into a CF formula, keep the
+                    // original relative text instead.
                     foreach (var f in rule.Elements<Formula>())
-                        if (!string.IsNullOrEmpty(f.Text)) f.Text = formulaTextMapper(f.Text);
+                        if (!string.IsNullOrEmpty(f.Text)) f.Text = ShiftCfFormula(f.Text, formulaTextMapper);
                     foreach (var cfvo in rule.Descendants<ConditionalFormatValueObject>())
                         if (cfvo.Type?.Value == ConditionalFormatValueObjectValues.Formula
                             && !string.IsNullOrEmpty(cfvo.Val?.Value))
-                            cfvo.Val = formulaTextMapper(cfvo.Val!.Value!);
+                            cfvo.Val = ShiftCfFormula(cfvo.Val!.Value!, formulaTextMapper);
                 }
             if (cf.SequenceOfReferences?.HasValue != true) continue;
             var newRefs = cf.SequenceOfReferences.Items
@@ -522,5 +530,21 @@ public partial class ExcelHandler
         if (newText == oldText || !newText.Contains("#REF!", StringComparison.Ordinal)) return;
         cell.DataType = CellValues.Error;
         cell.CellValue = new CellValue("#REF!");
+    }
+
+    // Shift a conditional-formatting rule's formula. Unlike a cell formula, a
+    // CF <formula> is relative to the top-left of its applied range, so a row/
+    // col deleted within that range re-relativizes it rather than invalidating
+    // it. The generic shifter can't tell the two apart and emits "#REF!"; when
+    // it introduces a NEW #REF! into a CF formula, keep the original relative
+    // text (Excel's behaviour). Formulas already broken pre-shift are left as-is.
+    private static string ShiftCfFormula(string text, Func<string, string?> mapper)
+    {
+        var mapped = mapper(text);
+        if (mapped == null) return text;
+        if (mapped.Contains("#REF!", StringComparison.Ordinal)
+            && !text.Contains("#REF!", StringComparison.Ordinal))
+            return text;
+        return mapped;
     }
 }
