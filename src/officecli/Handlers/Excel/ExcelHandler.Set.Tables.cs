@@ -454,7 +454,16 @@ public partial class ExcelHandler
                         else if (!totalRowEnabled && prevTotalsCount > 0)
                         {
                             // Shrink only if there is at least one data row left.
-                            if (eRow - 1 >= sRow) eRow -= 1;
+                            if (eRow - 1 >= sRow)
+                            {
+                                // Clear the now-orphaned totals-row cells (the
+                                // "Total" label + SUBTOTAL formulas). Add builds
+                                // them but the toggle-off previously only shrank
+                                // the ref, leaving a stray plain-text total row
+                                // visible below the table in real Excel.
+                                ClearTableRowCells(worksheet, sCol, eCol, eRow);
+                                eRow -= 1;
+                            }
                         }
                         var newTblRef = $"{sCol}{sRow}:{eCol}{eRow}";
                         table.Reference = newTblRef;
@@ -657,6 +666,30 @@ public partial class ExcelHandler
     /// (0x800A03EC). Mirrors the create-time stamping in AddTable so the
     /// Set headerRow=true toggle produces a valid header row.
     /// </summary>
+    // Remove the cells in columns [startColName..endColName] on the given row,
+    // and drop the row itself if nothing else is left. Used to clear a table's
+    // orphaned totals row when totalRow is toggled off, mirroring how the header
+    // toggle-off removes the stale AutoFilter.
+    private void ClearTableRowCells(WorksheetPart worksheet, string startColName, string endColName, int rowIndex)
+    {
+        var sheetData = GetSheet(worksheet).GetFirstChild<SheetData>();
+        var row = sheetData?.Elements<Row>().FirstOrDefault(r => r.RowIndex?.Value == (uint)rowIndex);
+        if (row == null) return;
+        int startIdx = ColumnNameToIndex(startColName);
+        int endIdx = ColumnNameToIndex(endColName);
+        foreach (var cell in row.Elements<Cell>().ToList())
+        {
+            var colName = System.Text.RegularExpressions.Regex.Match(
+                cell.CellReference?.Value ?? "", @"^[A-Z]+").Value;
+            if (string.IsNullOrEmpty(colName)) continue;
+            var colIdx = ColumnNameToIndex(colName);
+            if (colIdx >= startIdx && colIdx <= endIdx)
+                cell.Remove();
+        }
+        if (!row.Elements<Cell>().Any())
+            row.Remove();
+    }
+
     private void StampTableHeaderCells(WorksheetPart worksheet, Table table)
     {
         if (table.Reference?.Value is not { } refStr) return;
