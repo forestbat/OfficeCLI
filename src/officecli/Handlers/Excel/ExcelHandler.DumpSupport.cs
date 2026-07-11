@@ -95,6 +95,16 @@ public partial class ExcelHandler
                 rowNode.Format["outlineLevel"] = (int)rol;
             if (row.Collapsed?.Value == true)
                 rowNode.Format["collapsed"] = true;
+            // Row-level default style (CT_Row @customFormat + @s). @customFormat
+            // is the gate that makes @s the default cellXf for the row's
+            // phantom (never-materialized) cells; without it the dump dropped
+            // the row's default style entirely. Mirrors the Get readback keys.
+            if (row.CustomFormat?.Value == true)
+            {
+                rowNode.Format["customFormat"] = true;
+                if (row.StyleIndex?.Value is { } rsi)
+                    rowNode.Format["s"] = rsi.ToString(System.Globalization.CultureInfo.InvariantCulture);
+            }
 
             // Column cursor for cells whose r= attribute is absent — a legal
             // OOXML variant (position is implied: one right of the previous

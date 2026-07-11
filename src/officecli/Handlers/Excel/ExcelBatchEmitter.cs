@@ -447,6 +447,19 @@ public static partial class ExcelBatchEmitter
             foreach (var flagKey in new[] { "bestFit", "thickTop", "thickBot", "ph" })
                 if (rowNode.Format.TryGetValue(flagKey, out var fv) && IsTruthyFormatValue(fv))
                     rp[flagKey] = "true";
+            // Row-level default style (CT_Row @s + @customFormat). Get surfaces
+            // both, but they were absent from this allowlist, so dump dropped
+            // the row's default cellXf — the style governing the row's phantom
+            // (never-materialized) cells. A persistent style attribute Excel
+            // does NOT regenerate, so the loss is permanent once round-tripped.
+            // customFormat is the on/off gate; s carries the style index.
+            if (rowNode.Format.TryGetValue("s", out var rs))
+            {
+                var rsS = FormatValue(rs);
+                if (rsS.Length > 0) rp["s"] = rsS;
+            }
+            if (rowNode.Format.TryGetValue("customFormat", out var rcf) && IsTruthyFormatValue(rcf))
+                rp["customFormat"] = "1";
             if (rp.Count > 0)
                 items.Add(new BatchItem { Command = "set", Path = rowNode.Path, Props = rp });
         }
