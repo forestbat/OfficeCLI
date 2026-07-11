@@ -120,6 +120,18 @@ public static partial class ExcelBatchEmitter
 
         EmitWorkbookSettings(xl, items, warnings);
 
+        // Sheet-independent defined names (workbook-scoped constants/expressions
+        // like TaxRate="=0.075", no sheet qualifier in the ref) are emitted
+        // BEFORE any sheet so that formula cells referencing them resolve their
+        // cached value on replay-import. Without this, `import`/`set` of
+        // "=TaxRate*100" runs while TaxRate is undefined, so the replayed cell
+        // keeps its formula but loses its cached <v> — a round-trip fidelity
+        // loss that only Excel's on-open recalc (fullCalcOnLoad) masks, and not
+        // for manual-calc workbooks or non-recalculating readers. Names that
+        // reference a sheet range or carry a sheet scope stay in the post-sheet
+        // pass (they need the sheet to exist first).
+        EmitNamedRanges(xl, items, warnings, sheetIndependentOnly: true);
+
         var sheetNames = xl.GetDumpSheetNames();
         for (int i = 0; i < sheetNames.Count; i++)
             EmitSheet(xl, sheetNames[i], renameFirstSheet: i == 0, items, warnings);
@@ -140,7 +152,10 @@ public static partial class ExcelBatchEmitter
         foreach (var sheetName in sheetNames)
             EmitSlicers(xl, "/" + sheetName, xl.GetDumpSlicerCount(sheetName), items, warnings);
 
-        EmitNamedRanges(xl, items, warnings);
+        // Remaining names (sheet-scoped, or refs that qualify a sheet) after
+        // every sheet exists. The pre-sheet pass above already emitted the
+        // sheet-independent ones; this pass skips those to avoid duplicates.
+        EmitNamedRanges(xl, items, warnings, sheetIndependentOnly: false, skipSheetIndependent: true);
         EmitDocPropsScan(xl, warnings);
 
         return (items, warnings);
@@ -204,8 +219,22 @@ public static partial class ExcelBatchEmitter
         items.Add(new BatchItem { Command = "set", Path = "/", Props = props });
     }
 
+    // A defined name is "sheet-independent" when it is workbook-scoped and its
+    // ref carries no sheet qualifier ('!') — i.e. a constant or expression such
+    // as "=0.075" or a bare range on the implicit first sheet (which always
+    // exists). Such names can safely be emitted before any sheet, so formula
+    // cells referencing them resolve their cached value on replay-import.
+    private static bool IsSheetIndependentName(DocumentNode nr, string refVal)
+    {
+        var scope = nr.Format.TryGetValue("scope", out var sc) ? sc as string : null;
+        bool workbookScoped = string.IsNullOrEmpty(scope)
+            || string.Equals(scope, "workbook", StringComparison.OrdinalIgnoreCase);
+        return workbookScoped && !refVal.Contains('!');
+    }
+
     private static void EmitNamedRanges(ExcelHandler xl, List<BatchItem> items,
-        List<UnsupportedWarning> warnings)
+        List<UnsupportedWarning> warnings,
+        bool sheetIndependentOnly = false, bool skipSheetIndependent = false)
     {
         DocumentNode list;
         try { list = xl.Get("/namedrange"); }
@@ -216,6 +245,12 @@ public static partial class ExcelBatchEmitter
             var name = nr.Format.TryGetValue("name", out var n) ? n as string : null;
             var refVal = nr.Format.TryGetValue("ref", out var r) ? r as string : null;
             if (string.IsNullOrEmpty(name) || string.IsNullOrEmpty(refVal)) continue;
+            // Two-pass partition: the pre-sheet pass takes only sheet-independent
+            // names; the post-sheet pass takes the rest. Each name is emitted by
+            // exactly one pass.
+            bool independent = IsSheetIndependentName(nr, refVal!);
+            if (sheetIndependentOnly && !independent) continue;
+            if (skipSheetIndependent && independent) continue;
             // Excel's builtin names (_xlnm.Print_Area etc.) are carried by the
             // sheet-level printarea/printtitlerows emits — re-adding them here
             // would duplicate the defined name.
