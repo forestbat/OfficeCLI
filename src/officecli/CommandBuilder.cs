@@ -592,6 +592,71 @@ static partial class CommandBuilder
         return new SetApplyOutcome(applied, unsupported, autoCorrected);
     }
 
+    /// <summary>
+    /// Cheap single-node Format snapshot for the set-receipt normalization
+    /// echo. Selector paths (no leading '/') and unresolvable paths return
+    /// null — the echo is skipped rather than paying a query or guessing.
+    /// </summary>
+    internal static Dictionary<string, string>? TryGetFormatSnapshot(
+        OfficeCli.Core.IDocumentHandler handler, string path)
+    {
+        if (string.IsNullOrEmpty(path) || !path.StartsWith("/")) return null;
+        try
+        {
+            var node = handler.Get(path);
+            if (node?.Format == null) return null;
+            var snap = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            foreach (var kv in node.Format)
+                snap[kv.Key] = kv.Value switch
+                {
+                    null => "",
+                    bool b => b ? "true" : "false",
+                    _ => kv.Value.ToString() ?? "",
+                };
+            return snap;
+        }
+        catch { return null; }
+    }
+
+    /// <summary>
+    /// " (applied: key=value, ...)" — the canonical form the handler actually
+    /// stored, appended to the set receipt ONLY when it differs from the
+    /// request (bare font → font.latin/font.ea, red → #FF0000, 14 → 14pt).
+    /// A write-read-identical set keeps its receipt byte-for-byte unchanged
+    /// (frozen-text discipline: extend by suffix, and only when informative).
+    /// Diff entries are restricted to keys attributable to a requested key
+    /// (same name or a dotted expansion of it) so recomputed unrelated
+    /// Format entries can never add noise.
+    /// </summary>
+    internal static string BuildAppliedSuffix(
+        List<KeyValuePair<string, string>> applied,
+        Dictionary<string, string>? before,
+        Dictionary<string, string>? after)
+    {
+        if (before == null || after == null || applied.Count == 0) return "";
+        var diff = new List<KeyValuePair<string, string>>();
+        foreach (var kv in after)
+            if (!before.TryGetValue(kv.Key, out var old) || !string.Equals(old, kv.Value, StringComparison.Ordinal))
+                diff.Add(kv);
+        if (diff.Count == 0) return "";
+        bool Related(string diffKey) => applied.Any(req =>
+            diffKey.Equals(req.Key, StringComparison.OrdinalIgnoreCase)
+            || diffKey.StartsWith(req.Key + ".", StringComparison.OrdinalIgnoreCase)
+            || req.Key.StartsWith(diffKey + ".", StringComparison.OrdinalIgnoreCase));
+        var related = diff.Where(kv => Related(kv.Key))
+            .OrderBy(kv => kv.Key, StringComparer.OrdinalIgnoreCase).ToList();
+        if (related.Count == 0) return "";
+        // Identity — the stored form matches the request exactly: no echo.
+        var identical = applied.All(req => related.Any(d =>
+                d.Key.Equals(req.Key, StringComparison.OrdinalIgnoreCase)
+                && string.Equals(d.Value, req.Value, StringComparison.Ordinal)))
+            && related.All(d => applied.Any(req =>
+                d.Key.Equals(req.Key, StringComparison.OrdinalIgnoreCase)
+                && string.Equals(d.Value, req.Value, StringComparison.Ordinal)));
+        if (identical) return "";
+        return $" (applied: {string.Join(", ", related.Select(kv => $"{kv.Key}={kv.Value}"))})";
+    }
+
     internal static string ExecuteBatchItem(OfficeCli.Core.IDocumentHandler handler, BatchItem item, bool json)
     {
         var format = json ? OfficeCli.Core.OutputFormat.Json : OfficeCli.Core.OutputFormat.Text;

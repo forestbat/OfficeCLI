@@ -2079,6 +2079,9 @@ public class ResidentServer : IDisposable
         // previously lacked, so `set colot=color` behaves the same whether or
         // not a resident is alive. The resident's own envelope (find-count,
         // selector-count, watch, overflow, --json wrapping) stays below.
+        // CONSISTENCY(applied-echo): mirrors CommandBuilder.Set.cs — pre/post
+        // Format snapshots feed the " (applied: ...)" normalization echo.
+        var beforeSnap = CommandBuilder.TryGetFormatSnapshot(_handler, path);
         var (applied, unsupported, autoCorrected) =
             CommandBuilder.ApplySetWithCorrection(_handler, path, properties);
 
@@ -2114,8 +2117,11 @@ public class ResidentServer : IDisposable
         // R4-bt-1: report the post-move resolvable path for equation mode
         // switches (oMathPara ⇄ oMath), consistent with the non-resident path.
         var reportPath = (_handler as WordHandler)?.LastSetNewPath ?? path;
+        var appliedSuffix = CommandBuilder.BuildAppliedSuffix(applied,
+            beforeSnap, CommandBuilder.TryGetFormatSnapshot(_handler, reportPath));
         var message = applied.Count > 0
             ? $"Updated {reportPath}: {string.Join(", ", applied.Select(kv => $"{kv.Key}={kv.Value}"))}"
+              + appliedSuffix
               + (findMatchCount.HasValue ? $" ({findMatchCount.Value} matched)" : "")
               + (selectorCount > 1 ? $" ({selectorCount} elements matched)" : "")
             : (unsupported.Count > 0 ? $"No properties applied to {path}" : $"Updated {path}");
