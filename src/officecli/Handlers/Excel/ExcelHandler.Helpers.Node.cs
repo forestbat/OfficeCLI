@@ -585,10 +585,22 @@ public partial class ExcelHandler
                                     // Emit the OOXML wire name (e.g. "lightGray"),
                                     // not the enum struct's ToString.
                                     node.Format["fillPattern"] = pf!.PatternType!.InnerText;
+                                    // CONSISTENCY(scheme-color): theme fg/bg read
+                                    // back as scheme names, mirroring the solid
+                                    // path below — Set accepts them, so a pattern
+                                    // fill with theme colors must round-trip
+                                    // through dump→batch instead of silently
+                                    // dropping both colors.
                                     if (pf!.ForegroundColor?.Rgb?.Value != null)
                                         node.Format["fill"] = ParseHelpers.FormatHexColor(pf.ForegroundColor.Rgb.Value);
+                                    else if (pf.ForegroundColor?.Theme?.Value != null
+                                        && ParseHelpers.ExcelThemeIndexToName(pf.ForegroundColor.Theme.Value) is { } fgTheme)
+                                        node.Format["fill"] = fgTheme;
                                     if (pf.BackgroundColor?.Rgb?.Value != null)
                                         node.Format["fillBg"] = ParseHelpers.FormatHexColor(pf.BackgroundColor.Rgb.Value);
+                                    else if (pf.BackgroundColor?.Theme?.Value != null
+                                        && ParseHelpers.ExcelThemeIndexToName(pf.BackgroundColor.Theme.Value) is { } bgTheme)
+                                        node.Format["fillBg"] = bgTheme;
                                 }
                                 else if (pf?.ForegroundColor?.Rgb?.Value != null)
                                     node.Format["fill"] = ParseHelpers.FormatHexColor(pf.ForegroundColor.Rgb.Value);
