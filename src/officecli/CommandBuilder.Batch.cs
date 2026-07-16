@@ -484,8 +484,20 @@ static partial class CommandBuilder
                 if (batchSuccessLocal)
                 {
                     // Same-volume atomic swap; the temp copy carries the fully
-                    // saved post-batch document.
-                    System.IO.File.Replace(tmpPath, targetPath, destinationBackupFileName: null);
+                    // saved post-batch document. A failing swap (target made
+                    // read-only / deleted underneath us / fs quirk) surfaces as
+                    // a command error BEFORE any success output — the original
+                    // is untouched, so the verdict stays truthful — but the
+                    // temp copy must not leak on that path.
+                    try
+                    {
+                        System.IO.File.Replace(tmpPath, targetPath, destinationBackupFileName: null);
+                    }
+                    catch
+                    {
+                        try { System.IO.File.Delete(tmpPath); } catch { /* best-effort */ }
+                        throw;
+                    }
                 }
                 else
                 {
