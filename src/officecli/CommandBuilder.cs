@@ -633,18 +633,36 @@ static partial class CommandBuilder
         Dictionary<string, string>? before,
         Dictionary<string, string>? after)
     {
-        if (before == null || after == null || applied.Count == 0) return "";
-        var diff = new List<KeyValuePair<string, string>>();
-        foreach (var kv in after)
-            if (!before.TryGetValue(kv.Key, out var old) || !string.Equals(old, kv.Value, StringComparison.Ordinal))
-                diff.Add(kv);
-        if (diff.Count == 0) return "";
+        if (after == null || applied.Count == 0) return "";
         bool Related(string diffKey) => applied.Any(req =>
             diffKey.Equals(req.Key, StringComparison.OrdinalIgnoreCase)
             || diffKey.StartsWith(req.Key + ".", StringComparison.OrdinalIgnoreCase)
             || req.Key.StartsWith(diffKey + ".", StringComparison.OrdinalIgnoreCase));
+        var diff = new List<KeyValuePair<string, string>>();
+        if (before != null)
+            foreach (var kv in after)
+                if (!before.TryGetValue(kv.Key, out var old) || !string.Equals(old, kv.Value, StringComparison.Ordinal))
+                    diff.Add(kv);
         var related = diff.Where(kv => Related(kv.Key))
             .OrderBy(kv => kv.Key, StringComparer.OrdinalIgnoreCase).ToList();
+        if (related.Count == 0)
+        {
+            // Idempotent re-write (the stored value already matched) produces
+            // an empty diff — but the whole point of the echo is that a caller
+            // re-issuing `color=red` after a failed self-verification learns
+            // the canonical form. Fall back to the post-state, restricted to
+            // entries clearly attributable to the request: an exact key match,
+            // or (for dotted expansions like font → font.latin) an entry whose
+            // value equals the requested value — the equality filter keeps a
+            // pre-existing sibling (font.cs=Old) out of an echo that claims
+            // "applied". The same fallback covers a first write onto a node
+            // the before-snapshot couldn't resolve (before == null).
+            related = after
+                .Where(kv => Related(kv.Key) && applied.Any(req =>
+                    kv.Key.Equals(req.Key, StringComparison.OrdinalIgnoreCase)
+                    || string.Equals(kv.Value, req.Value, StringComparison.Ordinal)))
+                .OrderBy(kv => kv.Key, StringComparer.OrdinalIgnoreCase).ToList();
+        }
         if (related.Count == 0) return "";
         // Identity — the stored form matches the request exactly: no echo.
         var identical = applied.All(req => related.Any(d =>
