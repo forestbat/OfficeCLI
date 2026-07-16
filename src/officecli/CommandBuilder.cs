@@ -657,10 +657,18 @@ static partial class CommandBuilder
             // pre-existing sibling (font.cs=Old) out of an echo that claims
             // "applied". The same fallback covers a first write onto a node
             // the before-snapshot couldn't resolve (before == null).
+            // The key relation and the value equality must hold against the
+            // SAME request — matching them independently let an unrelated
+            // sibling whose value collided with a DIFFERENT request leak in
+            // (border=thin + wrap=true falsely echoing a pre-existing
+            // border.diagonalUp=true). A same-request sibling that genuinely
+            // carries the requested value (border.diagonal=thin preset before
+            // border=thin) can still appear — value-truthful, accepted.
             related = after
-                .Where(kv => Related(kv.Key) && applied.Any(req =>
+                .Where(kv => applied.Any(req =>
                     kv.Key.Equals(req.Key, StringComparison.OrdinalIgnoreCase)
-                    || string.Equals(kv.Value, req.Value, StringComparison.Ordinal)))
+                    || (kv.Key.StartsWith(req.Key + ".", StringComparison.OrdinalIgnoreCase)
+                        && string.Equals(kv.Value, req.Value, StringComparison.Ordinal))))
                 .OrderBy(kv => kv.Key, StringComparer.OrdinalIgnoreCase).ToList();
         }
         if (related.Count == 0) return "";
