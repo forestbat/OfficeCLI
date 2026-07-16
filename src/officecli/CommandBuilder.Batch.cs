@@ -429,19 +429,27 @@ static partial class CommandBuilder
             if (atomic)
             {
                 var tmpDir = System.IO.Path.GetDirectoryName(targetPath) ?? ".";
-                var tmpStem = System.IO.Path.GetFileNameWithoutExtension(targetPath);
+                var tmpStem = TruncateStemForTempName(System.IO.Path.GetFileNameWithoutExtension(targetPath));
                 var tmpExt = System.IO.Path.GetExtension(targetPath);
                 // Sweep orphaned temp copies from earlier crashed batches
                 // (kill -9 mid-run can't self-clean). Only THIS document's
-                // pattern is considered, and a candidate is deleted only when
-                // it can be opened exclusively — a concurrently running batch
-                // holds its temp open, so live temps are never touched.
+                // pattern is considered, and a candidate must pass TWO gates:
+                // an exclusive open (a running batch holds its temp open, so
+                // live temps are never touched) AND an age floor — the
+                // exclusive-open probe alone has TOCTOU windows against a
+                // concurrent batch on the same document (after its File.Copy
+                // but before its handler opens; after its dispose but before
+                // its File.Replace) where the temp is closed yet very much
+                // alive. Real crash orphans are minutes-to-days old; anything
+                // younger is presumed live and left for a later sweep.
                 try
                 {
+                    var ageFloor = DateTime.UtcNow - TimeSpan.FromMinutes(15);
                     foreach (var orphan in System.IO.Directory.GetFiles(tmpDir, $".{tmpStem}.batch-*{tmpExt}"))
                     {
                         try
                         {
+                            if (System.IO.File.GetLastWriteTimeUtc(orphan) > ageFloor) continue;
                             using (new System.IO.FileStream(orphan, System.IO.FileMode.Open,
                                 System.IO.FileAccess.ReadWrite, System.IO.FileShare.None)) { }
                             System.IO.File.Delete(orphan);
@@ -583,6 +591,34 @@ static partial class CommandBuilder
     // StreamReader's detect-encoding; Console.In feeds raw chars.
     private static string StripBom(string s)
         => !string.IsNullOrEmpty(s) && s[0] == '﻿' ? s.Substring(1) : s;
+
+    /// <summary>
+    /// The atomic temp name adds ~45 bytes of affixes around the document's
+    /// stem; a stem near the 255-byte filename limit would push the temp name
+    /// over it, making `batch` fail on a file that plain `set` handles.
+    /// Truncate the stem (UTF-8-byte budget, at a char boundary) for the temp
+    /// name AND the orphan-sweep pattern — both must derive identically or a
+    /// crashed batch's orphan would never match its own document's sweep.
+    /// Collision risk from truncation is absorbed by the per-temp GUID.
+    /// </summary>
+    private static string TruncateStemForTempName(string stem)
+    {
+        const int maxStemBytes = 180;
+        if (System.Text.Encoding.UTF8.GetByteCount(stem) <= maxStemBytes) return stem;
+        var bytes = 0;
+        var end = 0;
+        while (end < stem.Length)
+        {
+            // Walk whole code points so a surrogate pair is never split
+            // (a lone surrogate cannot round-trip through a UTF-8 filename).
+            var step = char.IsHighSurrogate(stem[end]) && end + 1 < stem.Length ? 2 : 1;
+            var b = System.Text.Encoding.UTF8.GetByteCount(stem.AsSpan(end, step));
+            if (bytes + b > maxStemBytes) break;
+            bytes += b;
+            end += step;
+        }
+        return stem[..end];
+    }
 
     // Batch verbs that never mutate the DOM. Single source of truth for both
     // the non-resident atomic-copy decision above and the resident server's
