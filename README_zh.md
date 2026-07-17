@@ -311,7 +311,7 @@ officecli set report.docx /body/p[1]/r[1] --prop bold=true
 officecli set report.docx /body/p[2]/r[1] --prop color=FF0000
 officecli close report.docx
 
-# 批量模式 — 原子化多命令执行（默认遇到第一个错误即停止）
+# 批量模式 — 多命令执行，默认原子化：只要有一条失败，整批全部回滚
 echo '[{"command":"set","path":"/slide[1]/shape[1]","props":{"text":"Hello"}},
       {"command":"set","path":"/slide[1]/shape[2]","props":{"fill":"FF0000"}}]' \
   | officecli batch deck.pptx --json
@@ -319,8 +319,11 @@ echo '[{"command":"set","path":"/slide[1]/shape[1]","props":{"text":"Hello"}},
 # 内联 batch，无需标准输入
 officecli batch deck.pptx --commands '[{"op":"set","path":"/slide[1]/shape[1]","props":{"text":"Hi"}}]'
 
-# 使用 --force 跳过错误继续执行
-officecli batch deck.pptx --input updates.json --force --json
+# 使用 --best-effort 保留已成功的部分，即使其他条目失败（v1.0.137 前的旧行为）
+officecli batch deck.pptx --input updates.json --best-effort --json
+
+# 遇到第一个失败就停止执行（默认原子模式下仍会整体回滚；需搭配 --best-effort 才会保留已成功部分）
+officecli batch deck.pptx --input updates.json --stop-on-error --json
 ```
 
 > **要用其他工具读这个文件?先落盘。**
@@ -518,7 +521,7 @@ officecli get report.docx /body --depth 1 --json
 | [`move`](https://github.com/iOfficeAI/OfficeCLI/wiki/command-move) | 移动元素（`--to <parent>`、`--index N`、`--after <path>`、`--before <path>`） |
 | [`swap`](https://github.com/iOfficeAI/OfficeCLI/wiki/command-swap) | 交换两个元素 |
 | [`validate`](https://github.com/iOfficeAI/OfficeCLI/wiki/command-validate) | OpenXML 模式校验 |
-| [`batch`](https://github.com/iOfficeAI/OfficeCLI/wiki/command-batch) | 单次打开/保存周期内执行多条操作（stdin、`--input` 或 `--commands`；默认遇到第一个错误停止，`--force` 跳过错误继续） |
+| [`batch`](https://github.com/iOfficeAI/OfficeCLI/wiki/command-batch) | 单次打开/保存周期内执行多条操作（stdin、`--input` 或 `--commands`；默认原子化——只要有一条失败整批回滚，`--best-effort` 保留已成功部分，`--stop-on-error` 提前中止） |
 | [`merge`](https://github.com/iOfficeAI/OfficeCLI/wiki/command-merge) | 模板合并 — 用 JSON 数据替换 `{{key}}` 占位符 |
 | [`watch`](https://github.com/iOfficeAI/OfficeCLI/wiki/command-watch) | 在浏览器中实时 HTML 预览，自动刷新 |
 | [`mcp`](https://github.com/iOfficeAI/OfficeCLI/wiki/command-mcp) | 启动 MCP 服务器，用于 AI 工具集成 |
