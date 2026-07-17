@@ -213,7 +213,8 @@ internal partial class FormulaEvaluator
             "N" => FR(num(0)),
             "FIXED" => EvalFixed(args),
             "NUMBERVALUE" => EvalNumberValue(args),
-            "DOLLAR" or "YEN" => FR_S(num(0).ToString("C", CultureInfo.InvariantCulture)),
+            "DOLLAR" => EvalCurrency(args, "$", 2),
+            "YEN" => EvalCurrency(args, "¥", 0),
 
             // ===== Lookup & Reference =====
             "INDEX" => EvalIndex(args), "MATCH" => EvalMatch(args),
@@ -706,6 +707,21 @@ internal partial class FormulaEvaluator
         var v = args.Count > 0 && args[0] is FormulaResult r ? r.AsNumber() : 0;
         var d = args.Count > 1 && args[1] is FormulaResult r2 ? (int)r2.AsNumber() : 2;
         return FR_S(v.ToString($"N{d}", CultureInfo.InvariantCulture));
+    }
+
+    // DOLLAR(number, [decimals=2]) / YEN(number, [decimals=0]): round to the
+    // given decimals (negative rounds left of the point), group by thousands,
+    // prefix the currency symbol, and wrap negatives in parentheses, matching
+    // Excel. The old code used .NET's "C" format, which emits the generic ¤
+    // symbol and ignored the decimals argument.
+    private static FormulaResult EvalCurrency(List<object> args, string symbol, int defaultDec)
+    {
+        double v = args.Count > 0 && args[0] is FormulaResult r ? r.AsNumber() : 0;
+        int dec = args.Count > 1 && args[1] is FormulaResult d ? (int)d.AsNumber() : defaultDec;
+        double factor = Math.Pow(10, dec);
+        double rounded = Math.Round(v * factor, MidpointRounding.AwayFromZero) / factor;
+        string body = symbol + Math.Abs(rounded).ToString("N" + Math.Max(0, dec), CultureInfo.InvariantCulture);
+        return FR_S(rounded < 0 ? $"({body})" : body);
     }
 
     private static FormulaResult? EvalNumberValue(List<object> args)
