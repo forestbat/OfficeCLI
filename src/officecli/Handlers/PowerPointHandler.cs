@@ -1733,9 +1733,20 @@ public partial class PowerPointHandler : IDocumentHandler, Rendering.IRenderMode
                 {
                     epHost = presentationPart;
                     if (epHost.ExternalRelationships.Any(r => r.Id == epRid)
-                        || epHost.HyperlinkRelationships.Any(r => r.Id == epRid)
-                        || epHost.Parts.Any(p => p.RelationshipId == epRid))
+                        || epHost.HyperlinkRelationships.Any(r => r.Id == epRid))
                         return (epRid, parentPartPath);
+                    // Part-rel collision: on a rebuilt deck the scaffold's own
+                    // rels (master/slide/presProps…) occupy low rIds, so a
+                    // pinned source id like rId2 is usually TAKEN. Skipping
+                    // here (the old behavior) silently dropped the part while
+                    // still reporting success. Idempotent-skip only a genuine
+                    // re-run (same-rel-type ExtendedPart already present);
+                    // otherwise re-home the occupant so the pinned id is free.
+                    // Mirrors the slide/master/layout branch below.
+                    var epOcc = epHost.Parts.FirstOrDefault(p => p.RelationshipId == epRid);
+                    if (epOcc.OpenXmlPart is ExtendedPart occExt && occExt.RelationshipType == epRelType)
+                        return (epRid, parentPartPath);
+                    ReHomeCollidingRel(epHost, epRid);
                     var epPresPart = epHost.AddExtendedPart(epRelType, epContentType, epExt, epRid);
                     using (var epStream = new MemoryStream(epBytes))
                         epPresPart.FeedData(epStream);
@@ -2148,6 +2159,27 @@ public partial class PowerPointHandler : IDocumentHandler, Rendering.IRenderMode
                     break;
                 }
             }
+        }
+        // Presentation-part host: every r:id inside presentation.xml resolves
+        // against the presentation part's rels (sldMasterIdLst / sldIdLst /
+        // notesMasterIdLst / custShow slide lists), so repoint any attribute
+        // still carrying the vacated id or the deck dangles on open.
+        else if (host is PresentationPart ppHost && ppHost.Presentation != null)
+        {
+            const string RelNs = "http://schemas.openxmlformats.org/officeDocument/2006/relationships";
+            var changed = false;
+            foreach (var el in ppHost.Presentation.Descendants())
+            {
+                foreach (var attr in el.GetAttributes())
+                {
+                    if (attr.LocalName == "id" && attr.NamespaceUri == RelNs && attr.Value == pinnedRid)
+                    {
+                        el.SetAttribute(new OpenXmlAttribute(attr.Prefix, attr.LocalName, attr.NamespaceUri, newRid));
+                        changed = true;
+                    }
+                }
+            }
+            if (changed) ppHost.Presentation.Save();
         }
     }
 
