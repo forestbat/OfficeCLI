@@ -72,7 +72,7 @@ static partial class CommandBuilder
             }
             catch (Exception ex)
             {
-                results.Add(new BatchResult { Index = bi, Success = false, Item = item, Error = ex.Message });
+                results.Add(new BatchResult { Index = bi, Success = false, Item = item, Error = ex.Message, Code = OfficeCli.Core.OutputFormatter.InferErrorCode(ex) });
                 if (stopOnError) break;
             }
             // BUG-BT2: per-item unrecognized-LaTeX diagnostics. The handler

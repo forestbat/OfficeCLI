@@ -298,6 +298,22 @@ internal static class OutputFormatter
         return result;
     }
 
+    /// <summary>
+    /// Machine-readable code for a per-item failure (batch results[].code).
+    /// Same derivation as the envelope-level error.code — CliException.Code
+    /// verbatim, else the message-pattern inference — EXCEPT the
+    /// internal_error catch-all: at item level an unclassifiable failure
+    /// leaves the code ABSENT (null) so consumers fall back to the message
+    /// text instead of branching on a fake bucket.
+    /// </summary>
+    internal static string? InferErrorCode(Exception ex)
+    {
+        if (ex is CliException cli) return cli.Code;
+        var tmp = new ErrorResult();
+        EnrichFromMessage(tmp, ex);
+        return tmp.Code == "internal_error" ? null : tmp.Code;
+    }
+
     private static void EnrichFromMessage(ErrorResult result, Exception ex)
     {
         var msg = ex.Message;
