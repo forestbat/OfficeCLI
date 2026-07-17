@@ -1804,6 +1804,12 @@ public partial class PowerPointHandler : IDocumentHandler, Rendering.IRenderMode
                     || epHost.HyperlinkRelationships.Any(r => r.Id == epRid))
                     throw new ArgumentException(
                         $"add-part extpart: rid '{epRid}' already exists as an external/hyperlink relationship on {parentPartPath} and cannot be re-homed. Use a different rid.");
+                // Genuine re-run (same-rel-type ExtendedPart already pinned on
+                // this rid): idempotent skip, same as the /presentation branch —
+                // re-homing our own part would duplicate it under a fresh id.
+                var epSlideOcc = epHost.Parts.FirstOrDefault(p => p.RelationshipId == epRid);
+                if (epSlideOcc.OpenXmlPart is ExtendedPart epSlideExt && epSlideExt.RelationshipType == epRelType)
+                    return (epRid, parentPartPath);
                 ReHomeCollidingRel(epHost, epRid);
                 var epPart = epHost.AddExtendedPart(epRelType, epContentType, epExt, epRid);
                 using (var epStream = new MemoryStream(epBytes))
