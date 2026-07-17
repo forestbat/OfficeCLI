@@ -406,6 +406,23 @@ internal static class OutputFormatter
             return;
         }
 
+        // Pattern: "invalid showDataAs: 'X'" / "invalid subtotal: …" — pivot
+        // enum rejections phrased with a lowercase 'invalid', missed by the
+        // case-sensitive "Invalid " prefix rule above.
+        if (msg.StartsWith("invalid ", StringComparison.Ordinal))
+        {
+            result.Code = "invalid_value";
+            return;
+        }
+
+        // Pattern: "raw-set: XPath matched no elements: <xpath>. Hint: …" —
+        // the addressed element does not exist, same family as path_not_found.
+        if (msg.Contains("XPath matched no elements"))
+        {
+            result.Code = "not_found";
+            return;
+        }
+
         // Pattern: "diagram type 'X' is not supported yet (currently: ...)" —
         // DiagramCompiler rejects a mermaid diagram kind it can't render. It's a
         // bad-input value (fix by choosing a supported type), not a handler
