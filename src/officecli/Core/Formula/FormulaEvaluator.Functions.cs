@@ -257,7 +257,7 @@ internal partial class FormulaEvaluator
 
             // ===== Date & Time =====
             "TODAY" => FR(DateTime.Today.ToOADate()), "NOW" => FR(DateTime.Now.ToOADate()),
-            "DATE" => FR(new DateTime((int)num(0), (int)num(1), (int)num(2)).ToOADate()),
+            "DATE" => EvalDate(num(0), num(1), num(2)),
             "YEAR" => FR(DateTime.FromOADate(num(0)).Year), "MONTH" => FR(DateTime.FromOADate(num(0)).Month),
             "DAY" => FR(DateTime.FromOADate(num(0)).Day), "HOUR" => FR(DateTime.FromOADate(num(0)).Hour),
             "MINUTE" => FR(DateTime.FromOADate(num(0)).Minute), "SECOND" => FR(DateTime.FromOADate(num(0)).Second),
@@ -1352,6 +1352,16 @@ internal partial class FormulaEvaluator
         var d = args.Count > 0 && args[0] is FormulaResult r ? DateTime.FromOADate(r.AsNumber()) : DateTime.Today;
         var months = args.Count > 1 && args[1] is FormulaResult r2 ? (int)r2.AsNumber() : 0;
         var t = d.AddMonths(months); return FR(new DateTime(t.Year, t.Month, DateTime.DaysInMonth(t.Year, t.Month)).ToOADate());
+    }
+
+    // DATE(year, month, day) with Excel's rollover: years 0..1899 map to 1900+year,
+    // and out-of-range month/day roll into adjacent months/years rather than error.
+    private static FormulaResult? EvalDate(double y, double m, double d)
+    {
+        int year = (int)y;
+        if (year >= 0 && year < 1900) year += 1900;
+        try { return FR(new DateTime(year, 1, 1).AddMonths((int)m - 1).AddDays((int)d - 1).ToOADate()); }
+        catch { return FormulaResult.Error("#NUM!"); }
     }
 
     private static FormulaResult? EvalDateDif(List<object> args)
