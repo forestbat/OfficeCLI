@@ -1153,6 +1153,8 @@ static partial class CommandBuilder
                         if (r.Error != null)
                         {
                             slimWriter.WriteString("error", r.Error);
+                            if (r.Code != null)
+                                slimWriter.WriteString("code", r.Code);
                             if (r.Item != null)
                             {
                                 slimWriter.WritePropertyName("item");
