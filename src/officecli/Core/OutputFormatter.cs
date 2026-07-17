@@ -378,6 +378,34 @@ internal static class OutputFormatter
             return;
         }
 
+        // Pattern: "Unsupported MIME type: <mime>. Supported: image/png, …"
+        // (data: URI with an unrecognized or empty media type).
+        if (msg.Contains("Unsupported MIME type"))
+        {
+            result.Code = "invalid_value";
+            var mimeValid = System.Text.RegularExpressions.Regex.Match(msg, @"Supported:\s*(.+?)\.?$");
+            if (mimeValid.Success)
+                result.ValidValues = mimeValid.Groups[1].Value.Split(", ");
+            return;
+        }
+
+        // Pattern: "add-part extpart: parent must be /presentation, /slide[N], …"
+        // — an add-part host outside the allowed set; the value is well-formed
+        // but not an accepted parent for this part type.
+        if (msg.Contains(": parent must be "))
+        {
+            result.Code = "invalid_value";
+            return;
+        }
+
+        // Pattern: "Cannot resolve @name= outside of a slide context" — a
+        // selector feature used on a path segment that doesn't support it.
+        if (msg.Contains("Cannot resolve @name="))
+        {
+            result.Code = "invalid_path";
+            return;
+        }
+
         // Pattern: "diagram type 'X' is not supported yet (currently: ...)" —
         // DiagramCompiler rejects a mermaid diagram kind it can't render. It's a
         // bad-input value (fix by choosing a supported type), not a handler
