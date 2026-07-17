@@ -550,13 +550,22 @@ internal static class OutputFormatter
         }
 
         // Pattern: batch item shape errors — "'add-part' command requires
-        // 'parent' field" / "Batch item missing required 'command' field" /
-        // "add-part extpart requires property 'data'".
-        if (System.Text.RegularExpressions.Regex.IsMatch(msg, @"requires '\w+(-\w+)?' field")
+        // 'parent' field" / "requires 'type' or 'from' field" / "requires
+        // 'path' and 'path2' (or 'to') fields" / "Batch item missing required
+        // 'command' field" / "add-part extpart requires property 'data'".
+        if (System.Text.RegularExpressions.Regex.IsMatch(msg, @"requires .{0,40}'[\w-]+'.{0,20}\bfields?\b")
             || System.Text.RegularExpressions.Regex.IsMatch(msg, @"requires property '[\w-]+'")
             || msg.Contains("missing required"))
         {
             result.Code = "missing_property";
+            return;
+        }
+
+        // Pattern: "batch item[3] is null. Each entry must be a JSON object" —
+        // malformed batch payload, same class as unparseable JSON.
+        if (System.Text.RegularExpressions.Regex.IsMatch(msg, @"^batch item\[\d+\] is null"))
+        {
+            result.Code = "invalid_json";
             return;
         }
 
