@@ -174,6 +174,8 @@ if (-not (Test-Path $skillMarker)) {
         "$env:USERPROFILE\.nanobot\workspace" = "NanoBot"
         "$env:USERPROFILE\.zeroclaw\workspace" = "ZeroClaw"
         "$env:USERPROFILE\.hermes" = "Hermes Agent"
+        "$env:USERPROFILE\.kilo" = "KiloCode"
+        "$env:USERPROFILE\.kilocode" = "KiloCode (legacy)"
     }
     foreach ($dir in $tools.Keys) {
         if (Test-Path $dir) {
